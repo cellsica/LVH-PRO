@@ -4,6 +4,7 @@
 #include "PluginScanThread.h"
 #include "PluginSlot.h"
 #include "IPCManager.h"
+#include "BridgeSyncProcessor.h"
 
 // =====================================================================
 // Main Application
@@ -248,12 +249,20 @@ private:
         auto* mc = mainComp();
         if (mc == nullptr) return;
 
-        // When Bridge connects, immediately sync current audio config
+        // When Bridge connects: switch Core's graph to Bridge-sync mode, then send AudioConfig
         ipcManager.onConnected = [this] {
+            audioEngine.buildGraphWithBridgeSync (
+                std::make_unique<BridgeSyncProcessor> (coreSharedMem, coreSyncEvents));
+
             auto& setup = deviceManager.getAudioDeviceSetup();
             auto sr  = static_cast<float> (setup.sampleRate > 0.0 ? setup.sampleRate : 44100.0);
             auto bs  = setup.bufferSize > 0 ? setup.bufferSize : 512;
             ipcManager.sendAudioConfig (sr, bs);
+        };
+
+        // When Bridge disconnects: restore sine-wave fallback
+        ipcManager.onDisconnected = [this] {
+            audioEngine.buildGraphWithSineWave();
         };
 
         // Speaker mute button + volume slider (share savedGain)
@@ -468,18 +477,26 @@ private:
 
                     if (bridgeExe.existsAsFile())
                     {
-                        // Generate unique pipe name and start IPC pipe server
-                        juce::String pipeName = "LVH-Bridge-" + juce::String (juce::Time::currentTimeMillis());
+                        // Generate unique names for this Bridge instance
+                        juce::String pipeName  = "LVH-Bridge-" + juce::String (juce::Time::currentTimeMillis());
+                        juce::String shmName   = SharedMemoryBuffer::generateName();
+                        juce::String syncName  = SyncEvents::generateName();
+
+                        // Start IPC pipe server
                         ipcManager.startPipe (pipeName);
 
-                        // Create shared memory for audio data return (Bridge opens by name)
-                        juce::String shmName = SharedMemoryBuffer::generateName();
+                        // Create shared memory for audio exchange
                         if (! coreSharedMem.create (shmName, SharedMemoryBuffer::kDefaultSize))
                             juce::Logger::writeToLog ("[Core] Warning: failed to create shared memory.");
 
+                        // Create named sync events (auto-reset, initially non-signaled)
+                        if (! coreSyncEvents.create (syncName))
+                            juce::Logger::writeToLog ("[Core] Warning: failed to create sync events.");
+
                         juce::String args = "--plugin \"" + result.getFullPathName() + "\""
                                           + " --ipc-pipe " + pipeName
-                                          + " --shm-name " + shmName;
+                                          + " --shm-name " + shmName
+                                          + " --sync-name " + syncName;
                         bridgeExe.startAsProcess (args);
                     }
                     else
@@ -523,6 +540,7 @@ private:
     ApplicationProperties appProperties;
     CoreIpcManager     ipcManager;
     SharedMemoryBuffer coreSharedMem;
+    SyncEvents         coreSyncEvents;
     std::unique_ptr<MainWindow> mainWindow;
     std::unique_ptr<PCKeyboardListener> pcKeyListener;
     std::unique_ptr<PluginScanThread> scanThread;

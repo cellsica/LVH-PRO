@@ -3,6 +3,90 @@
 #include "IPCManager.h"
 
 // =====================================================================
+// BridgeAudioThread
+//
+// High-priority thread that handles real-time audio processing for Bridge.
+// Waits on SyncEvents::waitForRequest(), processes audio via pluginInstance,
+// writes output back to shared memory, then signals SyncEvents::signalDone().
+// =====================================================================
+class BridgeAudioThread : public juce::Thread
+{
+public:
+    BridgeAudioThread (juce::AudioPluginInstance*    plugin,
+                       SharedMemoryBuffer&           shm,
+                       SyncEvents&                   events,
+                       juce::MidiMessageCollector&   midiCollector)
+        : Thread ("BridgeAudio"), plugin (plugin), shm (shm),
+          events (events), midiCollector (midiCollector)
+    {}
+
+    void run() override
+    {
+        // TODO: set high thread priority when JUCE API is confirmed
+        juce::Logger::writeToLog ("[BridgeAudio] Thread started.");
+
+        while (! threadShouldExit())
+        {
+            // Wait for Core to request processing (100ms timeout keeps the loop responsive)
+            if (! events.waitForRequest (100))
+                continue;
+
+            auto* layout = shm.getLayout();
+            if (layout == nullptr || plugin == nullptr)
+            {
+                events.signalDone();
+                continue;
+            }
+
+            const int numSamples  = layout->bufferSize;
+            const int numChannels = juce::jmin (2, (int) layout->numChannels);
+
+            // Build JUCE AudioBuffer from shared memory input
+            juce::AudioBuffer<float> buffer (numChannels, numSamples);
+            for (int ch = 0; ch < numChannels; ++ch)
+                std::memcpy (buffer.getWritePointer (ch),
+                             layout->audioIn[ch],
+                             (size_t) numSamples * sizeof (float));
+
+            // Collect MIDI events that arrived via IPC since last block
+            juce::MidiBuffer midiBuffer;
+            midiCollector.removeNextBlockOfMessages (midiBuffer, numSamples);
+
+            // Debug: log first audio block received (once only)
+            if (firstBlock)
+            {
+                firstBlock = false;
+                juce::Logger::writeToLog ("[BridgeAudio] First processBlock: numSamples="
+                                          + juce::String (numSamples)
+                                          + " midiEvents=" + juce::String (midiBuffer.getNumEvents()));
+            }
+
+            plugin->processBlock (buffer, midiBuffer);
+
+            // Write output back to shared memory
+            for (int ch = 0; ch < numChannels; ++ch)
+                std::memcpy (layout->audioOut[ch],
+                             buffer.getReadPointer (ch),
+                             (size_t) numSamples * sizeof (float));
+
+            // Signal Core that output is ready
+            events.signalDone();
+        }
+
+        juce::Logger::writeToLog ("[BridgeAudio] Thread stopped.");
+    }
+
+private:
+    juce::AudioPluginInstance*  plugin;
+    SharedMemoryBuffer&         shm;
+    SyncEvents&                 events;
+    juce::MidiMessageCollector& midiCollector;
+    bool                        firstBlock = true;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BridgeAudioThread)
+};
+
+// =====================================================================
 // LVH-Bridge: プラグインホスト用の子プロセス
 // =====================================================================
 class LvhBridgeApplication : public juce::JUCEApplication
@@ -28,18 +112,21 @@ public:
         juce::String pluginPath;
         juce::String ipcPipeName;
         juce::String shmName;
+        juce::String syncName;
         auto args = juce::StringArray::fromTokens (commandLine, true);
 
         for (int i = 0; i < args.size(); ++i)
         {
-            if      (args[i] == "--plugin"   && i + 1 < args.size()) pluginPath  = args[i + 1].unquoted();
-            else if (args[i] == "--ipc-pipe" && i + 1 < args.size()) ipcPipeName = args[i + 1];
-            else if (args[i] == "--shm-name" && i + 1 < args.size()) shmName     = args[i + 1];
+            if      (args[i] == "--plugin"    && i + 1 < args.size()) pluginPath  = args[i + 1].unquoted();
+            else if (args[i] == "--ipc-pipe"  && i + 1 < args.size()) ipcPipeName = args[i + 1];
+            else if (args[i] == "--shm-name"  && i + 1 < args.size()) shmName     = args[i + 1];
+            else if (args[i] == "--sync-name" && i + 1 < args.size()) syncName    = args[i + 1];
         }
 
         juce::Logger::writeToLog ("Detected Plugin Path: " + pluginPath);
-        juce::Logger::writeToLog ("IPC Pipe Name: " + (ipcPipeName.isNotEmpty() ? ipcPipeName : "(none)"));
-        juce::Logger::writeToLog ("Shared Memory Name: " + (shmName.isNotEmpty() ? shmName : "(none)"));
+        juce::Logger::writeToLog ("IPC Pipe Name:   " + (ipcPipeName.isNotEmpty() ? ipcPipeName : "(none)"));
+        juce::Logger::writeToLog ("Shared Mem Name: " + (shmName.isNotEmpty()     ? shmName     : "(none)"));
+        juce::Logger::writeToLog ("Sync Event Name: " + (syncName.isNotEmpty()    ? syncName    : "(none)"));
 
         // 共有メモリをオープン
         if (shmName.isNotEmpty())
@@ -51,20 +138,41 @@ public:
                 juce::Logger::writeToLog ("[Bridge] Warning: failed to open shared memory.");
         }
 
+        // 同期イベントをオープン
+        if (syncName.isNotEmpty())
+        {
+            syncEvents = std::make_unique<SyncEvents>();
+            if (syncEvents->open (syncName))
+                juce::Logger::writeToLog ("[Bridge] Sync events opened successfully.");
+            else
+                juce::Logger::writeToLog ("[Bridge] Warning: failed to open sync events.");
+        }
+
         mainWindow.reset (new MainWindow (getApplicationName(), pluginPath));
 
         // IPC接続を開始 (mainWindow生成後に設定することでpreparePluginが呼べる)
         if (ipcPipeName.isNotEmpty())
         {
             ipcClient = std::make_unique<BridgeIpcClient>();
-            ipcClient->onConnected    = [] { juce::Logger::writeToLog ("[Bridge] IPC channel ready."); };
-            ipcClient->onDisconnected = [] { juce::Logger::writeToLog ("[Bridge] IPC channel closed."); };
-            ipcClient->onMidiReceived = [] (const juce::MidiMessage& msg) {
+            ipcClient->onConnected = [this] {
+                juce::Logger::writeToLog ("[Bridge] IPC channel ready.");
+                // AudioThread を開始 (共有メモリ・同期イベントが揃っている場合)
+                startAudioThreadIfReady();
+            };
+            ipcClient->onDisconnected = [this] {
+                juce::Logger::writeToLog ("[Bridge] IPC channel closed.");
+                stopAudioThread();
+            };
+            ipcClient->onMidiReceived = [this] (const juce::MidiMessage& msg) {
                 juce::Logger::writeToLog ("[Bridge MIDI] " + msg.getDescription());
+                // Feed into the audio thread's MIDI queue
+                midiCollector.addMessageToQueue (msg);
             };
             ipcClient->onAudioConfigReceived = [this] (float sr, int32_t bs) {
                 if (mainWindow != nullptr)
                     mainWindow->preparePlugin (sr, bs);
+                // Reset MIDI collector with the actual sample rate
+                midiCollector.reset (static_cast<double> (sr));
             };
             ipcClient->connectAsync (ipcPipeName, 5000);
         }
@@ -72,9 +180,11 @@ public:
 
     void shutdown() override
     {
+        stopAudioThread();
         if (ipcClient != nullptr)
             ipcClient->disconnect();
         ipcClient.reset();
+        syncEvents.reset();
         sharedMem.reset();
         mainWindow.reset();
         juce::Logger::setCurrentLogger (nullptr);
@@ -134,6 +244,11 @@ public:
             {
                 juce::Logger::writeToLog ("[Bridge] AudioConfig received but plugin not loaded yet.");
             }
+        }
+
+        juce::AudioPluginInstance* getPluginInstance() const noexcept
+        {
+            return pluginInstance.get();
         }
 
     private:
@@ -217,11 +332,40 @@ public:
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainWindow)
     };
 
+    void startAudioThreadIfReady()
+    {
+        if (sharedMem == nullptr || !sharedMem->isOpen()) return;
+        if (syncEvents == nullptr || !syncEvents->isOpen()) return;
+        if (mainWindow == nullptr) return;
+
+        auto* plugin = mainWindow->getPluginInstance();
+        if (plugin == nullptr) return;
+
+        stopAudioThread();
+        audioThread = std::make_unique<BridgeAudioThread> (plugin, *sharedMem, *syncEvents, midiCollector);
+        audioThread->startThread();
+        juce::Logger::writeToLog ("[Bridge] BridgeAudioThread started.");
+    }
+
+    void stopAudioThread()
+    {
+        if (audioThread != nullptr)
+        {
+            audioThread->signalThreadShouldExit();
+            audioThread->stopThread (2000);
+            audioThread.reset();
+            juce::Logger::writeToLog ("[Bridge] BridgeAudioThread stopped.");
+        }
+    }
+
 private:
-    std::unique_ptr<juce::FileLogger>  fileLogger;
-    std::unique_ptr<MainWindow>        mainWindow;
-    std::unique_ptr<BridgeIpcClient>   ipcClient;
+    std::unique_ptr<juce::FileLogger>   fileLogger;
+    std::unique_ptr<MainWindow>         mainWindow;
+    std::unique_ptr<BridgeIpcClient>    ipcClient;
     std::unique_ptr<SharedMemoryBuffer> sharedMem;
+    std::unique_ptr<SyncEvents>         syncEvents;
+    std::unique_ptr<BridgeAudioThread>  audioThread;
+    juce::MidiMessageCollector          midiCollector;
 };
 
 START_JUCE_APPLICATION (LvhBridgeApplication)

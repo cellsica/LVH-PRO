@@ -16,11 +16,13 @@
 - [x] Bridge での VST3 プラグインロードと GUI 表示成功
 - [x] Core-Bridge 間の IPC 通信基盤の実装 (Named Pipes via juce::InterprocessConnection)
 - [x] MIDI 信号の Core から Bridge への転送 (Bridge 側はログ出力で確認)
-- [ ] AudioConfig (SampleRate/BufferSize) の同期 -- 次はここ！(しずく)
-- [ ] 共有メモリ (Shared Memory) による音声データ返却の実装
+- [x] AudioConfig (SampleRate/BufferSize) の同期成功 (しずく011)
+- [x] 共有メモリ (Shared Memory) 基盤の構築成功 (しずく011)
+- [x] 共有メモリ & Named Events 同期による音声データ返却の実装 (しずく012) ✅ 音が出た！
 - [ ] 複数インスタンスのブリッジ管理
 - [ ] 独立ウィンドウ管理: 子プロセス側のウィンドウを親プロセス側で制御する仕組み。
 
 ## 直近の作業ログ 📝
 - [2026-03-17] かえで：Bridge プロトタイプの最小構成ソースコードを実装。再起動後にビルドを行う準備が完了。
 - [2026-03-17] しずく：IPC基盤 (IPCManager.h/cpp) を実装。Named Pipe による Core↔Bridge ハンドシェイク・MIDI転送・SharedAudioLayout定義を完了。
+- [2026-03-17] しずく：マルチプロセスオーディオループ完成。SyncEvents(Named Events)・BridgeSyncProcessor・BridgeAudioThread・MidiMessageCollector を実装。Core レベルメーター動作・音声出力を確認。

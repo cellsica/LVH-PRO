@@ -125,6 +125,34 @@ public:
         if (meterGainProcessor) meterGainProcessor->setGain (g);
     }
 
+    /** Switch Core's audio graph to Bridge-sync mode.
+        The supplied processor (BridgeSyncProcessor) replaces the local plugin.
+        Call this when the Bridge process connects and is ready. */
+    void buildGraphWithBridgeSync (std::unique_ptr<AudioProcessor> bridgeProc)
+    {
+        kbProcessor        = nullptr;
+        meterGainProcessor = nullptr;
+        getOrCreateSlot().detach();
+        audioGraph.clear();
+
+        auto outNode    = audioGraph.addNode (std::make_unique<AudioProcessorGraph::AudioGraphIOProcessor> (AudioProcessorGraph::AudioGraphIOProcessor::audioOutputNode));
+        auto bridgeNode = audioGraph.addNode (std::move (bridgeProc));
+
+        auto* mgProc = new GainAndMeterProcessor();
+        mgProc->setGain (pendingGain);
+        meterGainProcessor = mgProc;
+        auto mgNode = audioGraph.addNode (std::unique_ptr<GainAndMeterProcessor> (mgProc));
+
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            audioGraph.addConnection ({{bridgeNode->nodeID, ch}, {mgNode->nodeID,  ch}});
+            audioGraph.addConnection ({{mgNode->nodeID,     ch}, {outNode->nodeID, ch}});
+        }
+
+        if (lastSampleRate > 0.0 && lastBufferSize > 0)
+            audioGraph.prepareToPlay (lastSampleRate, lastBufferSize);
+    }
+
     void buildGraphWithSineWave()
     {
         kbProcessor       = nullptr;

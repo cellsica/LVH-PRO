@@ -164,6 +164,110 @@ void SharedMemoryBuffer::close()
 }
 
 // =====================================================================
+// SyncEvents
+// =====================================================================
+
+bool SyncEvents::create (const juce::String& baseName)
+{
+    close();
+#if JUCE_WINDOWS
+    auto reqName  = baseName + "_Req";
+    auto doneName = baseName + "_Done";
+
+    HANDLE hEvtReq  = CreateEventW (nullptr, FALSE, FALSE, reqName.toWideCharPointer());
+    HANDLE hEvtDn   = CreateEventW (nullptr, FALSE, FALSE, doneName.toWideCharPointer());
+
+    if (hEvtReq == nullptr || hEvtDn == nullptr)
+    {
+        juce::Logger::writeToLog ("[SyncEvents] CreateEvent failed: " + juce::String ((int)GetLastError()));
+        if (hEvtReq) CloseHandle (hEvtReq);
+        if (hEvtDn)  CloseHandle (hEvtDn);
+        return false;
+    }
+
+    hRequest = hEvtReq;
+    hEvtDone = hEvtDn;
+    juce::Logger::writeToLog ("[SyncEvents] Created: " + baseName);
+    return true;
+#else
+    juce::ignoreUnused (baseName);
+    return false;
+#endif
+}
+
+bool SyncEvents::open (const juce::String& baseName)
+{
+    close();
+#if JUCE_WINDOWS
+    auto reqName  = baseName + "_Req";
+    auto doneName = baseName + "_Done";
+
+    HANDLE hEvtReq = OpenEventW (EVENT_ALL_ACCESS, FALSE, reqName.toWideCharPointer());
+    HANDLE hEvtDn  = OpenEventW (EVENT_ALL_ACCESS, FALSE, doneName.toWideCharPointer());
+
+    if (hEvtReq == nullptr || hEvtDn == nullptr)
+    {
+        juce::Logger::writeToLog ("[SyncEvents] OpenEvent failed: " + juce::String ((int)GetLastError()));
+        if (hEvtReq) CloseHandle (hEvtReq);
+        if (hEvtDn)  CloseHandle (hEvtDn);
+        return false;
+    }
+
+    hRequest = hEvtReq;
+    hEvtDone = hEvtDn;
+    juce::Logger::writeToLog ("[SyncEvents] Opened: " + baseName);
+    return true;
+#else
+    juce::ignoreUnused (baseName);
+    return false;
+#endif
+}
+
+void SyncEvents::close()
+{
+#if JUCE_WINDOWS
+    if (hRequest != nullptr) { CloseHandle (static_cast<HANDLE> (hRequest)); hRequest = nullptr; }
+    if (hEvtDone != nullptr) { CloseHandle (static_cast<HANDLE> (hEvtDone)); hEvtDone = nullptr; }
+#endif
+}
+
+void SyncEvents::signalRequest() noexcept
+{
+#if JUCE_WINDOWS
+    if (hRequest) SetEvent (static_cast<HANDLE> (hRequest));
+#endif
+}
+
+bool SyncEvents::waitForRequest (int timeoutMs) noexcept
+{
+#if JUCE_WINDOWS
+    if (!hRequest) return false;
+    return WaitForSingleObject (static_cast<HANDLE> (hRequest), static_cast<DWORD> (timeoutMs)) == WAIT_OBJECT_0;
+#else
+    juce::ignoreUnused (timeoutMs);
+    return false;
+#endif
+}
+
+void SyncEvents::signalDone() noexcept
+{
+#if JUCE_WINDOWS
+    if (hEvtDone) SetEvent (static_cast<HANDLE> (hEvtDone));
+#endif
+}
+
+bool SyncEvents::waitForDone (int timeoutMs) noexcept
+{
+#if JUCE_WINDOWS
+    if (!hEvtDone) return false;
+    return WaitForSingleObject (static_cast<HANDLE> (hEvtDone), static_cast<DWORD> (timeoutMs)) == WAIT_OBJECT_0;
+#else
+    juce::ignoreUnused (timeoutMs);
+    return false;
+#endif
+}
+
+// =====================================================================
 // CoreIpcManager
 // =====================================================================
 

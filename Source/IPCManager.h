@@ -13,13 +13,16 @@ enum class IpcMessageType : uint32_t
     Shutdown    = 0x04,
 };
 
-// Shared memory layout definition (for future audio data sharing via OS shared memory)
+// Shared memory layout: header + audio I/O buffers (stereo, up to 4096 samples)
+// Core writes audioIn + signals Bridge; Bridge processes + writes audioOut + signals Core.
 struct SharedAudioLayout
 {
-    float   sampleRate  = 44100.0f;
-    int32_t bufferSize  = 512;
-    int32_t numChannels = 2;
-    // Audio samples follow in shared memory: numChannels * bufferSize * sizeof(float) bytes
+    float   sampleRate   = 44100.0f;
+    int32_t bufferSize   = 512;
+    int32_t numChannels  = 2;
+    int32_t padding      = 0;           // alignment
+    float   audioIn [2][4096];          // Core → Bridge
+    float   audioOut[2][4096];          // Bridge → Core
 };
 
 // =====================================================================
@@ -125,8 +128,8 @@ public:
         return "LVHAudio" + juce::String (juce::Time::currentTimeMillis());
     }
 
-    /** Total allocation size: header + stereo audio at up to 4096 samples/buffer. */
-    static constexpr size_t kDefaultSize = sizeof (SharedAudioLayout) + 2 * 4096 * sizeof (float);
+    /** Total allocation size matches the fixed-size SharedAudioLayout struct. */
+    static constexpr size_t kDefaultSize = sizeof (SharedAudioLayout);
 
 private:
     void*  hMapFile = nullptr; // HANDLE on Windows (stored as void* to avoid windows.h in header)
@@ -134,6 +137,55 @@ private:
     size_t mapSize  = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SharedMemoryBuffer)
+};
+
+// =====================================================================
+// SyncEvents
+//
+// Windows Named Event pair for Core↔Bridge audio-loop synchronization.
+//   evtRequest (_Req):  Core sets → Bridge starts processBlock
+//   evtDone    (_Done): Bridge sets → Core reads output and continues
+//
+// Both are auto-reset events (WaitForSingleObject resets them automatically).
+// Core creates; Bridge opens by the same baseName.
+// =====================================================================
+class SyncEvents
+{
+public:
+    SyncEvents() = default;
+    ~SyncEvents() { close(); }
+
+    /** Core side: create both named events. */
+    bool create (const juce::String& baseName);
+
+    /** Bridge side: open existing named events. */
+    bool open (const juce::String& baseName);
+
+    void close();
+    bool isOpen() const noexcept { return hRequest != nullptr && hEvtDone != nullptr; }
+
+    /** Core → Bridge: signal Bridge to start processing. */
+    void signalRequest() noexcept;
+
+    /** Bridge: wait for Core's request (returns false on timeout). */
+    bool waitForRequest (int timeoutMs) noexcept;
+
+    /** Bridge → Core: signal Core that processing is done. */
+    void signalDone() noexcept;
+
+    /** Core: wait for Bridge's done signal (returns false on timeout). */
+    bool waitForDone (int timeoutMs) noexcept;
+
+    static juce::String generateName()
+    {
+        return "LVHSync" + juce::String (juce::Time::currentTimeMillis());
+    }
+
+private:
+    void* hRequest  = nullptr; // evtRequestProcess (HANDLE as void*)
+    void* hEvtDone  = nullptr; // evtProcessDone    (HANDLE as void*)
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SyncEvents)
 };
 
 // =====================================================================
