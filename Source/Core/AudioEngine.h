@@ -6,6 +6,7 @@
 #include "SineWaveProcessor.h"
 #include "PluginSlot.h"
 #include "MidiInjectionsProcessor.h"
+#include "../BridgeInstance.h"
 
 using namespace juce;
 
@@ -147,6 +148,52 @@ public:
         {
             audioGraph.addConnection ({{bridgeNode->nodeID, ch}, {mgNode->nodeID,  ch}});
             audioGraph.addConnection ({{mgNode->nodeID,     ch}, {outNode->nodeID, ch}});
+        }
+
+        if (lastSampleRate > 0.0 && lastBufferSize > 0)
+            audioGraph.prepareToPlay (lastSampleRate, lastBufferSize);
+    }
+
+    /** Rebuild Core's audio graph for all currently-connected Bridge instances.
+        One BridgeSyncProcessor node is added per active bridge; their outputs
+        are summed by the AudioProcessorGraph before reaching the gain/meter node.
+        Pass an empty array to fall back to the sine-wave generator. */
+    void rebuildBridgeGraph (const juce::Array<BridgeInstance*>& activeBridges)
+    {
+        if (activeBridges.isEmpty())
+        {
+            buildGraphWithSineWave();
+            return;
+        }
+
+        kbProcessor        = nullptr;
+        meterGainProcessor = nullptr;
+        getOrCreateSlot().detach();
+        audioGraph.clear();
+
+        // Build a MultiSourceBridgeProcessor that signals ALL bridges in parallel
+        // and sums their outputs. This avoids sequential blocking per bridge and
+        // ensures all bridge outputs are correctly mixed.
+        std::vector<MultiSourceBridgeProcessor::BridgeSource> sources;
+        for (auto* bridge : activeBridges)
+            sources.push_back ({ &bridge->getSharedMemory(), &bridge->getSyncEvents() });
+
+        auto outNode  = audioGraph.addNode (
+            std::make_unique<AudioProcessorGraph::AudioGraphIOProcessor> (
+                AudioProcessorGraph::AudioGraphIOProcessor::audioOutputNode));
+
+        auto mixerNode = audioGraph.addNode (
+            std::make_unique<MultiSourceBridgeProcessor> (std::move (sources)));
+
+        auto* mgProc = new GainAndMeterProcessor();
+        mgProc->setGain (pendingGain);
+        meterGainProcessor = mgProc;
+        auto mgNode = audioGraph.addNode (std::unique_ptr<GainAndMeterProcessor> (mgProc));
+
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            audioGraph.addConnection ({{mixerNode->nodeID, ch}, {mgNode->nodeID,  ch}});
+            audioGraph.addConnection ({{mgNode->nodeID,    ch}, {outNode->nodeID, ch}});
         }
 
         if (lastSampleRate > 0.0 && lastBufferSize > 0)

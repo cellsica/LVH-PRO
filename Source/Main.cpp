@@ -3,8 +3,7 @@
 #include "AudioEngine.h"
 #include "PluginScanThread.h"
 #include "PluginSlot.h"
-#include "IPCManager.h"
-#include "BridgeSyncProcessor.h"
+#include "BridgeInstance.h"
 
 // =====================================================================
 // Main Application
@@ -24,8 +23,8 @@ public:
     void handleIncomingMidiMessage (MidiInput*, const MidiMessage& message) override
     {
         keyboardState.processNextMidiEvent (message);
-        // Forward to Bridge via IPC (non-blocking; no-op if not connected)
-        ipcManager.sendMidi (message);
+        // Forward to all connected Bridge instances via IPC.
+        for (auto* b : bridges) b->sendMidi (message);
         auto msg = message;
         MessageManager::callAsync ([this, msg] {
             if (auto* mc = mainComp()) mc->getMonitorPanel().pushMidiMessage (msg);
@@ -42,7 +41,7 @@ public:
                         + " Vel: " + String (roundToInt (velocity * 127.f))
                         + " Ch: "  + String (channel);
             auto msg = MidiMessage::noteOn (channel, note, velocity);
-            ipcManager.sendMidi (msg);
+            for (auto* b : bridges) b->sendMidi (msg);
             if (auto* mc = mainComp())
             {
                 mc->setMidiMonitorText (text);
@@ -55,7 +54,7 @@ public:
         // Called on the audio thread — defer to message thread.
         MessageManager::callAsync ([this, channel, note, velocity] {
             auto msg = MidiMessage::noteOff (channel, note, velocity);
-            ipcManager.sendMidi (msg);
+            for (auto* b : bridges) b->sendMidi (msg);
             if (auto* mc = mainComp())
                 mc->getMonitorPanel().pushMidiMessage (msg);
         });
@@ -127,6 +126,12 @@ public:
         pcKeyListener.reset();
 
         if (auto* mc = mainComp()) mc->setPluginEditor (nullptr);
+
+        // Switch the audio graph back to sine wave so BridgeSyncProcessors are
+        // removed from the graph before we destroy the BridgeInstances (which
+        // own the SHM/SyncEvents those processors reference).
+        audioEngine.buildGraphWithSineWave();
+        bridges.clear(); // calls BridgeInstance::shutdown() on each bridge
 
         deviceManager.removeMidiInputDeviceCallback (String(), this);
         deviceManager.removeMidiInputDeviceCallback (String(), &audioEngine.getPlayer());
@@ -248,22 +253,6 @@ private:
     {
         auto* mc = mainComp();
         if (mc == nullptr) return;
-
-        // When Bridge connects: switch Core's graph to Bridge-sync mode, then send AudioConfig
-        ipcManager.onConnected = [this] {
-            audioEngine.buildGraphWithBridgeSync (
-                std::make_unique<BridgeSyncProcessor> (coreSharedMem, coreSyncEvents));
-
-            auto& setup = deviceManager.getAudioDeviceSetup();
-            auto sr  = static_cast<float> (setup.sampleRate > 0.0 ? setup.sampleRate : 44100.0);
-            auto bs  = setup.bufferSize > 0 ? setup.bufferSize : 512;
-            ipcManager.sendAudioConfig (sr, bs);
-        };
-
-        // When Bridge disconnects: restore sine-wave fallback
-        ipcManager.onDisconnected = [this] {
-            audioEngine.buildGraphWithSineWave();
-        };
 
         // Speaker mute button + volume slider (share savedGain)
         auto savedGain = std::make_shared<double> (1.0);
@@ -469,45 +458,51 @@ private:
                 [this, chooser] (const juce::FileChooser& fc)
             {
                 auto result = fc.getResult();
-                if (result.existsAsFile())
+                if (! result.existsAsFile()) return;
+
+                auto bridgeExe = juce::File::getSpecialLocation (juce::File::currentExecutableFile)
+                                     .getParentDirectory()
+                                     .getChildFile ("LVH-Bridge.exe");
+
+                if (! bridgeExe.existsAsFile())
                 {
-                    auto bridgeExe = juce::File::getSpecialLocation (juce::File::currentExecutableFile)
-                                         .getParentDirectory()
-                                         .getChildFile ("LVH-Bridge.exe");
-
-                    if (bridgeExe.existsAsFile())
-                    {
-                        // Generate unique names for this Bridge instance
-                        juce::String pipeName  = "LVH-Bridge-" + juce::String (juce::Time::currentTimeMillis());
-                        juce::String shmName   = SharedMemoryBuffer::generateName();
-                        juce::String syncName  = SyncEvents::generateName();
-
-                        // Start IPC pipe server
-                        ipcManager.startPipe (pipeName);
-
-                        // Create shared memory for audio exchange
-                        if (! coreSharedMem.create (shmName, SharedMemoryBuffer::kDefaultSize))
-                            juce::Logger::writeToLog ("[Core] Warning: failed to create shared memory.");
-
-                        // Create named sync events (auto-reset, initially non-signaled)
-                        if (! coreSyncEvents.create (syncName))
-                            juce::Logger::writeToLog ("[Core] Warning: failed to create sync events.");
-
-                        juce::String args = "--plugin \"" + result.getFullPathName() + "\""
-                                          + " --ipc-pipe " + pipeName
-                                          + " --shm-name " + shmName
-                                          + " --sync-name " + syncName;
-                        bridgeExe.startAsProcess (args);
-                    }
-                    else
-                    {
-                        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
-                            "Bridge Error",
-                            "LVH-Bridge.exe not found.");
-                    }
+                    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+                        "Bridge Error", "LVH-Bridge.exe not found.");
+                    return;
                 }
+
+                // Create a new BridgeInstance for this plugin.
+                auto* bridge = bridges.add (new BridgeInstance());
+
+                bridge->onConnected = [this] (BridgeInstance* b) {
+                    // Send AudioConfig so Bridge can call prepareToPlay.
+                    auto& setup = deviceManager.getAudioDeviceSetup();
+                    auto sr = static_cast<float> (setup.sampleRate > 0.0 ? setup.sampleRate : 44100.0);
+                    auto bs = setup.bufferSize > 0 ? setup.bufferSize : 512;
+                    b->sendAudioConfig (sr, bs);
+
+                    // Rebuild audio graph on the message thread.
+                    juce::MessageManager::callAsync ([this] { rebuildBridgeGraph(); });
+                };
+
+                bridge->onDisconnected = [this] (BridgeInstance*) {
+                    juce::MessageManager::callAsync ([this] { rebuildBridgeGraph(); });
+                };
+
+                bridge->launch (result.getFullPathName(), bridgeExe);
             });
         };
+    }
+
+    // Collect all Connected bridges and rebuild the audio graph accordingly.
+    // Falls back to sine wave if no bridges are connected.
+    void rebuildBridgeGraph()
+    {
+        juce::Array<BridgeInstance*> active;
+        for (auto* b : bridges)
+            if (b->getState() == BridgeInstance::State::Connected)
+                active.add (b);
+        audioEngine.rebuildBridgeGraph (active);
     }
 
     MainComponent* mainComp()
@@ -538,9 +533,7 @@ private:
     KnownPluginList knownPlugins;
     AudioEngine audioEngine { keyboardState };
     ApplicationProperties appProperties;
-    CoreIpcManager     ipcManager;
-    SharedMemoryBuffer coreSharedMem;
-    SyncEvents         coreSyncEvents;
+    juce::OwnedArray<BridgeInstance> bridges;
     std::unique_ptr<MainWindow> mainWindow;
     std::unique_ptr<PCKeyboardListener> pcKeyListener;
     std::unique_ptr<PluginScanThread> scanThread;
