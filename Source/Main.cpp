@@ -3,6 +3,7 @@
 #include "AudioEngine.h"
 #include "PluginScanThread.h"
 #include "PluginSlot.h"
+#include "IPCManager.h"
 
 // =====================================================================
 // Main Application
@@ -22,6 +23,8 @@ public:
     void handleIncomingMidiMessage (MidiInput*, const MidiMessage& message) override
     {
         keyboardState.processNextMidiEvent (message);
+        // Forward to Bridge via IPC (non-blocking; no-op if not connected)
+        ipcManager.sendMidi (message);
         auto msg = message;
         MessageManager::callAsync ([this, msg] {
             if (auto* mc = mainComp()) mc->getMonitorPanel().pushMidiMessage (msg);
@@ -38,6 +41,7 @@ public:
                         + " Vel: " + String (roundToInt (velocity * 127.f))
                         + " Ch: "  + String (channel);
             auto msg = MidiMessage::noteOn (channel, note, velocity);
+            ipcManager.sendMidi (msg);
             if (auto* mc = mainComp())
             {
                 mc->setMidiMonitorText (text);
@@ -49,8 +53,10 @@ public:
     {
         // Called on the audio thread — defer to message thread.
         MessageManager::callAsync ([this, channel, note, velocity] {
+            auto msg = MidiMessage::noteOff (channel, note, velocity);
+            ipcManager.sendMidi (msg);
             if (auto* mc = mainComp())
-                mc->getMonitorPanel().pushMidiMessage (MidiMessage::noteOff (channel, note, velocity));
+                mc->getMonitorPanel().pushMidiMessage (msg);
         });
     }
 
@@ -295,10 +301,16 @@ private:
             m.addSubMenu ("MIDI Input", midiSub);
             m.addSeparator();
             m.addItem (1, "Settings...");
+            m.addSeparator();
+            m.addItem (2, "[Pro] Launch Test Bridge");
             m.showMenuAsync (PopupMenu::Options(), [this, midiInputs] (int result) {
                 if (result == 1)
                 {
                     openSettings();
+                }
+                else if (result == 2)
+                {
+                    if (auto* mc = mainComp()) mc->onLaunchBridgeClicked();
                 }
                 else if (result >= 1000)
                 {
@@ -429,6 +441,42 @@ private:
         };
 
         mc->onPanicClicked = [this] { audioEngine.allNotesOff(); };
+
+        mc->onLaunchBridgeClicked = [this] {
+            // プラグインファイルを選択させる
+            auto chooser = std::make_shared<juce::FileChooser> ("Select a VST3 plugin to bridge...",
+                                                          juce::File::getSpecialLocation (juce::File::userDesktopDirectory),
+                                                          "*.vst3");
+
+            chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                [this, chooser] (const juce::FileChooser& fc)
+            {
+                auto result = fc.getResult();
+                if (result.existsAsFile())
+                {
+                    auto bridgeExe = juce::File::getSpecialLocation (juce::File::currentExecutableFile)
+                                         .getParentDirectory()
+                                         .getChildFile ("LVH-Bridge.exe");
+
+                    if (bridgeExe.existsAsFile())
+                    {
+                        // Generate a unique pipe name and start listening before launching Bridge
+                        juce::String pipeName = "LVH-Bridge-" + juce::String (juce::Time::currentTimeMillis());
+                        ipcManager.startPipe (pipeName);
+
+                        juce::String args = "--plugin \"" + result.getFullPathName() + "\""
+                                          + " --ipc-pipe " + pipeName;
+                        bridgeExe.startAsProcess (args);
+                    }
+                    else
+                    {
+                        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+                            "Bridge Error",
+                            "LVH-Bridge.exe not found.");
+                    }
+                }
+            });
+        };
     }
 
     MainComponent* mainComp()
@@ -459,6 +507,7 @@ private:
     KnownPluginList knownPlugins;
     AudioEngine audioEngine { keyboardState };
     ApplicationProperties appProperties;
+    CoreIpcManager ipcManager;
     std::unique_ptr<MainWindow> mainWindow;
     std::unique_ptr<PCKeyboardListener> pcKeyListener;
     std::unique_ptr<PluginScanThread> scanThread;
