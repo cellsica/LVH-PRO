@@ -72,6 +72,7 @@ public:
     std::function<void()> onLoadClicked;
     std::function<void()> onUnloadClicked;
     std::function<void()> onPanicClicked;
+    std::function<void()> onLaunchBridgeClicked;
 
     void paint (Graphics& g) override;
     void resized() override;

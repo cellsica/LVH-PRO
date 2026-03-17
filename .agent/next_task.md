@@ -16,7 +16,8 @@
 - [x] Bridge での VST3 プラグインロードと GUI 表示成功
 - [x] Core-Bridge 間の IPC 通信基盤の実装 (Named Pipes via juce::InterprocessConnection)
 - [x] MIDI 信号の Core から Bridge への転送 (Bridge 側はログ出力で確認)
-- [ ] Bridge から Core への音声データ返却
+- [ ] AudioConfig (SampleRate/BufferSize) の同期 -- 次はここ！(しずく)
+- [ ] 共有メモリ (Shared Memory) による音声データ返却の実装
 - [ ] 複数インスタンスのブリッジ管理
 - [ ] 独立ウィンドウ管理: 子プロセス側のウィンドウを親プロセス側で制御する仕組み。
 
