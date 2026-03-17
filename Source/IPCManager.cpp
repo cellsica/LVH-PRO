@@ -1,5 +1,9 @@
 #include "IPCManager.h"
 
+#if JUCE_WINDOWS
+ #include <windows.h>
+#endif
+
 // =====================================================================
 // IpcProtocol helpers
 // =====================================================================
@@ -71,6 +75,92 @@ juce::MidiMessage IpcProtocol::parseMidi (const juce::MemoryBlock& data)
         return {};
 
     return juce::MidiMessage (ptr, static_cast<int> (rawSize));
+}
+
+// =====================================================================
+// SharedMemoryBuffer
+// =====================================================================
+
+bool SharedMemoryBuffer::create (const juce::String& name, size_t sizeBytes)
+{
+    close();
+#if JUCE_WINDOWS
+    HANDLE h = CreateFileMappingW (
+        INVALID_HANDLE_VALUE,
+        nullptr,
+        PAGE_READWRITE,
+        0,
+        static_cast<DWORD> (sizeBytes),
+        name.toWideCharPointer());
+
+    if (h == nullptr)
+    {
+        juce::Logger::writeToLog ("[SharedMem] CreateFileMapping failed: " + juce::String ((int)GetLastError()));
+        return false;
+    }
+
+    void* view = MapViewOfFile (h, FILE_MAP_ALL_ACCESS, 0, 0, sizeBytes);
+    if (view == nullptr)
+    {
+        juce::Logger::writeToLog ("[SharedMem] MapViewOfFile failed: " + juce::String ((int)GetLastError()));
+        CloseHandle (h);
+        return false;
+    }
+
+    hMapFile = h;
+    pBuf     = view;
+    mapSize  = sizeBytes;
+    std::memset (pBuf, 0, sizeBytes);
+    juce::Logger::writeToLog ("[SharedMem] Created: " + name + " (" + juce::String ((int)sizeBytes) + " bytes)");
+    return true;
+#else
+    juce::ignoreUnused (name, sizeBytes);
+    juce::Logger::writeToLog ("[SharedMem] create() not implemented on this platform.");
+    return false;
+#endif
+}
+
+bool SharedMemoryBuffer::open (const juce::String& name)
+{
+    close();
+#if JUCE_WINDOWS
+    HANDLE h = OpenFileMappingW (FILE_MAP_ALL_ACCESS, FALSE, name.toWideCharPointer());
+    if (h == nullptr)
+    {
+        juce::Logger::writeToLog ("[SharedMem] OpenFileMapping failed: " + juce::String ((int)GetLastError()));
+        return false;
+    }
+
+    void* view = MapViewOfFile (h, FILE_MAP_ALL_ACCESS, 0, 0, 0);
+    if (view == nullptr)
+    {
+        juce::Logger::writeToLog ("[SharedMem] MapViewOfFile (open) failed: " + juce::String ((int)GetLastError()));
+        CloseHandle (h);
+        return false;
+    }
+
+    hMapFile = h;
+    pBuf     = view;
+
+    MEMORY_BASIC_INFORMATION mbi {};
+    VirtualQuery (pBuf, &mbi, sizeof (mbi));
+    mapSize = mbi.RegionSize;
+    juce::Logger::writeToLog ("[SharedMem] Opened: " + name + " (" + juce::String ((int)mapSize) + " bytes)");
+    return true;
+#else
+    juce::ignoreUnused (name);
+    juce::Logger::writeToLog ("[SharedMem] open() not implemented on this platform.");
+    return false;
+#endif
+}
+
+void SharedMemoryBuffer::close()
+{
+#if JUCE_WINDOWS
+    if (pBuf     != nullptr) { UnmapViewOfFile (pBuf);              pBuf     = nullptr; }
+    if (hMapFile != nullptr) { CloseHandle (static_cast<HANDLE>(hMapFile)); hMapFile = nullptr; }
+#endif
+    mapSize = 0;
 }
 
 // =====================================================================
@@ -221,9 +311,11 @@ void BridgeIpcClient::messageReceived (const juce::MemoryBlock& message)
                 const auto* ptr = static_cast<const uint8_t*> (message.getData()) + 4;
                 std::memcpy (&sr,  ptr,     4);
                 std::memcpy (&buf, ptr + 4, 4);
-                juce::Logger::writeToLog ("[Bridge IPC] AudioConfig: sampleRate="
+                juce::Logger::writeToLog ("[Bridge IPC] AudioConfig received: SR="
                                           + juce::String (sr, 1)
-                                          + " bufferSize=" + juce::String (buf));
+                                          + " BS=" + juce::String (buf));
+                if (onAudioConfigReceived)
+                    onAudioConfigReceived (sr, buf);
             }
             break;
         }

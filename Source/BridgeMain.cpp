@@ -27,33 +27,47 @@ public:
 
         juce::String pluginPath;
         juce::String ipcPipeName;
+        juce::String shmName;
         auto args = juce::StringArray::fromTokens (commandLine, true);
 
         for (int i = 0; i < args.size(); ++i)
         {
-            if (args[i] == "--plugin" && i + 1 < args.size())
-                pluginPath = args[i + 1].unquoted();
-            else if (args[i] == "--ipc-pipe" && i + 1 < args.size())
-                ipcPipeName = args[i + 1];
+            if      (args[i] == "--plugin"   && i + 1 < args.size()) pluginPath  = args[i + 1].unquoted();
+            else if (args[i] == "--ipc-pipe" && i + 1 < args.size()) ipcPipeName = args[i + 1];
+            else if (args[i] == "--shm-name" && i + 1 < args.size()) shmName     = args[i + 1];
         }
 
         juce::Logger::writeToLog ("Detected Plugin Path: " + pluginPath);
         juce::Logger::writeToLog ("IPC Pipe Name: " + (ipcPipeName.isNotEmpty() ? ipcPipeName : "(none)"));
+        juce::Logger::writeToLog ("Shared Memory Name: " + (shmName.isNotEmpty() ? shmName : "(none)"));
 
-        // IPC接続を開始 (パイプ名が渡されていた場合)
+        // 共有メモリをオープン
+        if (shmName.isNotEmpty())
+        {
+            sharedMem = std::make_unique<SharedMemoryBuffer>();
+            if (sharedMem->open (shmName))
+                juce::Logger::writeToLog ("[Bridge] Shared memory opened successfully.");
+            else
+                juce::Logger::writeToLog ("[Bridge] Warning: failed to open shared memory.");
+        }
+
+        mainWindow.reset (new MainWindow (getApplicationName(), pluginPath));
+
+        // IPC接続を開始 (mainWindow生成後に設定することでpreparePluginが呼べる)
         if (ipcPipeName.isNotEmpty())
         {
             ipcClient = std::make_unique<BridgeIpcClient>();
             ipcClient->onConnected    = [] { juce::Logger::writeToLog ("[Bridge] IPC channel ready."); };
             ipcClient->onDisconnected = [] { juce::Logger::writeToLog ("[Bridge] IPC channel closed."); };
             ipcClient->onMidiReceived = [] (const juce::MidiMessage& msg) {
-                // Verification log: confirm MIDI arrives from Core
                 juce::Logger::writeToLog ("[Bridge MIDI] " + msg.getDescription());
+            };
+            ipcClient->onAudioConfigReceived = [this] (float sr, int32_t bs) {
+                if (mainWindow != nullptr)
+                    mainWindow->preparePlugin (sr, bs);
             };
             ipcClient->connectAsync (ipcPipeName, 5000);
         }
-
-        mainWindow.reset (new MainWindow (getApplicationName(), pluginPath));
     }
 
     void shutdown() override
@@ -61,6 +75,7 @@ public:
         if (ipcClient != nullptr)
             ipcClient->disconnect();
         ipcClient.reset();
+        sharedMem.reset();
         mainWindow.reset();
         juce::Logger::setCurrentLogger (nullptr);
         fileLogger.reset();
@@ -104,6 +119,21 @@ public:
         void closeButtonPressed() override
         {
             juce::JUCEApplication::getInstance()->systemRequestedQuit();
+        }
+
+        void preparePlugin (float sampleRate, int32_t bufferSize)
+        {
+            if (pluginInstance != nullptr)
+            {
+                pluginInstance->prepareToPlay (sampleRate, static_cast<int> (bufferSize));
+                juce::Logger::writeToLog ("[Bridge] prepareToPlay called: SR="
+                                          + juce::String (sampleRate, 1)
+                                          + " BS=" + juce::String (bufferSize));
+            }
+            else
+            {
+                juce::Logger::writeToLog ("[Bridge] AudioConfig received but plugin not loaded yet.");
+            }
         }
 
     private:
@@ -191,6 +221,7 @@ private:
     std::unique_ptr<juce::FileLogger>  fileLogger;
     std::unique_ptr<MainWindow>        mainWindow;
     std::unique_ptr<BridgeIpcClient>   ipcClient;
+    std::unique_ptr<SharedMemoryBuffer> sharedMem;
 };
 
 START_JUCE_APPLICATION (LvhBridgeApplication)

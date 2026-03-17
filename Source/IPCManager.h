@@ -89,6 +89,54 @@ private:
 };
 
 // =====================================================================
+// SharedMemoryBuffer
+//
+// OS-level shared memory wrapper for audio data transfer.
+// Core creates the region; Bridge opens it by name.
+// Layout: [SharedAudioLayout header][float audio samples...]
+// =====================================================================
+class SharedMemoryBuffer
+{
+public:
+    SharedMemoryBuffer() = default;
+    ~SharedMemoryBuffer() { close(); }
+
+    /** Core side: create a new named shared memory region. */
+    bool create (const juce::String& name, size_t sizeBytes);
+
+    /** Bridge side: open an existing named shared memory region. */
+    bool open (const juce::String& name);
+
+    void close();
+
+    bool   isOpen()   const noexcept { return pBuf != nullptr; }
+    void*  getData()  const noexcept { return pBuf; }
+    size_t getSize()  const noexcept { return mapSize; }
+
+    /** Typed access to the SharedAudioLayout header at the start of the region. */
+    SharedAudioLayout* getLayout() const noexcept
+    {
+        return pBuf != nullptr ? static_cast<SharedAudioLayout*> (pBuf) : nullptr;
+    }
+
+    /** Generate a unique shared memory name for one Bridge instance. */
+    static juce::String generateName()
+    {
+        return "LVHAudio" + juce::String (juce::Time::currentTimeMillis());
+    }
+
+    /** Total allocation size: header + stereo audio at up to 4096 samples/buffer. */
+    static constexpr size_t kDefaultSize = sizeof (SharedAudioLayout) + 2 * 4096 * sizeof (float);
+
+private:
+    void*  hMapFile = nullptr; // HANDLE on Windows (stored as void* to avoid windows.h in header)
+    void*  pBuf     = nullptr;
+    size_t mapSize  = 0;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SharedMemoryBuffer)
+};
+
+// =====================================================================
 // BridgeIpcClient  (runs inside LVH-Bridge / child process)
 //
 // Acts as the named-pipe client. Connects to CoreIpcManager.
@@ -104,9 +152,10 @@ public:
     void connectAsync (const juce::String& pipeName, int timeoutMs = 5000);
     void disconnect();
 
-    std::function<void()>                         onConnected;
-    std::function<void()>                         onDisconnected;
-    std::function<void(const juce::MidiMessage&)> onMidiReceived;
+    std::function<void()>                           onConnected;
+    std::function<void()>                           onDisconnected;
+    std::function<void(const juce::MidiMessage&)>   onMidiReceived;
+    std::function<void(float, int32_t)>             onAudioConfigReceived;
 
 private:
     void connectionMade() override;

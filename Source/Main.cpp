@@ -248,6 +248,14 @@ private:
         auto* mc = mainComp();
         if (mc == nullptr) return;
 
+        // When Bridge connects, immediately sync current audio config
+        ipcManager.onConnected = [this] {
+            auto& setup = deviceManager.getAudioDeviceSetup();
+            auto sr  = static_cast<float> (setup.sampleRate > 0.0 ? setup.sampleRate : 44100.0);
+            auto bs  = setup.bufferSize > 0 ? setup.bufferSize : 512;
+            ipcManager.sendAudioConfig (sr, bs);
+        };
+
         // Speaker mute button + volume slider (share savedGain)
         auto savedGain = std::make_shared<double> (1.0);
 
@@ -460,12 +468,18 @@ private:
 
                     if (bridgeExe.existsAsFile())
                     {
-                        // Generate a unique pipe name and start listening before launching Bridge
+                        // Generate unique pipe name and start IPC pipe server
                         juce::String pipeName = "LVH-Bridge-" + juce::String (juce::Time::currentTimeMillis());
                         ipcManager.startPipe (pipeName);
 
+                        // Create shared memory for audio data return (Bridge opens by name)
+                        juce::String shmName = SharedMemoryBuffer::generateName();
+                        if (! coreSharedMem.create (shmName, SharedMemoryBuffer::kDefaultSize))
+                            juce::Logger::writeToLog ("[Core] Warning: failed to create shared memory.");
+
                         juce::String args = "--plugin \"" + result.getFullPathName() + "\""
-                                          + " --ipc-pipe " + pipeName;
+                                          + " --ipc-pipe " + pipeName
+                                          + " --shm-name " + shmName;
                         bridgeExe.startAsProcess (args);
                     }
                     else
@@ -507,7 +521,8 @@ private:
     KnownPluginList knownPlugins;
     AudioEngine audioEngine { keyboardState };
     ApplicationProperties appProperties;
-    CoreIpcManager ipcManager;
+    CoreIpcManager     ipcManager;
+    SharedMemoryBuffer coreSharedMem;
     std::unique_ptr<MainWindow> mainWindow;
     std::unique_ptr<PCKeyboardListener> pcKeyListener;
     std::unique_ptr<PluginScanThread> scanThread;
