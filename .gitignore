@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+.antigravity/
+.gemini/
+
+# Project
+roadmap.md
+build/
+*.txt
+*.exe
+*.obj
+*.pdb
+*.lib
+.vs/
+.vscode/
+out/
+bin/
