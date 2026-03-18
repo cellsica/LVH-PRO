@@ -11,6 +11,7 @@ enum class IpcMessageType : uint32_t
     MidiData    = 0x02,
     AudioConfig = 0x03,
     Shutdown    = 0x04,
+    Heartbeat   = 0x05,  // Bridge → Core, keepalive (prevents read timeout)
 };
 
 // Shared memory layout: header + audio I/O buffers (stereo, up to 4096 samples)
@@ -43,6 +44,7 @@ namespace IpcProtocol
     juce::MemoryBlock makeMidi        (const juce::MidiMessage& msg);
     juce::MemoryBlock makeAudioConfig (float sampleRate, int32_t bufferSize);
     juce::MemoryBlock makeShutdown();
+    juce::MemoryBlock makeHeartbeat();
 
     IpcMessageType    getType     (const juce::MemoryBlock& data);
     juce::MidiMessage parseMidi   (const juce::MemoryBlock& data);
@@ -203,6 +205,9 @@ public:
     /** Attempts to connect asynchronously (spawns background thread, retries for timeoutMs). */
     void connectAsync (const juce::String& pipeName, int timeoutMs = 5000);
     void disconnect();
+
+    /** Send a heartbeat to Core (call on a timer, e.g. every 1500 ms). */
+    bool sendHeartbeat();
 
     std::function<void()>                           onConnected;
     std::function<void()>                           onDisconnected;

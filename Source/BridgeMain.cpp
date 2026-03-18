@@ -89,7 +89,8 @@ private:
 // =====================================================================
 // LVH-Bridge: プラグインホスト用の子プロセス
 // =====================================================================
-class LvhBridgeApplication : public juce::JUCEApplication
+class LvhBridgeApplication : public juce::JUCEApplication,
+                             private juce::Timer
 {
 public:
     LvhBridgeApplication() {}
@@ -148,20 +149,27 @@ public:
                 juce::Logger::writeToLog ("[Bridge] Warning: failed to open sync events.");
         }
 
-        mainWindow.reset (new MainWindow (getApplicationName(), pluginPath));
-
-        // IPC接続を開始 (mainWindow生成後に設定することでpreparePluginが呼べる)
+        // IPC接続を先に開始する。
+        // VST3ロード（mainWindow生成）は数秒かかるため、後から接続すると
+        // Core側のpipeReceiveMessageTimeout(5000ms)が切れて切断扱いになる。
+        // connectAsync はバックグラウンドスレッドで動くので mainWindow 生成と並行実行できる。
+        // onConnected/onAudioConfigReceived は callAsync 経由でメッセージスレッドに届くため、
+        // mainWindow 生成完了後に処理される（null チェック不要になるが念のため残す）。
         if (ipcPipeName.isNotEmpty())
         {
             ipcClient = std::make_unique<BridgeIpcClient>();
             ipcClient->onConnected = [this] {
                 juce::Logger::writeToLog ("[Bridge] IPC channel ready.");
+                startTimer (1500); // send heartbeat every 1.5 s to keep Core's read alive
                 // AudioThread を開始 (共有メモリ・同期イベントが揃っている場合)
                 startAudioThreadIfReady();
             };
             ipcClient->onDisconnected = [this] {
-                juce::Logger::writeToLog ("[Bridge] IPC channel closed.");
+                juce::Logger::writeToLog ("[Bridge] IPC channel closed by Core. Shutting down.");
+                stopTimer();
                 stopAudioThread();
+                // Core closed the pipe (e.g. Core exited). Quit this Bridge process.
+                systemRequestedQuit();
             };
             ipcClient->onMidiReceived = [this] (const juce::MidiMessage& msg) {
                 juce::Logger::writeToLog ("[Bridge MIDI] " + msg.getDescription());
@@ -174,12 +182,22 @@ public:
                 // Reset MIDI collector with the actual sample rate
                 midiCollector.reset (static_cast<double> (sr));
             };
-            ipcClient->connectAsync (ipcPipeName, 5000);
+            ipcClient->connectAsync (ipcPipeName, 10000); // 10s: enough for Debug VST3 load
         }
+
+        // VST3ロード（数秒かかる）。IPC接続はバックグラウンドで並行して進行する。
+        mainWindow.reset (new MainWindow (getApplicationName(), pluginPath));
+    }
+
+    void timerCallback() override
+    {
+        if (ipcClient != nullptr)
+            ipcClient->sendHeartbeat();
     }
 
     void shutdown() override
     {
+        stopTimer();
         stopAudioThread();
         if (ipcClient != nullptr)
             ipcClient->disconnect();

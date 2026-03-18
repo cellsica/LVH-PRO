@@ -19,12 +19,27 @@ public:
     const String getApplicationVersion() override { return "0.1.0"; }
     bool moreThanOneInstanceAllowed() override    { return true; }
 
+    // MIDI routing helper — called from MIDI thread or message thread.
+    // Uses atomic reads: no locking, negligible overhead.
+    void sendMidiToBridges (const juce::MidiMessage& msg)
+    {
+        if (routeToAll.load (std::memory_order_relaxed))
+        {
+            for (auto* b : bridges) b->sendMidi (msg);
+        }
+        else
+        {
+            if (auto* t = midiTargetBridge.load (std::memory_order_relaxed))
+                t->sendMidi (msg);
+        }
+    }
+
     // Hardware MIDI input
     void handleIncomingMidiMessage (MidiInput*, const MidiMessage& message) override
     {
         keyboardState.processNextMidiEvent (message);
-        // Forward to all connected Bridge instances via IPC.
-        for (auto* b : bridges) b->sendMidi (message);
+        // Forward to selected Bridge(s) via IPC.
+        sendMidiToBridges (message);
         auto msg = message;
         MessageManager::callAsync ([this, msg] {
             if (auto* mc = mainComp()) mc->getMonitorPanel().pushMidiMessage (msg);
@@ -41,7 +56,7 @@ public:
                         + " Vel: " + String (roundToInt (velocity * 127.f))
                         + " Ch: "  + String (channel);
             auto msg = MidiMessage::noteOn (channel, note, velocity);
-            for (auto* b : bridges) b->sendMidi (msg);
+            sendMidiToBridges (msg);
             if (auto* mc = mainComp())
             {
                 mc->setMidiMonitorText (text);
@@ -54,7 +69,7 @@ public:
         // Called on the audio thread — defer to message thread.
         MessageManager::callAsync ([this, channel, note, velocity] {
             auto msg = MidiMessage::noteOff (channel, note, velocity);
-            for (auto* b : bridges) b->sendMidi (msg);
+            sendMidiToBridges (msg);
             if (auto* mc = mainComp())
                 mc->getMonitorPanel().pushMidiMessage (msg);
         });
@@ -124,8 +139,6 @@ public:
 
         if (mainWindow) mainWindow->removeKeyListener (pcKeyListener.get());
         pcKeyListener.reset();
-
-        if (auto* mc = mainComp()) mc->setPluginEditor (nullptr);
 
         // Switch the audio graph back to sine wave so BridgeSyncProcessors are
         // removed from the graph before we destroy the BridgeInstances (which
@@ -288,9 +301,29 @@ private:
         // Monitor panel: CPU usage source
         mc->getMonitorPanel().getCpuUsage = [this] { return deviceManager.getCpuUsage(); };
 
-        // LVH logo right-click: Settings + MIDI Input
+        // LVH logo right-click: Instruments / Settings / MIDI / Bridge
         mc->onLogoRightClick = [this] {
             PopupMenu m;
+
+            // ── Select Instruments submenu (IDs 3000-3998 = plugins, 3 = refresh) ──
+            PopupMenu instrSub;
+            auto pluginTypes = knownPlugins.getTypes();
+            if (pluginTypes.isEmpty())
+            {
+                instrSub.addItem (3000, "(No plugins scanned yet)", false, false);
+            }
+            else
+            {
+                int id = 3000;
+                for (auto& t : pluginTypes)
+                    instrSub.addItem (id++, t.name);
+                instrSub.addSeparator();
+            }
+            instrSub.addItem (3, "Refresh Plugin List...");
+            m.addSubMenu ("Select Instruments", instrSub);
+            m.addSeparator();
+
+            // ── MIDI Input submenu (IDs 1000-1999) ──
             PopupMenu midiSub;
             auto midiInputs = MidiInput::getAvailableDevices();
             if (midiInputs.isEmpty())
@@ -305,11 +338,45 @@ private:
                                      deviceManager.isMidiInputDeviceEnabled (d.identifier));
             }
             m.addSubMenu ("MIDI Input", midiSub);
+
+            // ── MIDI Route submenu (ID 4000 = All, 4001-4099 = individual bridge) ──
+            PopupMenu routeSub;
+            bool allMode = routeToAll.load();
+            routeSub.addItem (4000, "All Bridges", true, allMode);
+            if (! bridges.isEmpty())
+            {
+                routeSub.addSeparator();
+                int rid = 4001;
+                for (auto* b : bridges)
+                {
+                    juce::String label = juce::File (b->getPluginPath()).getFileNameWithoutExtension();
+                    routeSub.addItem (rid++, label, true,
+                                      ! allMode && midiTargetBridge.load() == b);
+                }
+            }
+            m.addSubMenu ("MIDI Route", routeSub);
             m.addSeparator();
             m.addItem (1, "Settings...");
             m.addSeparator();
-            m.addItem (2, "[Pro] Launch Test Bridge");
-            m.showMenuAsync (PopupMenu::Options(), [this, midiInputs] (int result) {
+            m.addItem (2, "[Pro] Launch Bridge...");
+
+            // ── Recent bridge files (IDs 2000-2019) ──
+            auto recents = getRecentBridgeFiles();
+            if (recents.size() > 0)
+            {
+                m.addSeparator();
+                int id = 2000;
+                for (auto& f : recents)
+                    m.addItem (id++, f.getFileNameWithoutExtension());
+            }
+
+            // Capture bridges snapshot for route selection (pointer + display name).
+            // BridgeInstance* pointers remain valid until onDisconnected on message thread.
+            struct BridgeEntry { BridgeInstance* ptr; };
+            juce::Array<BridgeEntry> bridgeSnapshot;
+            for (auto* b : bridges) bridgeSnapshot.add ({ b });
+
+            m.showMenuAsync (PopupMenu::Options(), [this, midiInputs, recents, pluginTypes, bridgeSnapshot] (int result) {
                 if (result == 1)
                 {
                     openSettings();
@@ -318,7 +385,11 @@ private:
                 {
                     if (auto* mc = mainComp()) mc->onLaunchBridgeClicked();
                 }
-                else if (result >= 1000)
+                else if (result == 3)
+                {
+                    startPluginScan();
+                }
+                else if (result >= 1000 && result < 2000)
                 {
                     int idx = result - 1000;
                     if (idx < midiInputs.size())
@@ -331,166 +402,82 @@ private:
                             deviceManager.setMidiInputDeviceEnabled (d.identifier, true);
                     }
                 }
-            });
-        };
-
-        mc->onPluginMenuRequest = [this, mc] {
-            PopupMenu m;
-            int id = 1;
-            for (auto& type : knownPlugins.getTypes()) m.addItem (id++, type.name);
-            m.addSeparator();
-            const int refreshId = id;
-            m.addItem (refreshId, "Refresh Plugin List...");
-            m.showMenuAsync (PopupMenu::Options(), [this, mc, refreshId] (int result) {
-                if (result == refreshId)      startPluginScan();
-                else if (result > 0)          mc->setPluginName (knownPlugins.getTypes()[result - 1].name, result);
-            });
-        };
-
-        mc->onPresetMenuRequest = [this] {
-            auto* slot = audioEngine.getSlot();
-            if (slot == nullptr || ! slot->isLoaded()) return;
-            String currentPresetName = slot->getCurrentPresetName();
-            File   currentPresetFile = slot->getCurrentPresetFile();
-            String pluginName        = slot->getProcessor()->getName();
-
-            Array<File> presetFiles;
-            auto folder = PluginSlot::getPresetsFolder (pluginName);
-            if (folder.isDirectory())
-                folder.findChildFiles (presetFiles, File::findFiles, false, "*.xml");
-
-            struct Sorter { static int compareElements (const File& a, const File& b)
-                { return a.getFileName().compareIgnoreCase (b.getFileName()); } };
-            Sorter sorter; presetFiles.sort (sorter);
-
-            PopupMenu m;
-            m.addItem (1, "Save New Preset...");
-            if (currentPresetName.isNotEmpty())
-                m.addItem (2, "Overwrite \"" + currentPresetName + "\"");
-            m.addSeparator();
-            const int baseId = 100;
-            for (int i = 0; i < presetFiles.size(); ++i)
-                m.addItem (baseId + i, presetFiles[i].getFileNameWithoutExtension(),
-                           true, presetFiles[i] == currentPresetFile);
-
-            m.showMenuAsync (PopupMenu::Options(), [this, presetFiles, baseId] (int result) {
-                if (result == 1)
+                else if (result >= 2000 && result < 3000)
                 {
-                    auto* dlg = new AlertWindow ("Save Preset", "Enter a name for this preset:",
-                                                 MessageBoxIconType::NoIcon);
-                    dlg->addTextEditor ("name", "");
-                    dlg->addButton ("Save",   1, KeyPress (KeyPress::returnKey));
-                    dlg->addButton ("Cancel", 0, KeyPress (KeyPress::escapeKey));
-                    dlg->enterModalState (true,
-                        ModalCallbackFunction::create ([this, dlg] (int res) {
-                            if (res == 1) {
-                                String name = dlg->getTextEditorContents ("name").trim();
-                                if (name.isNotEmpty())
-                                    if (auto* s = audioEngine.getSlot())
-                                        s->savePreset (name);
-                            }
-                        }), true);
+                    int idx = result - 2000;
+                    if (idx < recents.size())
+                        launchBridgeWithPath (recents[idx]);
                 }
-                else if (result == 2)
+                else if (result >= 3000 && result < 3999)
                 {
-                    if (auto* s = audioEngine.getSlot()) s->savePreset (s->getCurrentPresetName());
-                }
-                else if (result >= baseId)
-                {
-                    int idx = result - baseId;
-                    if (idx < presetFiles.size())
-                        if (auto* s = audioEngine.getSlot()) s->loadPreset (presetFiles[idx]);
-                }
-            });
-        };
-
-        mc->onLoadClicked = [this] {
-            auto* mc = mainComp();
-            if (mc == nullptr) return;
-            int index = mc->getSelectedPluginID() - 1;
-            if (index < 0 || index >= knownPlugins.getNumTypes()) return;
-            mc->setPluginEditor (nullptr);
-            mainWindow->setName (getApplicationName() + "  \xe2\x80\x94  Loading...");
-            auto& setup = deviceManager.getAudioDeviceSetup();
-            audioEngine.loadPlugin (*knownPlugins.getType (index), setup.sampleRate, setup.bufferSize,
-                [this] (bool success, const String& nameOrError) {
-                    if (auto* mc = mainComp())
+                    int idx = result - 3000;
+                    if (idx < pluginTypes.size())
                     {
-                        if (! success)
+                        juce::File pluginFile (pluginTypes[idx].fileOrIdentifier);
+                        if (pluginFile.exists())   // existsAsFile() fails for .vst3 bundle dirs
+                            launchBridgeWithPath (pluginFile);
+                        else if (auto* mc = mainComp())
+                            mc->pushSystemMessage ("Plugin not found: "
+                                                   + pluginTypes[idx].fileOrIdentifier);
+                    }
+                }
+                else if (result == 4000)
+                {
+                    // All Bridges mode
+                    midiTargetBridge.store (nullptr);
+                    routeToAll.store (true);
+                    if (auto* mc = mainComp())
+                        mc->pushSystemMessage ("MIDI Route: All Bridges");
+                }
+                else if (result >= 4001 && result < 4100)
+                {
+                    int idx = result - 4001;
+                    if (idx < bridgeSnapshot.size())
+                    {
+                        auto* target = bridgeSnapshot[idx].ptr;
+                        midiTargetBridge.store (target);
+                        routeToAll.store (false);
+                        if (auto* mc = mainComp())
                         {
-                            mainWindow->setName (getApplicationName() + "  \xe2\x80\x94  Error: " + nameOrError);
-                            mc->setPresetButtonEnabled (false);
-                            mc->setPluginLoaded (false);
-                        }
-                        else
-                        {
-                            mainWindow->setName (getApplicationName() + "  [" + nameOrError + "]");
-                            mc->setPresetButtonEnabled (true);
-                            mc->setPluginLoaded (true);
-                            if (auto* slot = audioEngine.getSlot())
-                                if (auto* editor = slot->getOrCreateEditor())
-                                    mc->setPluginEditor (editor);
+                            juce::String name = juce::File (target->getPluginPath())
+                                                    .getFileNameWithoutExtension();
+                            mc->pushSystemMessage ("MIDI Route: " + name + " only");
                         }
                     }
-                });
-        };
-
-        mc->onUnloadClicked = [this] {
-            if (auto* mc = mainComp())
-            {
-                mc->setPluginEditor (nullptr);
-                mc->setPresetButtonEnabled (false);
-                mc->setPluginLoaded (false);
-            }
-            audioEngine.unloadPlugin();
-            mainWindow->setName (getApplicationName());
+                }
+            });
         };
 
         mc->onPanicClicked = [this] { audioEngine.allNotesOff(); };
 
         mc->onLaunchBridgeClicked = [this] {
-            // プラグインファイルを選択させる
-            auto chooser = std::make_shared<juce::FileChooser> ("Select a VST3 plugin to bridge...",
-                                                          juce::File::getSpecialLocation (juce::File::userDesktopDirectory),
-                                                          "*.vst3");
-
-            chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                [this, chooser] (const juce::FileChooser& fc)
-            {
-                auto result = fc.getResult();
-                if (! result.existsAsFile()) return;
-
-                auto bridgeExe = juce::File::getSpecialLocation (juce::File::currentExecutableFile)
-                                     .getParentDirectory()
-                                     .getChildFile ("LVH-Bridge.exe");
-
-                if (! bridgeExe.existsAsFile())
+            // Determine the start directory:
+            //   1. Last opened folder (if "remember" is enabled and stored)
+            //   2. Default VST3 system folder
+            //   3. Desktop as final fallback
+            juce::File startDir;
+            if (auto* prefs = appProperties.getUserSettings())
+                if (prefs->getBoolValue ("rememberLastFolder", true))
                 {
-                    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
-                        "Bridge Error", "LVH-Bridge.exe not found.");
-                    return;
+                    juce::String last = prefs->getValue ("lastBridgeFolder");
+                    if (last.isNotEmpty()) startDir = juce::File (last);
                 }
+            if (! startDir.isDirectory())
+                startDir = juce::File ("C:/Program Files/Common Files/VST3");
+            if (! startDir.isDirectory())
+                startDir = juce::File::getSpecialLocation (juce::File::userDesktopDirectory);
 
-                // Create a new BridgeInstance for this plugin.
-                auto* bridge = bridges.add (new BridgeInstance());
+            auto chooser = std::make_shared<juce::FileChooser> (
+                "Select a VST3 plugin to bridge...", startDir, "*.vst3");
 
-                bridge->onConnected = [this] (BridgeInstance* b) {
-                    // Send AudioConfig so Bridge can call prepareToPlay.
-                    auto& setup = deviceManager.getAudioDeviceSetup();
-                    auto sr = static_cast<float> (setup.sampleRate > 0.0 ? setup.sampleRate : 44100.0);
-                    auto bs = setup.bufferSize > 0 ? setup.bufferSize : 512;
-                    b->sendAudioConfig (sr, bs);
-
-                    // Rebuild audio graph on the message thread.
-                    juce::MessageManager::callAsync ([this] { rebuildBridgeGraph(); });
-                };
-
-                bridge->onDisconnected = [this] (BridgeInstance*) {
-                    juce::MessageManager::callAsync ([this] { rebuildBridgeGraph(); });
-                };
-
-                bridge->launch (result.getFullPathName(), bridgeExe);
-            });
+            chooser->launchAsync (
+                juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                [this, chooser] (const juce::FileChooser& fc)
+                {
+                    auto result = fc.getResult();
+                    if (result.existsAsFile())
+                        launchBridgeWithPath (result);
+                });
         };
     }
 
@@ -503,6 +490,89 @@ private:
             if (b->getState() == BridgeInstance::State::Connected)
                 active.add (b);
         audioEngine.rebuildBridgeGraph (active);
+    }
+
+    // Returns up to recentBridgeCount recent bridge plugin files (newest first).
+    juce::Array<juce::File> getRecentBridgeFiles()
+    {
+        auto* prefs = appProperties.getUserSettings();
+        if (prefs == nullptr) return {};
+        const int maxDisplay = prefs->getIntValue ("recentBridgeCount", 5);
+        auto parts = juce::StringArray::fromTokens (prefs->getValue ("recentBridgeFiles"), "|", "");
+        juce::Array<juce::File> result;
+        for (int i = 0; i < juce::jmin (maxDisplay, parts.size()); ++i)
+            if (parts[i].isNotEmpty())
+                result.add (juce::File (parts[i]));
+        return result;
+    }
+
+    // Prepends file to the stored recent list (newest first), capped at 20 entries.
+    void addToRecentBridgeFiles (const juce::File& file)
+    {
+        auto* prefs = appProperties.getUserSettings();
+        if (prefs == nullptr) return;
+        auto parts = juce::StringArray::fromTokens (prefs->getValue ("recentBridgeFiles"), "|", "");
+        parts.removeString (file.getFullPathName());
+        parts.insert (0, file.getFullPathName());
+        while (parts.size() > 20) parts.remove (parts.size() - 1);
+        prefs->setValue ("recentBridgeFiles", parts.joinIntoString ("|"));
+    }
+
+    // Common bridge launch logic used by both the file chooser and recent-file menu.
+    void launchBridgeWithPath (const juce::File& pluginFile)
+    {
+        auto bridgeExe = juce::File::getSpecialLocation (juce::File::currentExecutableFile)
+                             .getParentDirectory()
+                             .getChildFile ("LVH-Bridge.exe");
+
+        if (! bridgeExe.existsAsFile())
+        {
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+                "Bridge Error", "LVH-Bridge.exe not found.");
+            return;
+        }
+
+        auto* bridge = bridges.add (new BridgeInstance());
+        juce::String pluginName = pluginFile.getFileNameWithoutExtension();
+
+        bridge->onConnected = [this, pluginName] (BridgeInstance* b) {
+            auto& setup = deviceManager.getAudioDeviceSetup();
+            auto sr = static_cast<float> (setup.sampleRate > 0.0 ? setup.sampleRate : 44100.0);
+            auto bs = setup.bufferSize > 0 ? setup.bufferSize : 512;
+            b->sendAudioConfig (sr, bs);
+            if (auto* mc = mainComp())
+                mc->pushSystemMessage ("Bridge connected: " + pluginName);
+            juce::MessageManager::callAsync ([this] { rebuildBridgeGraph(); });
+        };
+
+        bridge->onDisconnected = [this, pluginName] (BridgeInstance* b) {
+            juce::MessageManager::callAsync ([this, b, pluginName] {
+                if (auto* mc = mainComp())
+                    mc->pushSystemMessage ("Bridge disconnected: " + pluginName);
+                // If this bridge was the solo MIDI target, fall back to All mode.
+                if (midiTargetBridge.load() == b)
+                {
+                    midiTargetBridge.store (nullptr);
+                    routeToAll.store (true);
+                    if (auto* mc = mainComp())
+                        mc->pushSystemMessage ("MIDI Route reset to: All Bridges");
+                }
+                // Rebuild the graph BEFORE removing the bridge (state is already Idle,
+                // so this bridge is excluded from the active list automatically).
+                rebuildBridgeGraph();
+                bridges.removeObject (b);
+            });
+        };
+
+        if (auto* mc = mainComp())
+            mc->pushSystemMessage ("Launching bridge: " + pluginName);
+        bridge->launch (pluginFile.getFullPathName(), bridgeExe);
+
+        addToRecentBridgeFiles (pluginFile);
+        if (auto* prefs = appProperties.getUserSettings())
+            if (prefs->getBoolValue ("rememberLastFolder", true))
+                prefs->setValue ("lastBridgeFolder",
+                                 pluginFile.getParentDirectory().getFullPathName());
     }
 
     MainComponent* mainComp()
@@ -527,6 +597,11 @@ private:
         }
         void closeButtonPressed() override { JUCEApplication::getInstance()->systemRequestedQuit(); }
     };
+
+    // MIDI routing state.
+    // Accessed from MIDI input thread and message thread — use atomics.
+    std::atomic<bool>            routeToAll       { true };
+    std::atomic<BridgeInstance*> midiTargetBridge { nullptr };
 
     MidiKeyboardState keyboardState;
     AudioDeviceManager deviceManager;

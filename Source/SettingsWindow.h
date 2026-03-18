@@ -14,6 +14,9 @@ public:
 
 private:
     ToggleButton showLevelMeter, showMidiMonitor, showInfoMonitor;
+    ToggleButton rememberLastFolder;
+    Label        recentCountLabel;
+    Slider       recentCountSlider;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GeneralSettingsPage)
 };
 

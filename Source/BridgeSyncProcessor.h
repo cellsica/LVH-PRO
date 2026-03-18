@@ -19,7 +19,13 @@
 class BridgeSyncProcessor : public juce::AudioProcessor
 {
 public:
+    // In Debug builds, plugin processBlock is much slower due to debug overhead.
+    // Use a generous timeout so waitForDone() doesn't falsely expire → silence.
+   #if JUCE_DEBUG
+    static constexpr int kProcessTimeoutMs = 200;
+   #else
     static constexpr int kProcessTimeoutMs = 10;
+   #endif
 
     BridgeSyncProcessor (SharedMemoryBuffer& shm, SyncEvents& events)
         : juce::AudioProcessor (BusesProperties()
@@ -117,7 +123,11 @@ private:
 class MultiSourceBridgeProcessor : public juce::AudioProcessor
 {
 public:
+   #if JUCE_DEBUG
+    static constexpr int kProcessTimeoutMs = 200;
+   #else
     static constexpr int kProcessTimeoutMs = 15;
+   #endif
 
     struct BridgeSource
     {

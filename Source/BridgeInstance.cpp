@@ -63,12 +63,16 @@ bool BridgeInstance::launch (const juce::String& pluginPath, const juce::File& b
 void BridgeInstance::shutdown()
 {
     // Always clean up regardless of state.
-    // If Bridge disconnected naturally (state == Idle), ipcManager.stopPipe()
-    // must still be called to join the internal IPC receive thread — without it
-    // the thread remains alive and blocks CoreIpcManager's destructor.
+    // NOTE: We do NOT call sendShutdown() here. If Bridge has already exited
+    // (X button), Core's ConnectionThread is stuck in a reconnect loop waiting
+    // for a new pipe client. In that state, pipe->write() calls connect(-1)
+    // which blocks FOREVER (WaitForMultipleObjects with INFINITE timeout).
+    // Instead, we call stopPipe() directly which signals the cancelEvent and
+    // unblocks the ConnectionThread cleanly.
+    // Bridge will detect the pipe closure via its own onDisconnected callback
+    // and call systemRequestedQuit() to exit gracefully.
     juce::Logger::writeToLog ("[BridgeInstance] Shutting down: " + pluginPath_);
-    ipcManager.sendShutdown(); // no-op if not connected
-    ipcManager.stopPipe();     // joins listen thread + internal receive thread
+    ipcManager.stopPipe();     // signals cancelEvent → unblocks reconnect loop; joins threads
     syncEvents.close();
     sharedMem.close();
     state = State::Idle;
@@ -81,10 +85,23 @@ std::unique_ptr<BridgeSyncProcessor> BridgeInstance::createSyncProcessor()
 
 bool BridgeInstance::sendMidi (const juce::MidiMessage& msg)
 {
+    // Primary guard: state is set to Idle synchronously on the message thread
+    // when the IPC disconnects. This covers the common case.
+    if (state != State::Connected)
+        return false;
+    // Secondary guard: covers a brief race window where the JUCE ConnectionThread
+    // has already exited (threadIsRunning=false) but the connectionLost message
+    // has not yet been processed on the message thread (state still Connected).
+    // In that window, pipe->write() with pipeReceiveMessageTimeout=-1 would block
+    // the message thread permanently — this check prevents that.
+    if (! ipcManager.isConnected())
+        return false;
     return ipcManager.sendMidi (msg);
 }
 
 bool BridgeInstance::sendAudioConfig (float sampleRate, int32_t bufferSize)
 {
+    if (state != State::Connected)
+        return false;
     return ipcManager.sendAudioConfig (sampleRate, bufferSize);
 }

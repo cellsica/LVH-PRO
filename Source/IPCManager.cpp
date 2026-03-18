@@ -49,6 +49,11 @@ juce::MemoryBlock IpcProtocol::makeShutdown()
     return makeRawMessage (IpcMessageType::Shutdown, nullptr, 0);
 }
 
+juce::MemoryBlock IpcProtocol::makeHeartbeat()
+{
+    return makeRawMessage (IpcMessageType::Heartbeat, nullptr, 0);
+}
+
 IpcMessageType IpcProtocol::getType (const juce::MemoryBlock& data)
 {
     if (data.getSize() < 4)
@@ -329,16 +334,18 @@ void CoreIpcManager::connectionLost()
 
 void CoreIpcManager::messageReceived (const juce::MemoryBlock& message)
 {
-    // Core does not currently expect messages from Bridge
+    auto type = IpcProtocol::getType (message);
+    if (type == IpcMessageType::Heartbeat)
+        return; // Keepalive from Bridge — silently discard
     juce::Logger::writeToLog ("[Core IPC] Unexpected message from Bridge, type="
-                              + juce::String (static_cast<uint32_t> (IpcProtocol::getType (message))));
+                              + juce::String (static_cast<uint32_t> (type)));
 }
 
 void CoreIpcManager::ListenThread::run()
 {
     juce::Logger::writeToLog ("[Core IPC] Waiting for Bridge on pipe: " + pipeName);
     // createPipe blocks until a client connects or disconnect() is called
-    bool ok = owner.createPipe (pipeName, -1 /* no receive timeout */);
+    bool ok = owner.createPipe (pipeName, 5000 /* 5s receive timeout: prevents infinite reconnect block after Bridge disconnect */);
     if (! ok)
         juce::Logger::writeToLog ("[Core IPC] createPipe failed or was cancelled for: " + pipeName);
 }
@@ -371,6 +378,11 @@ void BridgeIpcClient::connectAsync (const juce::String& pipeName, int timeoutMs)
 void BridgeIpcClient::disconnect()
 {
     juce::InterprocessConnection::disconnect();
+}
+
+bool BridgeIpcClient::sendHeartbeat()
+{
+    return sendMessage (IpcProtocol::makeHeartbeat());
 }
 
 void BridgeIpcClient::connectionMade()

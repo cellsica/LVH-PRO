@@ -6,30 +6,6 @@ MainComponent::MainComponent (MidiKeyboardState& state)
     addAndMakeVisible (*lvhLogo);
     lvhLogo->onRightClick = [this] { if (onLogoRightClick) onLogoRightClick(); };
 
-    keyboardComponent = std::make_unique<PcKeyboardComponent> (state);
-    addAndMakeVisible (*keyboardComponent);
-
-    pluginButton = std::make_unique<TextButton> (currentPluginName);
-    addAndMakeVisible (*pluginButton);
-    pluginButton->onClick = [this] { if (onPluginMenuRequest) onPluginMenuRequest(); };
-
-    presetButton = std::make_unique<IconButton> ("Preset", Icons::preset);
-    addAndMakeVisible (*presetButton);
-    presetButton->setColour (TextButton::buttonColourId, Colour (0xff226060));
-    presetButton->setEnabled (false);
-    presetButton->onClick = [this] { if (onPresetMenuRequest) onPresetMenuRequest(); };
-
-    loadButton = std::make_unique<IconButton> ("Load Plugin", Icons::load);
-    addAndMakeVisible (*loadButton);
-    loadButton->setColour (TextButton::buttonColourId, Colour (0xff3a7bd5));
-    loadButton->onClick = [this] { if (onLoadClicked) onLoadClicked(); };
-
-    unloadButton = std::make_unique<IconButton> ("Unload Plugin", Icons::unload);
-    addAndMakeVisible (*unloadButton);
-    unloadButton->setColour (TextButton::buttonColourId, Colour (0xff882222));
-    unloadButton->setEnabled (false);
-    unloadButton->onClick = [this] { if (onUnloadClicked) onUnloadClicked(); };
-
     panicButton = std::make_unique<IconButton> ("PANIC (All Notes Off)", Icons::panic);
     addAndMakeVisible (*panicButton);
     panicButton->setColour (TextButton::buttonColourId, Colours::red);
@@ -43,7 +19,7 @@ MainComponent::MainComponent (MidiKeyboardState& state)
     kbdToggleButton->setColour (TextButton::buttonOnColourId, Colour (0xff2a6030));
     kbdToggleButton->onClick = [this] { toggleKeyboard(); };
 
-    monitorToggleButton = std::make_unique<IconButton> ("Toggle Info Monitor", Icons::monitor);
+    monitorToggleButton = std::make_unique<IconButton> ("Toggle MIDI Monitor", Icons::monitor);
     addAndMakeVisible (*monitorToggleButton);
     monitorToggleButton->setClickingTogglesState (true);
     monitorToggleButton->setToggleState (true, dontSendNotification);
@@ -71,23 +47,34 @@ MainComponent::MainComponent (MidiKeyboardState& state)
     midiMonitorLabel->setJustificationType (Justification::centredLeft);
     midiMonitorLabel->setText ("No MIDI", dontSendNotification);
 
+    systemLogPanel = std::make_unique<SystemLogPanel>();
+    addAndMakeVisible (*systemLogPanel);
+
     monitorPanel = std::make_unique<InfoMonitorPanel>();
     addAndMakeVisible (*monitorPanel);
 
-    pluginViewport = std::make_unique<Viewport>();
-    addAndMakeVisible (*pluginViewport);
-    pluginViewport->setScrollBarsShown (true, true);
+    keyboardComponent = std::make_unique<PcKeyboardComponent> (state);
+    addAndMakeVisible (*keyboardComponent);
 
-    // 5-slot layout: viewport | resizer1 | monitor | resizer2 | keyboard
-    stretchLayout.setItemLayout (0, 100, -1.0, -1.0);
-    stretchLayout.setItemLayout (1, 0, 8, 0);
-    stretchLayout.setItemLayout (2, 0, 400, 0);
-    stretchLayout.setItemLayout (3, 8, 8, 8);
-    stretchLayout.setItemLayout (4, 50, 300, 50);
-    resizerBar  = std::make_unique<StretchableLayoutResizerBar> (&stretchLayout, 1, false);
-    resizerBar2 = std::make_unique<StretchableLayoutResizerBar> (&stretchLayout, 3, false);
+    // Top resizer: drags monitorHeight up/down; keyboard is unaffected;
+    //              systemLog absorbs the remaining space.
+    resizerBar = std::make_unique<HResizer>();
     addAndMakeVisible (*resizerBar);
+    resizerBar->onDrag = [this] (int delta) {
+        // Drag DOWN (positive delta) → bar moves down → monitorPanel shrinks
+        lastMonitorHeight = jmax (kMinMidiH, jmin (400, lastMonitorHeight - delta));
+        resized();
+    };
+
+    // Bottom resizer: drags keyboardHeight up/down; MIDILog is unaffected;
+    //                 systemLog absorbs the remaining space.
+    resizerBar2 = std::make_unique<HResizer>();
     addAndMakeVisible (*resizerBar2);
+    resizerBar2->onDrag = [this] (int delta) {
+        // Drag DOWN (positive delta) → bar moves down → keyboard shrinks
+        lastKeyboardHeight = jmax (kMinKbdH, jmin (300, lastKeyboardHeight - delta));
+        resized();
+    };
 
     scanOverlay = std::make_unique<ScanOverlay>();
     addChildComponent (*scanOverlay);
@@ -95,47 +82,23 @@ MainComponent::MainComponent (MidiKeyboardState& state)
     setSize (900, 600);
 }
 
-void MainComponent::setPluginEditor (AudioProcessorEditor* editor)
-{
-    pluginViewport->setViewedComponent (editor, false);
-    if (editor != nullptr)
-    {
-        editor->setVisible (true);
-        resizeToFitEditor (editor);
-    }
-}
-
-void MainComponent::resizeToFitEditor (AudioProcessorEditor* editor)
-{
-    if (editor == nullptr) return;
-    int monitorArea = monitorVisible  ? (8 + lastMonitorHeight)  : 0;
-    int kbArea      = keyboardVisible ? (8 + lastKeyboardHeight) : 0;
-    int newHeight = 44 + 8 + editor->getHeight() + monitorArea + kbArea;
-    if (auto* tlc = getTopLevelComponent())
-        tlc->setSize (jmax (600, editor->getWidth() + 12), jmax (400, newHeight));
-}
+// ── Toggle helpers ─────────────────────────────────────────────────────────
 
 void MainComponent::toggleMonitor()
 {
     monitorVisible = ! monitorVisible;
     monitorToggleButton->setToggleState (monitorVisible, dontSendNotification);
-    int delta = (monitorVisible ? 1 : -1) * (lastMonitorHeight + 8);
-    if (auto* tlc = getTopLevelComponent())
-        tlc->setSize (tlc->getWidth(), jmax (400, tlc->getHeight() + delta));
-    else
-        resized();
+    resized();
 }
 
 void MainComponent::toggleKeyboard()
 {
     keyboardVisible = ! keyboardVisible;
     kbdToggleButton->setToggleState (keyboardVisible, dontSendNotification);
-    int delta = (keyboardVisible ? 1 : -1) * (lastKeyboardHeight + 8);
-    if (auto* tlc = getTopLevelComponent())
-        tlc->setSize (tlc->getWidth(), jmax (400, tlc->getHeight() + delta));
-    else
-        resized();
+    resized();
 }
+
+// ── Scan overlay ───────────────────────────────────────────────────────────
 
 void MainComponent::showScanOverlay()
 {
@@ -149,11 +112,10 @@ void MainComponent::showScanOverlay()
 void MainComponent::hideScanOverlay()                    { scanOverlay->setVisible (false); }
 void MainComponent::updateScanProgress (const String& f) { scanOverlay->setProgress (f); }
 
-void MainComponent::setPluginName (const String& name, int id) { pluginButton->setButtonText (name); selectedPluginId = id; }
-int  MainComponent::getSelectedPluginID() const                { return selectedPluginId; }
-void MainComponent::setPresetButtonEnabled (bool e)            { presetButton->setEnabled (e); }
-void MainComponent::setPluginLoaded (bool loaded)              { unloadButton->setEnabled (loaded); }
-void MainComponent::setMidiMonitorText (const String& t)       { midiMonitorLabel->setText (t, dontSendNotification); }
+// ── Accessors ──────────────────────────────────────────────────────────────
+
+void MainComponent::setMidiMonitorText (const String& t) { midiMonitorLabel->setText (t, dontSendNotification); }
+void MainComponent::pushSystemMessage  (const String& t) { systemLogPanel->pushMessage (t); }
 
 Slider&           MainComponent::getVolumeSlider()   { return *volumeSlider; }
 LevelMeter&       MainComponent::getLevelMeter()     { return *levelMeter; }
@@ -178,12 +140,10 @@ void MainComponent::setMonitorPanelVisible (bool v)
 {
     monitorVisible = v;
     monitorToggleButton->setToggleState (v, dontSendNotification);
-    int delta = (v ? 1 : -1) * (lastMonitorHeight + 8);
-    if (auto* tlc = getTopLevelComponent())
-        tlc->setSize (tlc->getWidth(), jmax (400, tlc->getHeight() + delta));
-    else
-        resized();
+    resized();
 }
+
+// ── Paint ──────────────────────────────────────────────────────────────────
 
 void MainComponent::paint (Graphics& g)
 {
@@ -192,64 +152,61 @@ void MainComponent::paint (Graphics& g)
     g.fillRect (getLocalBounds().removeFromTop (44));
 }
 
+// ── Resized ────────────────────────────────────────────────────────────────
+//
+// Size-change rules:
+//   top bar drag    → lastMonitorHeight  changes; keyboard fixed; systemLog absorbs
+//   bottom bar drag → lastKeyboardHeight changes; MIDILog  fixed; systemLog absorbs
+//
 void MainComponent::resized()
 {
     auto area        = getLocalBounds();
     auto toolbarArea = area.removeFromTop (44);
 
+    // ── Toolbar ──────────────────────────────────────────────────────
     lvhLogo->setBounds (toolbarArea.removeFromLeft (60));
     auto toolbar = toolbarArea.reduced (2, 4);
 
-    // Left section: plugin selector + action buttons
-    pluginButton->setBounds        (toolbar.removeFromLeft (195).reduced (2));
-    presetButton->setBounds        (toolbar.removeFromLeft (36).reduced (2));
-    toolbar.removeFromLeft (4);
-    loadButton->setBounds          (toolbar.removeFromLeft (36).reduced (2));
-    unloadButton->setBounds        (toolbar.removeFromLeft (36).reduced (2));
-    panicButton->setBounds         (toolbar.removeFromLeft (36).reduced (2));
-    kbdToggleButton->setBounds     (toolbar.removeFromLeft (36).reduced (2));
+    panicButton        ->setBounds (toolbar.removeFromLeft (36).reduced (2));
+    kbdToggleButton    ->setBounds (toolbar.removeFromLeft (36).reduced (2));
     monitorToggleButton->setBounds (toolbar.removeFromLeft (36).reduced (2));
 
-    // Right section (monitoring) — pulled from the right; conditional on visibility
-    if (showMidiMonitor)  midiMonitorLabel->setBounds (toolbar.removeFromRight (160).reduced (2));
-    if (showLevelMeter)   levelMeter->setBounds       (toolbar.removeFromRight (110).reduced (2, 4));
-    volumeSlider->setBounds  (toolbar.removeFromRight (80).reduced (2));
     speakerButton->setBounds (toolbar.removeFromRight (36).reduced (2));
+    volumeSlider ->setBounds (toolbar.removeFromRight (80).reduced (2));
+    if (showLevelMeter)  levelMeter      ->setBounds (toolbar.removeFromRight (110).reduced (2, 4));
+    if (showMidiMonitor) midiMonitorLabel->setBounds (toolbar.removeFromRight (160).reduced (2));
 
-    // Content area — 5-slot layout; hidden slots get 0px
+    // ── Content area ─────────────────────────────────────────────────
     auto content = area.reduced (4);
+    const int totalH = content.getHeight();
 
-    stretchLayout.setItemLayout (1,
-        monitorVisible ? 8 : 0,
-        monitorVisible ? 8 : 0,
-        monitorVisible ? 8 : 0);
-    stretchLayout.setItemLayout (2,
-        monitorVisible ? 60  : 0,
-        monitorVisible ? 400 : 0,
-        monitorVisible ? lastMonitorHeight : 0);
-    stretchLayout.setItemLayout (3,
-        keyboardVisible ? 8 : 0,
-        keyboardVisible ? 8 : 0,
-        keyboardVisible ? 8 : 0);
-    stretchLayout.setItemLayout (4,
-        keyboardVisible ? 50  : 0,
-        keyboardVisible ? 300 : 0,
-        keyboardVisible ? lastKeyboardHeight : 0);
+    // How much height the fixed panels + resizers consume
+    int fixedH = 0;
+    if (monitorVisible)  fixedH += kResizerH + jmax (kMinMidiH, lastMonitorHeight);
+    if (keyboardVisible) fixedH += kResizerH + jmax (kMinKbdH,  lastKeyboardHeight);
 
-    Component* comps[] = {
-        pluginViewport.get(), resizerBar.get(),
-        monitorPanel.get(),   resizerBar2.get(),
-        keyboardComponent.get()
-    };
-    stretchLayout.layOutComponents (comps, 5,
-        content.getX(), content.getY(), content.getWidth(), content.getHeight(), true, true);
+    // SystemLog takes all remaining space (never below kMinLogH)
+    int sysH = jmax (kMinLogH, totalH - fixedH);
 
-    if (monitorVisible)  lastMonitorHeight  = monitorPanel->getHeight();
-    if (keyboardVisible) lastKeyboardHeight = keyboardComponent->getHeight();
+    auto c = content;
+
+    systemLogPanel->setBounds (c.removeFromTop (sysH));
+
+    if (monitorVisible)
+    {
+        resizerBar->setBounds (c.removeFromTop (kResizerH));
+        monitorPanel->setBounds (c.removeFromTop (lastMonitorHeight));
+    }
+
+    if (keyboardVisible)
+    {
+        resizerBar2->setBounds (c.removeFromTop (kResizerH));
+        keyboardComponent->setBounds (c.removeFromTop (lastKeyboardHeight));
+    }
 
     resizerBar ->setVisible (monitorVisible);
-    resizerBar2->setVisible (keyboardVisible);
     monitorPanel->setVisible (monitorVisible);
+    resizerBar2->setVisible (keyboardVisible);
     keyboardComponent->setVisible (keyboardVisible);
 
     scanOverlay->setBounds (getLocalBounds());

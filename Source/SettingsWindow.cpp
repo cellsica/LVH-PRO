@@ -29,17 +29,45 @@ GeneralSettingsPage::GeneralSettingsPage (PropertiesFile* prefs)
         if (prefs) prefs->setValue ("showInfoMonitor", v);
         if (onShowInfoMonitor) onShowInfoMonitor (v);
     };
+
+    // Bridge file browser settings
+    rememberLastFolder.setButtonText ("Remember last opened Bridge folder");
+    rememberLastFolder.setToggleState (
+        prefs ? prefs->getBoolValue ("rememberLastFolder", true) : true, dontSendNotification);
+    addAndMakeVisible (rememberLastFolder);
+    rememberLastFolder.onClick = [this, prefs] {
+        if (prefs) prefs->setValue ("rememberLastFolder", rememberLastFolder.getToggleState());
+    };
+
+    recentCountLabel.setText ("Recent Bridges shown in menu:", dontSendNotification);
+    recentCountLabel.setFont (Font (12.f));
+    recentCountLabel.setColour (Label::textColourId, Colour (0xffcccccc));
+    addAndMakeVisible (recentCountLabel);
+
+    recentCountSlider.setRange (1, 20, 1);
+    recentCountSlider.setValue (prefs ? prefs->getIntValue ("recentBridgeCount", 5) : 5,
+                                dontSendNotification);
+    recentCountSlider.setTextBoxStyle (Slider::TextBoxRight, false, 36, 22);
+    addAndMakeVisible (recentCountSlider);
+    recentCountSlider.onValueChange = [this, prefs] {
+        if (prefs) prefs->setValue ("recentBridgeCount", (int) recentCountSlider.getValue());
+    };
 }
 
 void GeneralSettingsPage::resized()
 {
     auto area = getLocalBounds().reduced (16, 12);
-    Label header;
     for (auto* btn : { &showLevelMeter, &showMidiMonitor, &showInfoMonitor })
     {
         btn->setBounds (area.removeFromTop (28));
         area.removeFromTop (4);
     }
+    area.removeFromTop (14);
+    rememberLastFolder.setBounds (area.removeFromTop (28));
+    area.removeFromTop (8);
+    auto row = area.removeFromTop (28);
+    recentCountLabel .setBounds (row.removeFromLeft (200));
+    recentCountSlider.setBounds (row);
 }
 
 // =====================================================================
