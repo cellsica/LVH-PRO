@@ -6,7 +6,7 @@
 #include "SineWaveProcessor.h"
 #include "PluginSlot.h"
 #include "MidiInjectionsProcessor.h"
-#include "../BridgeInstance.h"
+#include "../BridgeProcessors.h"
 
 using namespace juce;
 
@@ -154,13 +154,15 @@ public:
             audioGraph.prepareToPlay (lastSampleRate, lastBufferSize);
     }
 
-    /** Rebuild Core's audio graph for all currently-connected Bridge instances.
-        One BridgeSyncProcessor node is added per active bridge; their outputs
-        are summed by the AudioProcessorGraph before reaching the gain/meter node.
-        Pass an empty array to fall back to the sine-wave generator. */
-    void rebuildBridgeGraph (const juce::Array<BridgeInstance*>& activeBridges)
+    /** Rebuild Core's audio graph for serial effect-chain routing.
+        Instruments are processed in parallel (MultiSourceBridgeProcessor),
+        then the mixed output is fed through each Effect bridge in order.
+        Pass empty arrays to fall back to the sine-wave generator.
+        Graph: [Instruments(parallel)] → [Effect1] → [Effect2] → ... → [Gain/Meter] → [Out] */
+    void rebuildBridgeGraph (const juce::Array<BridgeInstance*>& instrumentBridges,
+                             const juce::Array<BridgeInstance*>& effectBridges)
     {
-        if (activeBridges.isEmpty())
+        if (instrumentBridges.isEmpty() && effectBridges.isEmpty())
         {
             buildGraphWithSineWave();
             return;
@@ -171,19 +173,9 @@ public:
         getOrCreateSlot().detach();
         audioGraph.clear();
 
-        // Build a MultiSourceBridgeProcessor that signals ALL bridges in parallel
-        // and sums their outputs. This avoids sequential blocking per bridge and
-        // ensures all bridge outputs are correctly mixed.
-        std::vector<MultiSourceBridgeProcessor::BridgeSource> sources;
-        for (auto* bridge : activeBridges)
-            sources.push_back ({ &bridge->getSharedMemory(), &bridge->getSyncEvents() });
-
-        auto outNode  = audioGraph.addNode (
+        auto outNode = audioGraph.addNode (
             std::make_unique<AudioProcessorGraph::AudioGraphIOProcessor> (
                 AudioProcessorGraph::AudioGraphIOProcessor::audioOutputNode));
-
-        auto mixerNode = audioGraph.addNode (
-            std::make_unique<MultiSourceBridgeProcessor> (std::move (sources)));
 
         auto* mgProc = new GainAndMeterProcessor();
         mgProc->setGain (pendingGain);
@@ -191,10 +183,34 @@ public:
         auto mgNode = audioGraph.addNode (std::unique_ptr<GainAndMeterProcessor> (mgProc));
 
         for (int ch = 0; ch < 2; ++ch)
+            audioGraph.addConnection ({{mgNode->nodeID, ch}, {outNode->nodeID, ch}});
+
+        // Build signal chain: instruments (parallel mix) → effects (serial) → gain/meter
+        AudioProcessorGraph::Node::Ptr lastNode;
+
+        if (! instrumentBridges.isEmpty())
         {
-            audioGraph.addConnection ({{mixerNode->nodeID, ch}, {mgNode->nodeID,  ch}});
-            audioGraph.addConnection ({{mgNode->nodeID,    ch}, {outNode->nodeID, ch}});
+            std::vector<MultiSourceBridgeProcessor::BridgeSource> sources;
+            for (auto* b : instrumentBridges)
+                sources.push_back ({ &b->getSharedMemory(), &b->getSyncEvents(), b });
+            lastNode = audioGraph.addNode (
+                std::make_unique<MultiSourceBridgeProcessor> (std::move (sources)));
         }
+
+        for (auto* b : effectBridges)
+        {
+            auto effectNode = audioGraph.addNode (
+                std::make_unique<BridgeEffectProcessor> (
+                    b->getSharedMemory(), b->getSyncEvents()));
+            if (lastNode != nullptr)
+                for (int ch = 0; ch < 2; ++ch)
+                    audioGraph.addConnection ({{lastNode->nodeID, ch}, {effectNode->nodeID, ch}});
+            lastNode = effectNode;
+        }
+
+        if (lastNode != nullptr)
+            for (int ch = 0; ch < 2; ++ch)
+                audioGraph.addConnection ({{lastNode->nodeID, ch}, {mgNode->nodeID, ch}});
 
         if (lastSampleRate > 0.0 && lastBufferSize > 0)
             audioGraph.prepareToPlay (lastSampleRate, lastBufferSize);

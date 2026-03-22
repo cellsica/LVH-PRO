@@ -9,25 +9,65 @@
     - [x] CMake への `LVH-Bridge` ターゲット追加
     - [x] `BridgeMain.cpp` (最小構成の子プロセス) の作成
     - [x] Core (Main.cpp) へのブリッジ起動テスト用メニュー実装
-
-## 確認済みの未完了タスク 🔜
-- [x] LVH-PRO と LVH-Bridge のスケルトン作成
 - [x] Core から Bridge を引数付きで起動
 - [x] Bridge での VST3 プラグインロードと GUI 表示成功
 - [x] Core-Bridge 間の IPC 通信基盤の実装 (Named Pipes via juce::InterprocessConnection)
 - [x] MIDI 信号の Core から Bridge への転送 (Bridge 側はログ出力で確認)
-- [x] AudioConfig (SampleRate/BufferSize) の同期成功 (しずく011)
-- [x] 共有メモリ (Shared Memory) 基盤の構築成功 (しずく011)
+- [x] AudioConfig (SampleRate/BufferSize) の同期 success (しずく011)
+- [x] 共有メモリ (Shared Memory) 基盤의 構築成功 (しずく011)
 - [x] 共有メモリ & Named Events 同期による音声データ返却の実装 (しずく012) ✅ 音が出た！
 - [x] BridgeInstance クラスによる複数インスタンスの管理 (しずく013) ✅
-- [X] 独立ウィンドウ管理: 子プロセス側のウィンドウを親プロセス側で制御する仕組み。
-- [X] MIDI個別ルーティング: どのブリッジにMIDIを送るか選択できる仕組み（アクティブスロットUI）
-- [ ] **Priority**: Core の終了時フリーズ問題を解決する (しずく対応中)
-- [ ] **Mission 014**: PluginSlot の Pro版対応 & MIDIルーティング実装 (フリーズ解決後に検討)
+- [x] **IPC 切断検知バグ修正 & ハートビート実装**: Bridge 切断時の再接続・フリーズ問題を解消 (しずく014)
+- [x] **Core UI リデザイン**: SystemLogPanel 追加、レイアウト刷新 (しずく014)
+- [x] **Select Instruments サブメニュー**: プラグインキャッシュからのロード機能 (しずく014)
+- [x] **Mission 015**: PCキーボードのオクターブ修正 & オクターブ切り替え機能の実装 (しずく015)
+    - [x] Middle C 表記修正 (C4=MIDI 72 に統一)
+    - [x] ツールバーにオクターブ Up/Down ボタンと表示ラベル追加
+    - [x] `[` / `]` によるショートカット切り替え実装
+    - [x] オクターブ切り替え時の音止まり（ノートオフ）バグ対策
+- [x] **Mission 016**: プロジェクト保存・読込（.lvh）＆設定画面の強化 (しずく016)
+    - [x] 各 Bridge の状態（プラグイン、音色、ウィンドウ位置）を XML 保存・復元
+    - [x] MIDI ルーティング、トランスポーズ、オクターブ設定の保存
+    - [x] IPC 拡張: WindowPos, RequestState, StateData, SetState 実装
+    - [x] Plugin Paths 設定ページの ListBox 実装と自動再スキャン対応
+- [x] **Mission 017**: マルチプロセス・ルーティング ＆ エフェクト(FX)統合基盤の構築 (しずく017)
+- [x] **Mission 018**: 独立ウィンドウ型「ミキサー・コンソール」の構築 (Phase 1)
+    - [x] 独立ウィンドウ `MixerWindow` の実装
+    - [x] Bridge リストからのストリップ動的生成
+    - [x] LED メーターの UI デザイン (Icons::led)
+
+
+
+- [x] **Mission 019**: ミキシング操作 ＆ リアルタイム・メーター (Phase 2) ✅ (しずく019)
+    - [x] 音量・パン、ソロ・ミュートのロジック実装。
+    - [x] LED メーターのリアルタイム表示アニメーション。
+    - [x] Core ツールバー ↔ Mixer MASTER の双方向同期。
+
+
+
+
+## 確認済みの未完了タスク 🔜
+- [x] **Mission 020**: ミキサー UI 強化 ＆ カスタマイズ (Phase 3) ✅ (しずく020)
+- [ ] **Mission 021**: エフェクト管理 ＆ FX・セクション (Phase 4) 🔜
+- [ ] **Mission 022**: Stage Performance Mode & Stage Set (.stg) 🔜
+- [ ] Window Orbit 2.0 (ウィンドウ吸着機能)
+
+
 
 ## 直近の作業ログ 📝
-- [2026-03-17] かえで：Bridge プロトタイプの最小構成ソースコードを実装。再起動後にビルドを行う準備が完了。
-- [2026-03-17] しずく：IPC基盤 (IPCManager.h/cpp) を実装。Named Pipe による Core↔Bridge ハンドシェイク・MIDI転送・SharedAudioLayout定義を完了。
-- [2026-03-17] しずく：マルチプロセスオーディオループ完成。SyncEvents(Named Events)・BridgeSyncProcessor・BridgeAudioThread・MidiMessageCollector を実装。Core レベルメーター動作・音声出力を確認。
-- [2026-03-17] しずく：BridgeInstance クラス抽出完了。OwnedArray<BridgeInstance> によるマルチブリッジ管理・rebuildBridgeGraph 対応。ビルド確認済み。
-- [2026-03-17] しずく：013バグ修正。フリーズ(shutdown早期リターン削除)・Bridge2無音(MultiSourceBridgeProcessor で並列シグナル+サミング)を修正。ビルド確認済み。
+- [2026-03-17] かえで：Bridge プロトタイプの最小構成ソースコードを実装。
+- [2026-03-17] しずく：IPC基盤 (IPCManager.h/cpp) を実装。
+- [2026-03-17] しずく：マルチプロセスオーディオループ完成。
+- [2026-03-19] しずく：Mission 014 完了。
+- [2026-03-19] かえで：Mission 015 指示書作成。
+- [2026-03-19] しずく：Mission 015 完了。オクターブ切り替えと Middle C 表記修正。
+- [2026-03-19] かえで：Mission 016 指示書作成（ウィンドウ位置記憶のリクエスト追加）。
+- [2026-03-19] しずく：Mission 016 完了。プロジェクト保存（音色・位置含む）・読込、設定パス対応。
+- [2026-03-20] しずく：Mission 017 完了。マルチプロセス・エフェクトチェインが動作！
+- [2026-03-20] かえで：Mission 018 指示書を「Phase 1：基礎の構築」に分割して再送。しずくちゃんにバトンタッチ。
+- [2026-03-20] しずく：Mission 018 (Phase 1) 完了！動的ミキサーウィンドウが動作。
+- [2026-03-21] かえで：Mission 019 (Phase 2) 指示書作成。
+- [2026-03-21] しずく：Mission 019 (Phase 2) 完了！フェーダー連動、メーター、保存/復元が完璧。
+- [2026-03-21] かえで：Solo ロジックを複数同時指定可能に微調整（ Chief Architect check ）。
+- [2026-03-22] しずく：Mission 020 (Phase 3) 完了！目盛り、CH編集、サムデザインを刷新。
+- [2026-03-21] しずく：Mission 020 (Phase 3) 完了！目盛り・名前編集・カラー選択・■サム・フェーダースリム化。

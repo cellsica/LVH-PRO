@@ -177,10 +177,44 @@ public:
                 midiCollector.addMessageToQueue (msg);
             };
             ipcClient->onAudioConfigReceived = [this] (float sr, int32_t bs) {
+                audioConfigReceived = true;
                 if (mainWindow != nullptr)
+                {
+                    // Apply any pending state BEFORE prepareToPlay.
+                    // (VST3 correct restore order: setState → prepareToPlay)
+                    if (pendingPluginState.getSize() > 0)
+                    {
+                        mainWindow->setPluginState (pendingPluginState);
+                        pendingPluginState.reset();
+                    }
                     mainWindow->preparePlugin (sr, bs);
+                }
                 // Reset MIDI collector with the actual sample rate
                 midiCollector.reset (static_cast<double> (sr));
+            };
+            ipcClient->onWindowPosReceived = [this] (int x, int y, int w, int h) {
+                if (mainWindow != nullptr && w > 0 && h > 0)
+                    mainWindow->setBounds (x, y, w, h);
+            };
+            ipcClient->onRequestStateReceived = [this] {
+                if (mainWindow == nullptr) return;
+                juce::MemoryBlock state;
+                mainWindow->getPluginState (state);
+                ipcClient->sendStateData (state);
+                juce::Logger::writeToLog ("[Bridge] State sent: " + juce::String ((int) state.getSize()) + " bytes");
+            };
+            ipcClient->onSetStateReceived = [this] (const juce::MemoryBlock& state) {
+                if (audioConfigReceived)
+                {
+                    // AudioConfig already received → plugin is prepared → apply immediately
+                    if (mainWindow != nullptr)
+                        mainWindow->setPluginState (state);
+                }
+                else
+                {
+                    // Buffer: apply before prepareToPlay in onAudioConfigReceived
+                    pendingPluginState = state;
+                }
             };
             ipcClient->connectAsync (ipcPipeName, 10000); // 10s: enough for Debug VST3 load
         }
@@ -192,7 +226,15 @@ public:
     void timerCallback() override
     {
         if (ipcClient != nullptr)
+        {
             ipcClient->sendHeartbeat();
+            // Also report window position so Core can store it for project save
+            if (mainWindow != nullptr)
+            {
+                auto b = mainWindow->getBounds();
+                ipcClient->sendWindowPos (b.getX(), b.getY(), b.getWidth(), b.getHeight());
+            }
+        }
     }
 
     void shutdown() override
@@ -267,6 +309,23 @@ public:
         juce::AudioPluginInstance* getPluginInstance() const noexcept
         {
             return pluginInstance.get();
+        }
+
+        void getPluginState (juce::MemoryBlock& dest) const
+        {
+            dest.reset();
+            if (pluginInstance != nullptr)
+                pluginInstance->getStateInformation (dest);
+        }
+
+        void setPluginState (const juce::MemoryBlock& state)
+        {
+            if (pluginInstance != nullptr && state.getSize() > 0)
+            {
+                pluginInstance->setStateInformation (state.getData(), (int) state.getSize());
+                juce::Logger::writeToLog ("[Bridge] Plugin state restored: "
+                                          + juce::String ((int) state.getSize()) + " bytes");
+            }
         }
 
     private:
@@ -384,6 +443,8 @@ private:
     std::unique_ptr<SyncEvents>         syncEvents;
     std::unique_ptr<BridgeAudioThread>  audioThread;
     juce::MidiMessageCollector          midiCollector;
+    juce::MemoryBlock                   pendingPluginState;   // state to apply before prepareToPlay
+    bool                                audioConfigReceived = false;
 };
 
 START_JUCE_APPLICATION (LvhBridgeApplication)

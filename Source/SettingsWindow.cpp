@@ -88,15 +88,75 @@ void AudioMidiSettingsPage::resized()
 // =====================================================================
 // PluginPathsPage
 // =====================================================================
-PluginPathsPage::PluginPathsPage()
+PluginPathsPage::PluginPathsPage (PropertiesFile* p) : prefs (p)
 {
-    info.setMultiLine (true); info.setReadOnly (true);
-    info.setText ("(Plugin scan path configuration — coming soon)");
-    info.setColour (TextEditor::backgroundColourId, Colour (0xff1a1a2a));
-    info.setColour (TextEditor::textColourId,       Colour (0xffaaaaaa));
-    addAndMakeVisible (info);
-    addBtn.setButtonText ("Add Path...");   addAndMakeVisible (addBtn);
-    rmBtn .setButtonText ("Remove");        addAndMakeVisible (rmBtn);
+    loadPaths();
+
+    pathList.setColour (ListBox::backgroundColourId, Colour (0xff1a1a2a));
+    pathList.setColour (ListBox::outlineColourId,    Colour (0xff303048));
+    pathList.setOutlineThickness (1);
+    pathList.setRowHeight (24);
+    addAndMakeVisible (pathList);
+
+    addBtn.setButtonText ("Add Path...");
+    addBtn.setColour (TextButton::buttonColourId, Colour (0xff333344));
+    addAndMakeVisible (addBtn);
+    addBtn.onClick = [this] {
+        auto chooser = std::make_shared<FileChooser> ("Select VST3 scan folder",
+                                                      File::getSpecialLocation (File::userHomeDirectory));
+        chooser->launchAsync (
+            FileBrowserComponent::openMode | FileBrowserComponent::canSelectDirectories,
+            [this, chooser] (const FileChooser& fc) {
+                auto f = fc.getResult();
+                if (f.isDirectory() && ! paths.contains (f.getFullPathName()))
+                {
+                    paths.add (f.getFullPathName());
+                    savePaths();
+                    pathList.updateContent();
+                    if (onPathsChanged) onPathsChanged();
+                }
+            });
+    };
+
+    rmBtn.setButtonText ("Remove");
+    rmBtn.setColour (TextButton::buttonColourId, Colour (0xff333344));
+    addAndMakeVisible (rmBtn);
+    rmBtn.onClick = [this] {
+        int sel = pathList.getSelectedRow();
+        if (sel >= 0 && sel < paths.size())
+        {
+            paths.remove (sel);
+            savePaths();
+            pathList.updateContent();
+            if (onPathsChanged) onPathsChanged();
+        }
+    };
+}
+
+void PluginPathsPage::loadPaths()
+{
+    paths = StringArray::fromTokens (
+        prefs ? prefs->getValue ("pluginScanPaths") : String(), "|", "");
+    paths.removeEmptyStrings();
+}
+
+void PluginPathsPage::savePaths()
+{
+    if (prefs) prefs->setValue ("pluginScanPaths", paths.joinIntoString ("|"));
+}
+
+int PluginPathsPage::getNumRows() { return paths.size(); }
+
+void PluginPathsPage::paintListBoxItem (int row, Graphics& g, int width, int height, bool selected)
+{
+    if (selected)
+    {
+        g.setColour (Colour (0xff253555));
+        g.fillAll();
+    }
+    g.setColour (selected ? Colours::white : Colour (0xffcccccc));
+    g.setFont (Font (12.f));
+    g.drawText (paths[row], 8, 0, width - 8, height, Justification::centredLeft, true);
 }
 
 void PluginPathsPage::resized()
@@ -105,7 +165,7 @@ void PluginPathsPage::resized()
     auto row  = area.removeFromBottom (32);
     addBtn.setBounds (row.removeFromLeft (110).reduced (2));
     rmBtn .setBounds (row.removeFromLeft (80) .reduced (2));
-    info.setBounds (area.reduced (0, 4));
+    pathList.setBounds (area.reduced (0, 4));
 }
 
 // =====================================================================
@@ -227,7 +287,10 @@ SettingsWindow::Content::Content (AudioDeviceManager& dm, PropertiesFile* prefs,
     genPage->onShowInfoMonitor = cbs.onShowInfoMonitor;
     addPage ("General",      genPage);
     addPage ("Audio / MIDI", new AudioMidiSettingsPage (dm));
-    addPage ("Plugin Paths", new PluginPathsPage());
+
+    auto* pathsPage = new PluginPathsPage (prefs);
+    pathsPage->onPathsChanged = cbs.onPluginPathsChanged;
+    addPage ("Plugin Paths", pathsPage);
 
     auto* midiPage = new MidiSettingsPage (prefs);
     midiPage->onTransposeChange     = cbs.onTransposeChange;

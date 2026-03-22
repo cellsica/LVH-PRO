@@ -55,11 +55,11 @@ void InfoMonitorPanel::pushMidiMessage (const MidiMessage& m)
     }
     else return;
 
-    MessageManager::callAsync ([this, text] {
-        logLines.add (text);
-        while (logLines.size() > maxLogLines) logLines.remove (0);
-        rebuildLog();
-    });
+    // pushMidiMessage is always called on the message thread (via callAsync in Main.cpp).
+    // Call rebuildLog() directly — no need for a second callAsync hop.
+    logLines.add (text);
+    while (logLines.size() > maxLogLines) logLines.remove (0);
+    rebuildLog();
 }
 
 void InfoMonitorPanel::setTransposeDisplay (int semitones)

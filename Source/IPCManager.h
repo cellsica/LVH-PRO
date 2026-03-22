@@ -11,7 +11,11 @@ enum class IpcMessageType : uint32_t
     MidiData    = 0x02,
     AudioConfig = 0x03,
     Shutdown    = 0x04,
-    Heartbeat   = 0x05,  // Bridge → Core, keepalive (prevents read timeout)
+    Heartbeat     = 0x05,  // Bridge → Core, keepalive (prevents read timeout)
+    WindowPos     = 0x06,  // bidirectional: Bridge→Core (reports bounds), Core→Bridge (sets bounds)
+    RequestState  = 0x07,  // Core → Bridge: request plugin state dump
+    StateData     = 0x08,  // Bridge → Core: plugin state binary payload
+    SetState      = 0x09,  // Core → Bridge: restore plugin state from binary payload
 };
 
 // Shared memory layout: header + audio I/O buffers (stereo, up to 4096 samples)
@@ -45,9 +49,15 @@ namespace IpcProtocol
     juce::MemoryBlock makeAudioConfig (float sampleRate, int32_t bufferSize);
     juce::MemoryBlock makeShutdown();
     juce::MemoryBlock makeHeartbeat();
+    juce::MemoryBlock makeWindowPos   (int x, int y, int w, int h);
+    juce::MemoryBlock makeRequestState();
+    juce::MemoryBlock makeStateData   (const juce::MemoryBlock& stateBytes);
+    juce::MemoryBlock makeSetState    (const juce::MemoryBlock& stateBytes);
 
-    IpcMessageType    getType     (const juce::MemoryBlock& data);
-    juce::MidiMessage parseMidi   (const juce::MemoryBlock& data);
+    IpcMessageType    getType        (const juce::MemoryBlock& data);
+    juce::MidiMessage parseMidi      (const juce::MemoryBlock& data);
+    void              parseWindowPos (const juce::MemoryBlock& data, int& x, int& y, int& w, int& h);
+    juce::MemoryBlock parseStateData (const juce::MemoryBlock& data);  // for StateData and SetState
 }
 
 // =====================================================================
@@ -68,12 +78,17 @@ public:
     void stopPipe();
 
     /** Thread-safe sends. Returns false if not yet connected. */
-    bool sendMidi        (const juce::MidiMessage& msg);
-    bool sendAudioConfig (float sampleRate, int32_t bufferSize);
+    bool sendMidi          (const juce::MidiMessage& msg);
+    bool sendAudioConfig   (float sampleRate, int32_t bufferSize);
     bool sendShutdown();
+    bool sendWindowPos     (int x, int y, int w, int h);
+    bool sendRequestState();
+    bool sendSetState      (const juce::MemoryBlock& stateBytes);
 
-    std::function<void()> onConnected;
-    std::function<void()> onDisconnected;
+    std::function<void()>                        onConnected;
+    std::function<void()>                        onDisconnected;
+    std::function<void(int,int,int,int)>         onWindowPosReceived;
+    std::function<void(const juce::MemoryBlock&)> onStateReceived;
 
 private:
     void connectionMade() override;
@@ -208,11 +223,16 @@ public:
 
     /** Send a heartbeat to Core (call on a timer, e.g. every 1500 ms). */
     bool sendHeartbeat();
+    bool sendWindowPos (int x, int y, int w, int h);
+    bool sendStateData (const juce::MemoryBlock& stateBytes);
 
     std::function<void()>                           onConnected;
     std::function<void()>                           onDisconnected;
     std::function<void(const juce::MidiMessage&)>   onMidiReceived;
     std::function<void(float, int32_t)>             onAudioConfigReceived;
+    std::function<void(int,int,int,int)>            onWindowPosReceived;
+    std::function<void()>                           onRequestStateReceived;
+    std::function<void(const juce::MemoryBlock&)>   onSetStateReceived;
 
 private:
     void connectionMade() override;

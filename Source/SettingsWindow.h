@@ -31,15 +31,27 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioMidiSettingsPage)
 };
 
-class PluginPathsPage : public Component
+class PluginPathsPage : public Component, public ListBoxModel
 {
 public:
-    PluginPathsPage();
+    explicit PluginPathsPage (PropertiesFile* prefs);
     void resized() override;
 
+    // ListBoxModel
+    int  getNumRows() override;
+    void paintListBoxItem (int row, Graphics& g, int width, int height, bool selected) override;
+
+    std::function<void()> onPathsChanged;
+
 private:
-    TextEditor info;
-    TextButton addBtn, rmBtn;
+    void loadPaths();
+    void savePaths();
+
+    PropertiesFile* prefs;
+    StringArray     paths;
+    ListBox         pathList { {}, this };
+    TextButton      addBtn, rmBtn;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginPathsPage)
 };
 
@@ -80,6 +92,7 @@ public:
     {
         std::function<void(bool)> onShowLevelMeter, onShowMidiMonitor, onShowInfoMonitor;
         std::function<void(int)>  onTransposeChange, onChannelFilterChange;
+        std::function<void()>     onPluginPathsChanged;
     };
 
     SettingsWindow (AudioDeviceManager& dm, PropertiesFile* prefs, Callbacks cbs);

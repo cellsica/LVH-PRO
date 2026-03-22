@@ -11,11 +11,13 @@ class PluginScanThread : public Thread
 public:
     PluginScanThread (KnownPluginList& list,
                       const File& deadMansPedalFile,
+                      StringArray extraPaths,
                       std::function<void(const String& filename)> onProgress,
                       std::function<void()> onComplete)
         : Thread ("LVH-PluginScan"),
           knownPlugins (list),
           deadMansPedal (deadMansPedalFile),
+          extraScanPaths (std::move (extraPaths)),
           progressCallback (std::move (onProgress)),
           completeCallback (std::move (onComplete))
     {}
@@ -30,6 +32,9 @@ public:
     {
         VST3PluginFormat vst3;
         auto searchPaths = vst3.getDefaultLocationsToSearch();
+        for (const auto& p : extraScanPaths)
+            if (File (p).isDirectory())
+                searchPaths.add (p, true);
 
         PluginDirectoryScanner scanner (knownPlugins, vst3, searchPaths,
                                         true, deadMansPedal, false);
@@ -48,6 +53,7 @@ public:
 private:
     KnownPluginList& knownPlugins;
     File deadMansPedal;
+    StringArray extraScanPaths;
     std::function<void(const String&)> progressCallback;
     std::function<void()> completeCallback;
 

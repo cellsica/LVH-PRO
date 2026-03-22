@@ -51,7 +51,7 @@ public:
     {
         // Called on the audio thread — capture only POD values, build Strings on the message thread.
         MessageManager::callAsync ([this, channel, note, velocity] {
-            String name = MidiMessage::getMidiNoteName (note, true, true, 4);
+            String name = MidiMessage::getMidiNoteName (note, true, true, 3);
             String text = "Note: " + String (note) + " (" + name + ")"
                         + " Vel: " + String (roundToInt (velocity * 127.f))
                         + " Ch: "  + String (channel);
@@ -92,6 +92,7 @@ public:
         mainWindow.reset (new MainWindow (getApplicationName(), keyboardState));
 
         pcKeyListener = std::make_unique<PCKeyboardListener> (keyboardState);
+        pcKeyListener->onOctaveShift = [this] (int delta) { applyOctaveShift (delta); };
         mainWindow->addKeyListener (pcKeyListener.get());
 
         keyboardState.addListener (this);
@@ -155,6 +156,52 @@ public:
     void systemRequestedQuit() override { quit(); }
 
 private:
+    std::unique_ptr<MixerWindow> mixerWindow;
+
+    void toggleMixerWindow (bool show)
+    {
+        if (show)
+        {
+            if (mixerWindow == nullptr)
+            {
+                mixerWindow = std::make_unique<MixerWindow> ("Mixer Console");
+                mixerWindow->onClose = [this] {
+                    if (auto* mc = mainComp()) mc->setMixerWindowVisible (false);
+                    mixerWindow->setVisible (false);
+                };
+                mixerWindow->onMasterGainChange = [this] (float v) {
+                    masterVolume = (double) v;
+                    audioEngine.setOutputGain (v);
+                    if (auto* mc = mainComp())
+                    {
+                        mc->getVolumeSlider().setValue ((double) v, dontSendNotification);
+                        mc->setVolumeDisplay ((double) v);
+                    }
+                };
+            }
+
+            // Sync MASTER fader to current Core slider value
+            if (auto* mc = mainComp())
+                mixerWindow->setMasterGain ((float) mc->getVolumeSlider().getValue());
+
+            // Populate with the currently connected Instrument bridges
+            juce::Array<BridgeInstance*> instruments;
+            for (auto* b : bridges)
+                if (b->getState() == BridgeInstance::State::Connected
+                    && b->getRole() == BridgeInstance::Role::Instrument)
+                    instruments.add (b);
+            mixerWindow->updateBridges (instruments);
+
+            mixerWindow->setVisible (true);
+            mixerWindow->toFront (true);
+        }
+        else
+        {
+            if (mixerWindow != nullptr)
+                mixerWindow->setVisible (false);
+        }
+    }
+
     File getCacheFile() const
     {
         return File::getSpecialLocation (File::userApplicationDataDirectory)
@@ -200,8 +247,12 @@ private:
 
         if (auto* mc = mainComp()) mc->showScanOverlay();
 
+        StringArray extraPaths;
+        if (auto* prefs = appProperties.getUserSettings())
+            extraPaths = StringArray::fromTokens (prefs->getValue ("pluginScanPaths"), "|", "");
+
         scanThread = std::make_unique<PluginScanThread> (
-            knownPlugins, getDeadMansPedalFile(),
+            knownPlugins, getDeadMansPedalFile(), extraPaths,
             [this, token] (const String& fn) {
                 if (! token->load()) return;
                 if (auto* mc = mainComp()) mc->updateScanProgress (fn);
@@ -242,6 +293,9 @@ private:
             };
             cbs.onChannelFilterChange = [this] (int v) {
                 audioEngine.setChannelFilter (v);
+            };
+            cbs.onPluginPathsChanged = [this] {
+                startPluginScan();
             };
             settingsWindow = std::make_unique<SettingsWindow> (
                 deviceManager, appProperties.getUserSettings(), cbs);
@@ -284,9 +338,10 @@ private:
             }
         };
 
-        mc->getVolumeSlider().onValueChange = [this, mc, savedGain] {
-            double v = mc->getVolumeSlider().getValue();
+        mc->onVolumeChanged = [this, mc, savedGain] (double v) {
+            masterVolume = v;
             audioEngine.setOutputGain ((float) v);
+            if (mixerWindow != nullptr) mixerWindow->setMasterGain ((float) v);
             // If slider is moved away from 0 while muted, auto-unmute
             if (v > 0.0 && mc->getSpeakerButton().getToggleState())
             {
@@ -358,7 +413,11 @@ private:
             m.addSeparator();
             m.addItem (1, "Settings...");
             m.addSeparator();
+            m.addItem (5001, "Save Project...");
+            m.addItem (5002, "Open Project...");
+            m.addSeparator();
             m.addItem (2, "[Pro] Launch Bridge...");
+            m.addItem (5003, "[Pro] Launch Bridge as Effect...");
 
             // ── Recent bridge files (IDs 2000-2019) ──
             auto recents = getRecentBridgeFiles();
@@ -381,9 +440,76 @@ private:
                 {
                     openSettings();
                 }
+                else if (result == 5001)
+                {
+                    auto chooser = std::make_shared<juce::FileChooser> (
+                        "Save Project...",
+                        currentProjectFile.existsAsFile()
+                            ? currentProjectFile.getParentDirectory()
+                            : juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
+                        "*.lvh");
+                    chooser->launchAsync (
+                        juce::FileBrowserComponent::saveMode
+                        | juce::FileBrowserComponent::canSelectFiles
+                        | juce::FileBrowserComponent::warnAboutOverwriting,
+                        [this, chooser] (const juce::FileChooser& fc) {
+                            auto f = fc.getResult();
+                            if (f.getFullPathName().isNotEmpty())
+                            {
+                                currentProjectFile = f.withFileExtension ("lvh");
+                                saveProject (currentProjectFile);
+                            }
+                        });
+                }
+                else if (result == 5002)
+                {
+                    auto chooser = std::make_shared<juce::FileChooser> (
+                        "Open Project...",
+                        currentProjectFile.existsAsFile()
+                            ? currentProjectFile.getParentDirectory()
+                            : juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
+                        "*.lvh");
+                    chooser->launchAsync (
+                        juce::FileBrowserComponent::openMode
+                        | juce::FileBrowserComponent::canSelectFiles,
+                        [this, chooser] (const juce::FileChooser& fc) {
+                            auto f = fc.getResult();
+                            if (f.existsAsFile())
+                            {
+                                currentProjectFile = f;
+                                loadProject (f);
+                            }
+                        });
+                }
                 else if (result == 2)
                 {
                     if (auto* mc = mainComp()) mc->onLaunchBridgeClicked();
+                }
+                else if (result == 5003)
+                {
+                    // Launch a VST3 plugin as an Effect bridge
+                    juce::File startDir;
+                    if (auto* prefs = appProperties.getUserSettings())
+                        if (prefs->getBoolValue ("rememberLastFolder", true))
+                        {
+                            juce::String last = prefs->getValue ("lastBridgeFolder");
+                            if (last.isNotEmpty()) startDir = juce::File (last);
+                        }
+                    if (! startDir.isDirectory())
+                        startDir = juce::File ("C:/Program Files/Common Files/VST3");
+                    if (! startDir.isDirectory())
+                        startDir = juce::File::getSpecialLocation (juce::File::userDesktopDirectory);
+
+                    auto chooser = std::make_shared<juce::FileChooser> (
+                        "Select a VST3 effect plugin to bridge...", startDir, "*.vst3");
+                    chooser->launchAsync (
+                        juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                        [this, chooser] (const juce::FileChooser& fc)
+                        {
+                            auto f = fc.getResult();
+                            if (f.existsAsFile())
+                                launchBridgeWithPath (f, BridgeInstance::Role::Effect);
+                        });
                 }
                 else if (result == 3)
                 {
@@ -450,7 +576,12 @@ private:
 
         mc->onPanicClicked = [this] { audioEngine.allNotesOff(); };
 
+        mc->onOctaveShift = [this] (int delta) { applyOctaveShift (delta); };
+
+        mc->onMixerToggle = [this] (bool show) { toggleMixerWindow (show); };
+
         mc->onLaunchBridgeClicked = [this] {
+
             // Determine the start directory:
             //   1. Last opened folder (if "remember" is enabled and stored)
             //   2. Default VST3 system folder
@@ -481,15 +612,27 @@ private:
         };
     }
 
-    // Collect all Connected bridges and rebuild the audio graph accordingly.
+    // Collect all Connected bridges, split by role, and rebuild the audio graph.
+    // Instruments are mixed in parallel; Effects are chained serially after them.
+    // Also refreshes the Mixer Console if it is open.
     // Falls back to sine wave if no bridges are connected.
     void rebuildBridgeGraph()
     {
-        juce::Array<BridgeInstance*> active;
+        juce::Array<BridgeInstance*> instruments, effects;
         for (auto* b : bridges)
-            if (b->getState() == BridgeInstance::State::Connected)
-                active.add (b);
-        audioEngine.rebuildBridgeGraph (active);
+        {
+            if (b->getState() != BridgeInstance::State::Connected)
+                continue;
+            if (b->getRole() == BridgeInstance::Role::Effect)
+                effects.add (b);
+            else
+                instruments.add (b);
+        }
+        audioEngine.rebuildBridgeGraph (instruments, effects);
+
+        // Keep the Mixer Console in sync with the current bridge list
+        if (mixerWindow != nullptr)
+            mixerWindow->updateBridges (instruments);
     }
 
     // Returns up to recentBridgeCount recent bridge plugin files (newest first).
@@ -519,7 +662,9 @@ private:
     }
 
     // Common bridge launch logic used by both the file chooser and recent-file menu.
-    void launchBridgeWithPath (const juce::File& pluginFile)
+    // role defaults to Instrument; pass Role::Effect to launch as an effect bridge.
+    void launchBridgeWithPath (const juce::File& pluginFile,
+                               BridgeInstance::Role role = BridgeInstance::Role::Instrument)
     {
         auto bridgeExe = juce::File::getSpecialLocation (juce::File::currentExecutableFile)
                              .getParentDirectory()
@@ -533,16 +678,64 @@ private:
         }
 
         auto* bridge = bridges.add (new BridgeInstance());
-        juce::String pluginName = pluginFile.getFileNameWithoutExtension();
+        bridge->setRole (role);
+        juce::String pluginName = pluginFile.getFileNameWithoutExtension()
+                                  + (role == BridgeInstance::Role::Effect ? " [FX]" : "");
 
-        bridge->onConnected = [this, pluginName] (BridgeInstance* b) {
+        juce::String pluginPathStr = pluginFile.getFullPathName();
+        bridge->onConnected = [this, pluginName, pluginPathStr] (BridgeInstance* b) {
             auto& setup = deviceManager.getAudioDeviceSetup();
             auto sr = static_cast<float> (setup.sampleRate > 0.0 ? setup.sampleRate : 44100.0);
             auto bs = setup.bufferSize > 0 ? setup.bufferSize : 512;
+
+            // Send SetState BEFORE AudioConfig so the Bridge can apply it
+            // before prepareToPlay (correct VST3 restore order: setState → prepareToPlay).
+            auto sit = pendingPluginStates.find (pluginPathStr);
+            if (sit != pendingPluginStates.end())
+            {
+                if (auto* mc = mainComp())
+                    mc->pushSystemMessage ("Restoring plugin state for: " + pluginName
+                        + " (" + juce::String ((int) sit->second.getSize()) + " bytes)");
+                b->sendSetState (sit->second);
+                pendingPluginStates.erase (sit);
+            }
+
+            // Restore mixer settings before rebuildBridgeGraph so MixerStrip reads correct values
+            auto mit = pendingMixerSettings.find (pluginPathStr);
+            if (mit != pendingMixerSettings.end())
+            {
+                b->mixerGain.store  (mit->second.gain,  std::memory_order_relaxed);
+                b->mixerPan.store   (mit->second.pan,   std::memory_order_relaxed);
+                b->mixerMuted.store (mit->second.muted, std::memory_order_relaxed);
+                b->mixerCustomName  = mit->second.customName;
+                b->mixerCustomColor = mit->second.customColor;
+                pendingMixerSettings.erase (mit);
+            }
+
             b->sendAudioConfig (sr, bs);
             if (auto* mc = mainComp())
                 mc->pushSystemMessage ("Bridge connected: " + pluginName);
             juce::MessageManager::callAsync ([this] { rebuildBridgeGraph(); });
+
+            // Restore window position from project load
+            auto it = pendingWindowBounds.find (pluginPathStr);
+            if (it != pendingWindowBounds.end())
+            {
+                auto bounds = it->second;
+                pendingWindowBounds.erase (it);
+                juce::Timer::callAfterDelay (800, [b, bounds] {
+                    b->sendWindowPos (bounds.getX(), bounds.getY(),
+                                      bounds.getWidth(), bounds.getHeight());
+                });
+            }
+
+            // Restore MIDI routing target
+            if (pendingMidiTarget.isNotEmpty() && pluginPathStr == pendingMidiTarget)
+            {
+                midiTargetBridge.store (b);
+                routeToAll.store (false);
+                pendingMidiTarget = juce::String();
+            }
         };
 
         bridge->onDisconnected = [this, pluginName] (BridgeInstance* b) {
@@ -575,6 +768,320 @@ private:
                                  pluginFile.getParentDirectory().getFullPathName());
     }
 
+    // Collect plugin states from all connected bridges, then write the project XML.
+    // Uses a shared counter to know when all responses have arrived (or a 2s timeout fires).
+    void saveProject (const juce::File& file)
+    {
+        // Count connected bridges that can provide state
+        juce::Array<BridgeInstance*> connected;
+        for (auto* b : bridges)
+            if (b->getState() == BridgeInstance::State::Connected)
+                connected.add (b);
+
+        if (connected.isEmpty())
+        {
+            writeProjectXml (file, {});
+            return;
+        }
+
+        // Collect state responses asynchronously
+        struct SaveContext
+        {
+            std::vector<BridgeStateEntry> entries;
+            juce::File                    targetFile;
+            int                           remaining = 0;
+            bool                          written   = false;
+        };
+        auto ctx = std::make_shared<SaveContext>();
+        ctx->targetFile  = file;
+        ctx->remaining   = connected.size();
+        for (auto* b : connected)
+            ctx->entries.push_back ({ b, {}, false });
+
+        // Timeout: write whatever we have after 2 seconds
+        juce::Timer::callAfterDelay (2000, [this, ctx] {
+            if (! ctx->written)
+            {
+                ctx->written = true;
+                writeProjectXml (ctx->targetFile, ctx->entries);
+            }
+        });
+
+        // Wire onStateReceived for each connected bridge
+        for (int i = 0; i < (int) ctx->entries.size(); ++i)
+        {
+            auto* b = ctx->entries[i].bridge;
+            b->onStateReceived = [this, ctx, i] (BridgeInstance*, const juce::MemoryBlock& state) {
+                if (ctx->written) return;
+                ctx->entries[i].state    = state;
+                ctx->entries[i].received = true;
+                if (--ctx->remaining <= 0)
+                {
+                    ctx->written = true;
+                    writeProjectXml (ctx->targetFile, ctx->entries);
+                }
+            };
+            b->sendRequestState();
+        }
+
+        if (auto* mc = mainComp())
+            mc->pushSystemMessage ("Saving project (collecting plugin states)...");
+    }
+
+    struct BridgeStateEntry { BridgeInstance* bridge; juce::MemoryBlock state; bool received = false; };
+
+    void writeProjectXml (const juce::File& file,
+                          const std::vector<BridgeStateEntry>& stateEntries)
+    {
+        auto xml = std::make_unique<XmlElement> ("LVH-Project");
+        xml->setAttribute ("version", 1);
+
+        auto* bridgesEl = xml->createNewChildElement ("Bridges");
+        for (auto* b : bridges)
+        {
+            if (b->getState() == BridgeInstance::State::Connected)
+            {
+                auto* el = bridgesEl->createNewChildElement ("Bridge");
+                el->setAttribute ("plugin", b->getPluginPath());
+                el->setAttribute ("role", b->getRole() == BridgeInstance::Role::Effect
+                                          ? "effect" : "instrument");
+                auto bounds = b->getWindowBounds();
+                el->setAttribute ("x", bounds.getX());
+                el->setAttribute ("y", bounds.getY());
+                el->setAttribute ("w", bounds.getWidth());
+                el->setAttribute ("h", bounds.getHeight());
+
+                // Mixer state
+                el->setAttribute ("gain",  (double) b->mixerGain.load());
+                el->setAttribute ("pan",   (double) b->mixerPan.load());
+                el->setAttribute ("muted", b->mixerMuted.load() ? 1 : 0);
+                if (b->mixerCustomName.isNotEmpty())
+                    el->setAttribute ("customName", b->mixerCustomName);
+                if (b->mixerCustomColor.getAlpha() > 0)
+                    el->setAttribute ("customColor", b->mixerCustomColor.toDisplayString (true));
+
+                // Plugin state (base64 encoded)
+                for (const auto& entry : stateEntries)
+                    if (entry.bridge == b && entry.received && entry.state.getSize() > 0)
+                    {
+                        el->setAttribute ("state", juce::Base64::toBase64 (
+                            entry.state.getData(), entry.state.getSize()));
+                        break;
+                    }
+            }
+        }
+
+        auto* routeEl = xml->createNewChildElement ("MidiRouting");
+        routeEl->setAttribute ("routeToAll", routeToAll.load() ? 1 : 0);
+        if (! routeToAll.load())
+            if (auto* t = midiTargetBridge.load())
+                routeEl->setAttribute ("targetPlugin", t->getPluginPath());
+
+        auto* settingsEl = xml->createNewChildElement ("Settings");
+        settingsEl->setAttribute ("octaveOffset", octaveOffset);
+        double savedVolume = mainComp() ? mainComp()->getVolumeSlider().getValue() : masterVolume;
+        settingsEl->setAttribute ("masterVolume", savedVolume);
+        if (auto* prefs = appProperties.getUserSettings())
+        {
+            settingsEl->setAttribute ("transpose",     prefs->getIntValue ("transpose",     0));
+            settingsEl->setAttribute ("channelFilter", prefs->getIntValue ("channelFilter", 0));
+        }
+
+        // Core (main) window position
+        if (mainWindow != nullptr)
+        {
+            auto b = mainWindow->getBounds();
+            settingsEl->setAttribute ("coreWindowX", b.getX());
+            settingsEl->setAttribute ("coreWindowY", b.getY());
+            settingsEl->setAttribute ("coreWindowW", b.getWidth());
+            settingsEl->setAttribute ("coreWindowH", b.getHeight());
+        }
+
+        // Mixer Console position + visibility
+        settingsEl->setAttribute ("mixerVisible", (mixerWindow != nullptr && mixerWindow->isVisible()) ? 1 : 0);
+        if (mixerWindow != nullptr)
+        {
+            auto b = mixerWindow->getBounds();
+            settingsEl->setAttribute ("mixerWindowX", b.getX());
+            settingsEl->setAttribute ("mixerWindowY", b.getY());
+            settingsEl->setAttribute ("mixerWindowW", b.getWidth());
+            settingsEl->setAttribute ("mixerWindowH", b.getHeight());
+        }
+
+        xml->writeTo (file);
+        if (auto* mc = mainComp())
+        {
+            int savedStateCount = 0;
+            for (const auto& entry : stateEntries)
+                if (entry.received && entry.state.getSize() > 0) ++savedStateCount;
+
+                mc->pushSystemMessage ("Project saved: " + file.getFileNameWithoutExtension()
+                + " (" + juce::String (savedStateCount) + "/"
+                + juce::String (stateEntries.size()) + " plugin states captured)");
+        }
+
+        // Clear state callbacks
+        for (auto& entry : stateEntries)
+            if (entry.bridge != nullptr)
+                entry.bridge->onStateReceived = nullptr;
+    }
+
+    void loadProject (const juce::File& file)
+    {
+        if (! file.existsAsFile()) return;
+
+        auto xml = XmlDocument::parse (file);
+        if (xml == nullptr || xml->getTagName() != "LVH-Project")
+        {
+            if (auto* mc = mainComp())
+                mc->pushSystemMessage ("Failed to load project: " + file.getFileName());
+            return;
+        }
+
+        // Shut down existing bridges
+        audioEngine.buildGraphWithSineWave();
+        bridges.clear();
+        pendingWindowBounds.clear();
+        pendingPluginStates.clear();
+        pendingMixerSettings.clear();
+        pendingMidiTarget = String();
+
+        // Restore settings
+        if (auto* settingsEl = xml->getChildByName ("Settings"))
+        {
+            int targetOctave = settingsEl->getIntAttribute ("octaveOffset", 0);
+            applyOctaveShift (targetOctave - octaveOffset);
+
+            int transpose = settingsEl->getIntAttribute ("transpose", 0);
+            int channel   = settingsEl->getIntAttribute ("channelFilter", 0);
+            audioEngine.setTranspose (transpose);
+            audioEngine.setChannelFilter (channel);
+            if (auto* prefs = appProperties.getUserSettings())
+            {
+                prefs->setValue ("transpose",     transpose);
+                prefs->setValue ("channelFilter", channel);
+            }
+
+            masterVolume = settingsEl->getDoubleAttribute ("masterVolume", 1.0);
+            if (auto* mc = mainComp())
+            {
+                mc->getVolumeSlider().setValue (masterVolume, dontSendNotification);
+                mc->setVolumeDisplay (masterVolume);
+                audioEngine.setOutputGain ((float) masterVolume);
+                mc->pushSystemMessage ("  masterVol loaded: " + juce::String (masterVolume, 3));
+            }
+            if (mixerWindow != nullptr) mixerWindow->setMasterGain ((float) masterVolume);
+
+            // Restore Core window position
+            int coreW = settingsEl->getIntAttribute ("coreWindowW", 0);
+            int coreH = settingsEl->getIntAttribute ("coreWindowH", 0);
+            if (mainWindow != nullptr && coreW > 200 && coreH > 100)
+            {
+                int coreX = settingsEl->getIntAttribute ("coreWindowX", 0);
+                int coreY = settingsEl->getIntAttribute ("coreWindowY", 0);
+                mainWindow->setBounds (coreX, coreY, coreW, coreH);
+            }
+
+            // Restore Mixer Console visibility + position
+            bool mixerWasVisible = settingsEl->getIntAttribute ("mixerVisible", 0) != 0;
+            int mixerW = settingsEl->getIntAttribute ("mixerWindowW", 0);
+            int mixerH = settingsEl->getIntAttribute ("mixerWindowH", 0);
+            if (mixerWasVisible)
+            {
+                toggleMixerWindow (true);
+                if (mixerWindow != nullptr && mixerW > 100 && mixerH > 50)
+                {
+                    int mixerX = settingsEl->getIntAttribute ("mixerWindowX", 0);
+                    int mixerY = settingsEl->getIntAttribute ("mixerWindowY", 0);
+                    mixerWindow->setBounds (mixerX, mixerY, mixerW, mixerH);
+                }
+                if (auto* mc = mainComp())
+                    mc->setMixerWindowVisible (true);
+            }
+            else
+            {
+                if (mixerWindow != nullptr)
+                    mixerWindow->setVisible (false);
+                if (auto* mc = mainComp())
+                    mc->setMixerWindowVisible (false);
+            }
+        }
+
+        // Restore MIDI routing state
+        if (auto* routeEl = xml->getChildByName ("MidiRouting"))
+        {
+            bool allMode = routeEl->getIntAttribute ("routeToAll", 1) != 0;
+            routeToAll.store (allMode);
+            midiTargetBridge.store (nullptr);
+            if (! allMode)
+                pendingMidiTarget = routeEl->getStringAttribute ("targetPlugin");
+        }
+
+        // Launch bridges
+        if (auto* bridgesEl = xml->getChildByName ("Bridges"))
+        {
+            for (auto* el : bridgesEl->getChildWithTagNameIterator ("Bridge"))
+            {
+                juce::String pluginPath = el->getStringAttribute ("plugin");
+                juce::String roleStr    = el->getStringAttribute ("role", "instrument");
+                auto role = (roleStr == "effect") ? BridgeInstance::Role::Effect
+                                                  : BridgeInstance::Role::Instrument;
+                int x = el->getIntAttribute ("x", 0);
+                int y = el->getIntAttribute ("y", 0);
+                int w = el->getIntAttribute ("w", 0);
+                int h = el->getIntAttribute ("h", 0);
+
+                if (pluginPath.isNotEmpty())
+                {
+                    if (w > 0 && h > 0)
+                        pendingWindowBounds[pluginPath] = { x, y, w, h };
+
+                    // Decode and store plugin state for restoration after connect
+                    juce::String stateB64 = el->getStringAttribute ("state");
+                    if (stateB64.isNotEmpty())
+                    {
+                        juce::MemoryBlock stateBytes;
+                        juce::MemoryOutputStream mos (stateBytes, false);
+                        juce::Base64::convertFromBase64 (mos, stateB64);
+                        if (stateBytes.getSize() > 0)
+                            pendingPluginStates[pluginPath] = stateBytes;
+                    }
+
+                    // Store mixer settings for restoration after connect
+                    MixerSettings ms;
+                    ms.gain  = (float) el->getDoubleAttribute ("gain",  1.0);
+                    ms.pan   = (float) el->getDoubleAttribute ("pan",   0.0);
+                    ms.muted = el->getIntAttribute ("muted", 0) != 0;
+                    ms.customName = el->getStringAttribute ("customName");
+                    juce::String colorStr = el->getStringAttribute ("customColor");
+                    if (colorStr.isNotEmpty())
+                        ms.customColor = juce::Colour::fromString (colorStr);
+                    pendingMixerSettings[pluginPath] = ms;
+
+                    juce::File pluginFile (pluginPath);
+                    if (pluginFile.exists())
+                        launchBridgeWithPath (pluginFile, role);
+                    else if (auto* mc = mainComp())
+                        mc->pushSystemMessage ("Plugin not found: " + pluginFile.getFileName());
+                }
+            }
+        }
+
+        if (auto* mc = mainComp())
+            mc->pushSystemMessage ("Project loaded: " + file.getFileNameWithoutExtension());
+    }
+
+    void applyOctaveShift (int delta)
+    {
+        octaveOffset = jlimit (-3, 3, octaveOffset + delta);
+        if (pcKeyListener) pcKeyListener->setOctaveOffset (octaveOffset);
+        if (auto* mc = mainComp())
+        {
+            mc->getKeyboardComponent().setOctaveOffset (octaveOffset);
+            mc->setOctaveDisplay (4 + octaveOffset);
+        }
+    }
+
     MainComponent* mainComp()
     {
         return mainWindow != nullptr
@@ -602,6 +1109,24 @@ private:
     // Accessed from MIDI input thread and message thread — use atomics.
     std::atomic<bool>            routeToAll       { true };
     std::atomic<BridgeInstance*> midiTargetBridge { nullptr };
+
+    int    octaveOffset    = 0;    // message thread only
+    double masterVolume    = 1.0;  // mirrors volume slider; updated in onValueChange
+
+    // Project persistence
+    struct MixerSettings
+    {
+        float        gain  = 1.f;
+        float        pan   = 0.f;
+        bool         muted = false;
+        juce::String customName;
+        juce::Colour customColor { juce::Colours::transparentBlack };
+    };
+    juce::File                                      currentProjectFile;
+    std::map<juce::String, juce::Rectangle<int>>    pendingWindowBounds;
+    std::map<juce::String, juce::MemoryBlock>       pendingPluginStates;
+    std::map<juce::String, MixerSettings>           pendingMixerSettings;
+    juce::String                                    pendingMidiTarget;
 
     MidiKeyboardState keyboardState;
     AudioDeviceManager deviceManager;

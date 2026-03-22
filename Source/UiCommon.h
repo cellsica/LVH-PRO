@@ -13,24 +13,24 @@
 
 using namespace juce;
 
-// PC keyboard → MIDI note (channel 1, middle C = MIDI 60 = C4)
+// PC keyboard → MIDI note (standard convention: MIDI 60 = C4; Z = C5 = MIDI 72)
 inline int pcKeyToNote (int kc)
 {
     switch (kc)
     {
-        case 'z': case 'Z': return 60;
-        case 's': case 'S': return 61;
-        case 'x': case 'X': return 62;
-        case 'd': case 'D': return 63;
-        case 'c': case 'C': return 64;
-        case 'v': case 'V': return 65;
-        case 'g': case 'G': return 66;
-        case 'b': case 'B': return 67;
-        case 'h': case 'H': return 68;
-        case 'n': case 'N': return 69;
-        case 'j': case 'J': return 70;
-        case 'm': case 'M': return 71;
-        case ',':            return 72;
+        case 'z': case 'Z': return 72;
+        case 's': case 'S': return 73;
+        case 'x': case 'X': return 74;
+        case 'd': case 'D': return 75;
+        case 'c': case 'C': return 76;
+        case 'v': case 'V': return 77;
+        case 'g': case 'G': return 78;
+        case 'b': case 'B': return 79;
+        case 'h': case 'H': return 80;
+        case 'n': case 'N': return 81;
+        case 'j': case 'J': return 82;
+        case 'm': case 'M': return 83;
+        case ',':            return 84;
         default:             return -1;
     }
 }
@@ -38,9 +38,9 @@ inline int pcKeyToNote (int kc)
 inline const std::map<int, String>& noteKeyLabels()
 {
     static const std::map<int, String> m {
-        {60,"Z"},{61,"S"},{62,"X"},{63,"D"},{64,"C"},
-        {65,"V"},{66,"G"},{67,"B"},{68,"H"},{69,"N"},
-        {70,"J"},{71,"M"},{72,","}
+        {72,"Z"},{73,"S"},{74,"X"},{75,"D"},{76,"C"},
+        {77,"V"},{78,"G"},{79,"B"},{80,"H"},{81,"N"},
+        {82,"J"},{83,"M"},{84,","}
     };
     return m;
 }
@@ -110,5 +110,43 @@ namespace Icons
         for (int i = 0; i < 3; ++i)
             g.fillRoundedRectangle (a.getX(), a.getY() + gap * (i + 1) + barH * i,
                                     a.getWidth(), barH, 1.f);
+    }
+
+    inline void mixer (Graphics& g, Rectangle<float> a)
+    {
+        g.setColour (Colours::white);
+        float w = a.getWidth() / 4.0f;
+        float h = a.getHeight();
+        for (int i = 0; i < 3; ++i)
+        {
+            float x = a.getX() + (i + 1) * w;
+            g.drawVerticalLine (roundToInt(x), a.getY(), a.getBottom());
+            float thumbY = a.getY() + h * (0.3f + i * 0.2f);
+            g.fillRect (x - 2.5f, thumbY - 1.5f, 5.0f, 3.0f);
+        }
+    }
+
+    // Mini LED meter — two vertical bars (L/R) with green/yellow/red segments
+    inline void led (Graphics& g, Rectangle<float> a)
+    {
+        const float barW = a.getWidth() * 0.30f;
+        const float gap  = a.getWidth() * 0.08f;
+        const float cx   = a.getCentreX();
+        const float h    = a.getHeight();
+
+        for (int bar = 0; bar < 2; ++bar)
+        {
+            float x = (bar == 0) ? cx - barW - gap * 0.5f : cx + gap * 0.5f;
+
+            // Red top (clipping zone)
+            g.setColour (Colour (0xffff3333));
+            g.fillRect (x, a.getY(),              barW, h * 0.20f - 1.f);
+            // Yellow mid
+            g.setColour (Colour (0xffffcc00));
+            g.fillRect (x, a.getY() + h * 0.22f, barW, h * 0.25f - 1.f);
+            // Green bottom
+            g.setColour (Colour (0xff00dd44));
+            g.fillRect (x, a.getY() + h * 0.50f, barW, h * 0.50f);
+        }
     }
 }

@@ -27,6 +27,34 @@ MainComponent::MainComponent (MidiKeyboardState& state)
     monitorToggleButton->setColour (TextButton::buttonOnColourId, Colour (0xff2a5060));
     monitorToggleButton->onClick = [this] { toggleMonitor(); };
 
+    mixerToggleButton = std::make_unique<IconButton> ("Toggle Mixer Console", Icons::mixer);
+    addAndMakeVisible (*mixerToggleButton);
+    mixerToggleButton->setClickingTogglesState (true);
+    mixerToggleButton->setToggleState (false, dontSendNotification);
+    mixerToggleButton->setColour (TextButton::buttonColourId,   Colour (0xff333344));
+    mixerToggleButton->setColour (TextButton::buttonOnColourId, Colour (0xff604020));
+    mixerToggleButton->onClick = [this] { toggleMixer(); };
+
+
+    octaveDownButton = std::make_unique<TextButton> ("-");
+    addAndMakeVisible (*octaveDownButton);
+    octaveDownButton->setTooltip ("Octave Down (shortcut: [)");
+    octaveDownButton->setColour (TextButton::buttonColourId, Colour (0xff333344));
+    octaveDownButton->onClick = [this] { if (onOctaveShift) onOctaveShift (-1); };
+
+    octaveLabel = std::make_unique<Label>();
+    addAndMakeVisible (*octaveLabel);
+    octaveLabel->setColour (Label::textColourId, Colour (0xffaaaacc));
+    octaveLabel->setFont (Font (11.0f, Font::bold));
+    octaveLabel->setJustificationType (Justification::centred);
+    octaveLabel->setText ("Oct 4", dontSendNotification);
+
+    octaveUpButton = std::make_unique<TextButton> ("+");
+    addAndMakeVisible (*octaveUpButton);
+    octaveUpButton->setTooltip ("Octave Up (shortcut: ])");
+    octaveUpButton->setColour (TextButton::buttonColourId, Colour (0xff333344));
+    octaveUpButton->onClick = [this] { if (onOctaveShift) onOctaveShift (+1); };
+
     speakerButton = std::make_unique<SpeakerButton>();
     addAndMakeVisible (*speakerButton);
     speakerButton->setColour (TextButton::buttonColourId, Colour (0xff333344));
@@ -35,7 +63,20 @@ MainComponent::MainComponent (MidiKeyboardState& state)
     addAndMakeVisible (*volumeSlider);
     volumeSlider->setRange (0.0, 1.0);
     volumeSlider->setValue (1.0, dontSendNotification);
-    volumeSlider->setTooltip ("Volume");
+    volumeSlider->setTooltip ("Master Volume");
+    volumeSlider->onValueChange = [this] {
+        double v = volumeSlider->getValue();
+        setVolumeDisplay (v);
+        if (onVolumeChanged) onVolumeChanged (v);
+    };
+
+    volumeValueLabel = std::make_unique<Label>();
+    addAndMakeVisible (*volumeValueLabel);
+    volumeValueLabel->setText ("100%", dontSendNotification);
+    volumeValueLabel->setFont (Font (10.0f, Font::bold));
+    volumeValueLabel->setJustificationType (Justification::centred);
+    volumeValueLabel->setColour (Label::textColourId, Colour (0xffaaaacc));
+    volumeValueLabel->setColour (Label::backgroundColourId, Colour (0xff1e1e2e));
 
     levelMeter = std::make_unique<LevelMeter>();
     addAndMakeVisible (*levelMeter);
@@ -98,6 +139,13 @@ void MainComponent::toggleKeyboard()
     resized();
 }
 
+void MainComponent::toggleMixer()
+{
+    if (onMixerToggle)
+        onMixerToggle (mixerToggleButton->getToggleState());
+}
+
+
 // ── Scan overlay ───────────────────────────────────────────────────────────
 
 void MainComponent::showScanOverlay()
@@ -118,9 +166,22 @@ void MainComponent::setMidiMonitorText (const String& t) { midiMonitorLabel->set
 void MainComponent::pushSystemMessage  (const String& t) { systemLogPanel->pushMessage (t); }
 
 Slider&           MainComponent::getVolumeSlider()   { return *volumeSlider; }
+void              MainComponent::setVolumeDisplay (double v)
+{
+    volumeValueLabel->setText (juce::String (juce::roundToInt (v * 100)) + "%",
+                               dontSendNotification);
+}
+
 LevelMeter&       MainComponent::getLevelMeter()     { return *levelMeter; }
 SpeakerButton&    MainComponent::getSpeakerButton()  { return *speakerButton; }
 InfoMonitorPanel& MainComponent::getMonitorPanel()   { return *monitorPanel; }
+
+void MainComponent::setOctaveDisplay (int octaveNumber)
+{
+    octaveLabel->setText ("Oct " + String (octaveNumber), dontSendNotification);
+}
+
+PcKeyboardComponent& MainComponent::getKeyboardComponent() { return *keyboardComponent; }
 
 void MainComponent::setLevelMeterVisible (bool v)
 {
@@ -142,6 +203,12 @@ void MainComponent::setMonitorPanelVisible (bool v)
     monitorToggleButton->setToggleState (v, dontSendNotification);
     resized();
 }
+
+void MainComponent::setMixerWindowVisible (bool v)
+{
+    mixerToggleButton->setToggleState (v, dontSendNotification);
+}
+
 
 // ── Paint ──────────────────────────────────────────────────────────────────
 
@@ -170,9 +237,16 @@ void MainComponent::resized()
     panicButton        ->setBounds (toolbar.removeFromLeft (36).reduced (2));
     kbdToggleButton    ->setBounds (toolbar.removeFromLeft (36).reduced (2));
     monitorToggleButton->setBounds (toolbar.removeFromLeft (36).reduced (2));
+    mixerToggleButton  ->setBounds (toolbar.removeFromLeft (36).reduced (2));
 
-    speakerButton->setBounds (toolbar.removeFromRight (36).reduced (2));
-    volumeSlider ->setBounds (toolbar.removeFromRight (80).reduced (2));
+    toolbar.removeFromLeft (6); // small gap
+    octaveDownButton   ->setBounds (toolbar.removeFromLeft (26).reduced (2));
+    octaveLabel        ->setBounds (toolbar.removeFromLeft (40).reduced (2));
+    octaveUpButton     ->setBounds (toolbar.removeFromLeft (26).reduced (2));
+
+    speakerButton   ->setBounds (toolbar.removeFromRight (36).reduced (2));
+    volumeValueLabel->setBounds (toolbar.removeFromRight (34).reduced (1, 4));
+    volumeSlider    ->setBounds (toolbar.removeFromRight (80).reduced (2));
     if (showLevelMeter)  levelMeter      ->setBounds (toolbar.removeFromRight (110).reduced (2, 4));
     if (showMidiMonitor) midiMonitorLabel->setBounds (toolbar.removeFromRight (160).reduced (2));
 

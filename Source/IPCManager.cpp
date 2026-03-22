@@ -54,6 +54,59 @@ juce::MemoryBlock IpcProtocol::makeHeartbeat()
     return makeRawMessage (IpcMessageType::Heartbeat, nullptr, 0);
 }
 
+juce::MemoryBlock IpcProtocol::makeWindowPos (int x, int y, int w, int h)
+{
+    struct Payload { int32_t x, y, w, h; };
+    Payload p { x, y, w, h };
+    return makeRawMessage (IpcMessageType::WindowPos, &p, sizeof (p));
+}
+
+juce::MemoryBlock IpcProtocol::makeRequestState()
+{
+    return makeRawMessage (IpcMessageType::RequestState, nullptr, 0);
+}
+
+juce::MemoryBlock IpcProtocol::makeStateData (const juce::MemoryBlock& stateBytes)
+{
+    uint32_t sz = static_cast<uint32_t> (stateBytes.getSize());
+    juce::MemoryBlock payload (4 + sz);
+    std::memcpy (payload.getData(), &sz, 4);
+    if (sz > 0) std::memcpy (static_cast<uint8_t*>(payload.getData()) + 4, stateBytes.getData(), sz);
+    return makeRawMessage (IpcMessageType::StateData, payload.getData(), payload.getSize());
+}
+
+juce::MemoryBlock IpcProtocol::makeSetState (const juce::MemoryBlock& stateBytes)
+{
+    uint32_t sz = static_cast<uint32_t> (stateBytes.getSize());
+    juce::MemoryBlock payload (4 + sz);
+    std::memcpy (payload.getData(), &sz, 4);
+    if (sz > 0) std::memcpy (static_cast<uint8_t*>(payload.getData()) + 4, stateBytes.getData(), sz);
+    return makeRawMessage (IpcMessageType::SetState, payload.getData(), payload.getSize());
+}
+
+juce::MemoryBlock IpcProtocol::parseStateData (const juce::MemoryBlock& data)
+{
+    if (data.getSize() < 8) return {};
+    const auto* ptr = static_cast<const uint8_t*> (data.getData()) + 4;
+    uint32_t sz = 0;
+    std::memcpy (&sz, ptr, 4);
+    if (sz == 0 || data.getSize() < 8 + sz) return {};
+    return juce::MemoryBlock (ptr + 4, sz);
+}
+
+void IpcProtocol::parseWindowPos (const juce::MemoryBlock& data, int& x, int& y, int& w, int& h)
+{
+    x = y = w = h = 0;
+    if (data.getSize() < 4 + 16) return;
+    const auto* ptr = static_cast<const uint8_t*> (data.getData()) + 4;
+    int32_t px, py, pw, ph;
+    std::memcpy (&px, ptr,      4);
+    std::memcpy (&py, ptr + 4,  4);
+    std::memcpy (&pw, ptr + 8,  4);
+    std::memcpy (&ph, ptr + 12, 4);
+    x = px; y = py; w = pw; h = ph;
+}
+
 IpcMessageType IpcProtocol::getType (const juce::MemoryBlock& data)
 {
     if (data.getSize() < 4)
@@ -319,6 +372,21 @@ bool CoreIpcManager::sendShutdown()
     return sendMessage (IpcProtocol::makeShutdown());
 }
 
+bool CoreIpcManager::sendWindowPos (int x, int y, int w, int h)
+{
+    return sendMessage (IpcProtocol::makeWindowPos (x, y, w, h));
+}
+
+bool CoreIpcManager::sendRequestState()
+{
+    return sendMessage (IpcProtocol::makeRequestState());
+}
+
+bool CoreIpcManager::sendSetState (const juce::MemoryBlock& stateBytes)
+{
+    return sendMessage (IpcProtocol::makeSetState (stateBytes));
+}
+
 void CoreIpcManager::connectionMade()
 {
     juce::Logger::writeToLog ("[Core IPC] Bridge connected. Sending handshake.");
@@ -337,6 +405,19 @@ void CoreIpcManager::messageReceived (const juce::MemoryBlock& message)
     auto type = IpcProtocol::getType (message);
     if (type == IpcMessageType::Heartbeat)
         return; // Keepalive from Bridge — silently discard
+    if (type == IpcMessageType::WindowPos)
+    {
+        int x, y, w, h;
+        IpcProtocol::parseWindowPos (message, x, y, w, h);
+        if (onWindowPosReceived) onWindowPosReceived (x, y, w, h);
+        return;
+    }
+    if (type == IpcMessageType::StateData)
+    {
+        auto state = IpcProtocol::parseStateData (message);
+        if (onStateReceived) onStateReceived (state);
+        return;
+    }
     juce::Logger::writeToLog ("[Core IPC] Unexpected message from Bridge, type="
                               + juce::String (static_cast<uint32_t> (type)));
 }
@@ -383,6 +464,16 @@ void BridgeIpcClient::disconnect()
 bool BridgeIpcClient::sendHeartbeat()
 {
     return sendMessage (IpcProtocol::makeHeartbeat());
+}
+
+bool BridgeIpcClient::sendWindowPos (int x, int y, int w, int h)
+{
+    return sendMessage (IpcProtocol::makeWindowPos (x, y, w, h));
+}
+
+bool BridgeIpcClient::sendStateData (const juce::MemoryBlock& stateBytes)
+{
+    return sendMessage (IpcProtocol::makeStateData (stateBytes));
 }
 
 void BridgeIpcClient::connectionMade()
@@ -442,6 +533,28 @@ void BridgeIpcClient::messageReceived (const juce::MemoryBlock& message)
                 juce::JUCEApplication::getInstance()->systemRequestedQuit();
             });
             break;
+
+        case IpcMessageType::WindowPos:
+        {
+            int x, y, w, h;
+            IpcProtocol::parseWindowPos (message, x, y, w, h);
+            if (onWindowPosReceived) onWindowPosReceived (x, y, w, h);
+            break;
+        }
+
+        case IpcMessageType::RequestState:
+            juce::Logger::writeToLog ("[Bridge IPC] RequestState received.");
+            if (onRequestStateReceived) onRequestStateReceived();
+            break;
+
+        case IpcMessageType::SetState:
+        {
+            auto state = IpcProtocol::parseStateData (message);
+            juce::Logger::writeToLog ("[Bridge IPC] SetState received: "
+                                      + juce::String ((int) state.getSize()) + " bytes");
+            if (onSetStateReceived) onSetStateReceived (state);
+            break;
+        }
 
         default:
             juce::Logger::writeToLog ("[Bridge IPC] Unknown message type: "

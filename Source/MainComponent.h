@@ -4,6 +4,8 @@
 #include "LevelMeter.h"
 #include "InfoMonitorPanel.h"
 #include "SystemLogPanel.h"
+#include "MixerWindow.h"
+
 
 // =====================================================================
 // MainComponent
@@ -24,8 +26,14 @@ private:
     std::unique_ptr<IconButton>       panicButton;
     std::unique_ptr<IconButton>       kbdToggleButton;
     std::unique_ptr<IconButton>       monitorToggleButton;
+    std::unique_ptr<IconButton>       mixerToggleButton;
+
+    std::unique_ptr<TextButton>       octaveDownButton;
+    std::unique_ptr<Label>            octaveLabel;
+    std::unique_ptr<TextButton>       octaveUpButton;
     std::unique_ptr<SpeakerButton>    speakerButton;
     std::unique_ptr<Slider>           volumeSlider;
+    std::unique_ptr<Label>            volumeValueLabel;
     std::unique_ptr<LevelMeter>       levelMeter;
     std::unique_ptr<Label>            midiMonitorLabel;
 
@@ -71,6 +79,9 @@ private:
     // ── Overlay ───────────────────────────────────────────────────────
     std::unique_ptr<ScanOverlay> scanOverlay;
 
+    // ── Tooltip ───────────────────────────────────────────────────────
+    TooltipWindow tooltipWindow { this, 500 };  // 500ms delay
+
     // ── Layout state ──────────────────────────────────────────────────
     bool keyboardVisible    = true;
     bool monitorVisible     = true;
@@ -89,6 +100,8 @@ public:
 
     void toggleMonitor();
     void toggleKeyboard();
+    void toggleMixer();
+
 
     void showScanOverlay();
     void hideScanOverlay();
@@ -98,6 +111,7 @@ public:
     void pushSystemMessage  (const String& text);
 
     Slider&           getVolumeSlider();
+    void              setVolumeDisplay (double v);
     LevelMeter&       getLevelMeter();
     SpeakerButton&    getSpeakerButton();
     InfoMonitorPanel& getMonitorPanel();
@@ -105,13 +119,23 @@ public:
     void setLevelMeterVisible   (bool v);
     void setMidiMonitorVisible  (bool v);
     void setMonitorPanelVisible (bool v);
+    void setMixerWindowVisible (bool v);
+    void setOctaveDisplay       (int octaveNumber);
 
-    std::function<void()> onLogoRightClick;
-    std::function<void()> onPanicClicked;
-    std::function<void()> onLaunchBridgeClicked;
+
+    PcKeyboardComponent& getKeyboardComponent();
+
+    std::function<void()>  onLogoRightClick;
+    std::function<void()>  onPanicClicked;
+    std::function<void()>  onLaunchBridgeClicked;
+    std::function<void(bool)> onMixerToggle;
+    std::function<void(int)> onOctaveShift;  // called with +1 or -1
+    std::function<void(double)> onVolumeChanged;
+
 
     void paint   (Graphics& g) override;
     void resized ()             override;
 
+private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };

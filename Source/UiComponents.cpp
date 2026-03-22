@@ -55,7 +55,18 @@ void IconButton::paintButton (Graphics& g, bool highlighted, bool down)
 // PcKeyboardComponent
 // =====================================================================
 PcKeyboardComponent::PcKeyboardComponent (MidiKeyboardState& state)
-    : MidiKeyboardComponent (state, MidiKeyboardComponent::horizontalKeyboard) {}
+    : MidiKeyboardComponent (state, MidiKeyboardComponent::horizontalKeyboard)
+{
+    setOctaveForMiddleC (4);    // standard convention: MIDI 60 = C4, MIDI 72 = C5
+    setLowestVisibleKey (60);   // start view at C4 so Z (C5) is visible
+}
+
+void PcKeyboardComponent::setOctaveOffset (int offset)
+{
+    octaveOffset = offset;
+    setLowestVisibleKey (jlimit (0, 107, 60 + offset * 12));
+    repaint();
+}
 
 bool PcKeyboardComponent::keyPressed (const KeyPress&) { return false; }
 bool PcKeyboardComponent::keyStateChanged (bool)       { return false; }
@@ -64,7 +75,7 @@ void PcKeyboardComponent::drawWhiteNote (int midiNoteNumber, Graphics& g, Rectan
                                          bool isDown, bool isOver, Colour lineColour, Colour textColour)
 {
     MidiKeyboardComponent::drawWhiteNote (midiNoteNumber, g, area, isDown, isOver, lineColour, textColour);
-    auto it = noteKeyLabels().find (midiNoteNumber);
+    auto it = noteKeyLabels().find (midiNoteNumber - octaveOffset * 12);
     if (it != noteKeyLabels().end())
     {
         g.setColour (Colour (0xaa000000));
@@ -78,7 +89,7 @@ void PcKeyboardComponent::drawBlackNote (int midiNoteNumber, Graphics& g, Rectan
                                          bool isDown, bool isOver, Colour noteFillColour)
 {
     MidiKeyboardComponent::drawBlackNote (midiNoteNumber, g, area, isDown, isOver, noteFillColour);
-    auto it = noteKeyLabels().find (midiNoteNumber);
+    auto it = noteKeyLabels().find (midiNoteNumber - octaveOffset * 12);
     if (it != noteKeyLabels().end())
     {
         g.setColour (Colours::white.withAlpha (0.85f));
@@ -116,10 +127,17 @@ PCKeyboardListener::PCKeyboardListener (MidiKeyboardState& state) : keyboardStat
 
 bool PCKeyboardListener::keyPressed (const KeyPress& key, Component*)
 {
-    int note = pcKeyToNote (key.getKeyCode());
-    if (note >= 0 && heldKeys.find (key.getKeyCode()) == heldKeys.end())
+    int kc = key.getKeyCode();
+
+    // Octave shift shortcuts
+    if (kc == '[') { if (onOctaveShift) onOctaveShift (-1); return true; }
+    if (kc == ']') { if (onOctaveShift) onOctaveShift (+1); return true; }
+
+    int baseNote = pcKeyToNote (kc);
+    if (baseNote >= 0 && heldNotes.find (kc) == heldNotes.end())
     {
-        heldKeys.insert (key.getKeyCode());
+        int note = jlimit (0, 127, baseNote + octaveOffset * 12);
+        heldNotes[kc] = note;
         keyboardState.noteOn (1, note, 0.8f);
         return true;
     }
@@ -128,13 +146,12 @@ bool PCKeyboardListener::keyPressed (const KeyPress& key, Component*)
 
 bool PCKeyboardListener::keyStateChanged (bool, Component*)
 {
-    for (auto it = heldKeys.begin(); it != heldKeys.end(); )
+    for (auto it = heldNotes.begin(); it != heldNotes.end(); )
     {
-        if (! KeyPress::isKeyCurrentlyDown (*it))
+        if (! KeyPress::isKeyCurrentlyDown (it->first))
         {
-            int note = pcKeyToNote (*it);
-            if (note >= 0) keyboardState.noteOff (1, note, 0.0f);
-            it = heldKeys.erase (it);
+            keyboardState.noteOff (1, it->second, 0.0f);
+            it = heldNotes.erase (it);
         }
         else ++it;
     }

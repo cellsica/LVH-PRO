@@ -1,0 +1,625 @@
+#pragma once
+#include "UiCommon.h"
+#include "UiComponents.h"
+#include "BridgeInstance.h"
+
+// Accent colour palette — cycles by channel index
+static juce::Colour getMixerStripColor (int index)
+{
+    static const juce::Colour palette[] = {
+        juce::Colour (0xff2a4a6a),   // steel blue
+        juce::Colour (0xff6a2a2a),   // dark red
+        juce::Colour (0xff2a6a2a),   // forest green
+        juce::Colour (0xff6a4a2a),   // burnt orange
+        juce::Colour (0xff4a2a6a),   // violet
+        juce::Colour (0xff2a6a6a),   // teal
+    };
+    return palette[index % 6];
+}
+
+// =====================================================================
+// MixerStrip
+// =====================================================================
+class MixerStrip : public Component
+{
+public:
+    // Callbacks — wired by MixerContentComponent after construction
+    std::function<void(float)>              onFaderChange;  // linear gain 0.0–1.5 (ch) / 0.0–1.0 (master)
+    std::function<void(float)>              onPanChange;    // -1.0 to +1.0
+    std::function<void(bool)>               onMuteChange;
+    std::function<void(bool)>               onSoloChange;
+    std::function<void(const juce::String&)> onNameChange;  // fired when user edits channel name
+    std::function<void(juce::Colour)>        onColorChange; // fired when user picks accent colour
+
+    ~MixerStrip() override { fader.setLookAndFeel (nullptr); }
+
+    MixerStrip (const juce::String& displayName,
+                juce::Colour        stripColor,
+                bool                isMaster = false)
+        : accentColor (stripColor), isMasterStrip (isMaster)
+    {
+        nameLabel.setText (displayName, dontSendNotification);
+        nameLabel.setJustificationType (Justification::centred);
+        nameLabel.setFont (Font (12.0f, Font::bold));
+        nameLabel.setEditable (false, true, false);  // double-click to edit
+        nameLabel.setColour (Label::backgroundColourId, accentColor.withAlpha (0.35f));
+        nameLabel.setColour (Label::textColourId, juce::Colours::white);
+        nameLabel.onEditorHide = [this] {
+            if (onNameChange) onNameChange (nameLabel.getText());
+        };
+        nameLabel.addMouseListener (this, false);  // catch right-click for colour picker
+        addAndMakeVisible (nameLabel);
+
+        addAndMakeVisible (ledMeter);
+
+        if (! isMaster)
+        {
+            for (int i = 0; i < 4; ++i)
+            {
+                auto* slot = fxSlots.add (new Label());
+                slot->setText ("-", dontSendNotification);
+                slot->setJustificationType (Justification::centred);
+                slot->setFont (Font (10.0f));
+                slot->setColour (Label::outlineColourId,    juce::Colour (0xff333344));
+                slot->setColour (Label::backgroundColourId, juce::Colour (0xff1a1a25));
+                slot->setColour (Label::textColourId,       juce::Colour (0xff555566));
+                addAndMakeVisible (slot);
+            }
+        }
+
+        panSlider.setSliderStyle (Slider::LinearHorizontal);
+        panSlider.setTextBoxStyle (Slider::NoTextBox, false, 0, 0);
+        panSlider.setRange (-1.0, 1.0);
+        panSlider.setValue (0.0, dontSendNotification);
+        panSlider.setTooltip ("Pan");
+        panSlider.onValueChange = [this] {
+            float v = (float) panSlider.getValue();
+            panValueLabel.setText (v == 0.f ? "C" : (v > 0.f ? "R" + juce::String (v, 2)
+                                                              : "L" + juce::String (-v, 2)),
+                                   dontSendNotification);
+            if (onPanChange) onPanChange (v);
+        };
+        addAndMakeVisible (panSlider);
+
+        panValueLabel.setText ("C", dontSendNotification);
+        panValueLabel.setJustificationType (Justification::centred);
+        panValueLabel.setFont (Font (9.0f));
+        panValueLabel.setColour (Label::textColourId, juce::Colour (0xff888899));
+        addAndMakeVisible (panValueLabel);
+
+        fader.setSliderStyle (Slider::LinearVertical);
+        fader.setTextBoxStyle (Slider::NoTextBox, false, 0, 0);
+        fader.setRange (0.0, isMaster ? 1.0 : 1.5);
+        fader.setValue (1.0, dontSendNotification);
+        fader.setTooltip ("Volume");
+        fader.onValueChange = [this] {
+            float v = (float) fader.getValue();
+            faderValueLabel.setText (juce::String (v, 2), dontSendNotification);
+            if (onFaderChange) onFaderChange (v);
+        };
+        fader.setLookAndFeel (&faderLF);
+        addAndMakeVisible (fader);
+
+        faderValueLabel.setText ("1.00", dontSendNotification);
+        faderValueLabel.setJustificationType (Justification::centred);
+        faderValueLabel.setFont (Font (9.0f));
+        faderValueLabel.setColour (Label::textColourId, juce::Colour (0xff888899));
+        addAndMakeVisible (faderValueLabel);
+
+        muteBtn.setButtonText ("M");
+        muteBtn.setClickingTogglesState (true);
+        muteBtn.setColour (TextButton::buttonColourId,   juce::Colour (0xff333344));
+        muteBtn.setColour (TextButton::buttonOnColourId, juce::Colours::red.withAlpha (0.7f));
+        muteBtn.setTooltip ("Mute");
+        muteBtn.onClick = [this] {
+            if (onMuteChange) onMuteChange (muteBtn.getToggleState());
+        };
+        addAndMakeVisible (muteBtn);
+
+        soloBtn.setButtonText ("S");
+        soloBtn.setClickingTogglesState (true);
+        soloBtn.setColour (TextButton::buttonColourId,   juce::Colour (0xff333344));
+        soloBtn.setColour (TextButton::buttonOnColourId, juce::Colours::yellow.withAlpha (0.7f));
+        soloBtn.setTooltip ("Solo");
+        soloBtn.onClick = [this] {
+            if (onSoloChange) onSoloChange (soloBtn.getToggleState());
+        };
+        addAndMakeVisible (soloBtn);
+    }
+
+    void setMeterVisible (bool v) { ledMeter.setVisible (v); resized(); }
+
+    // Initialise UI controls from saved values without triggering callbacks
+    void setInitialValues (float gain, float pan, bool muted)
+    {
+        fader.setValue     (gain, dontSendNotification);
+        panSlider.setValue (pan,  dontSendNotification);
+        muteBtn.setToggleState (muted, dontSendNotification);
+
+        faderValueLabel.setText (juce::String (gain, 2), dontSendNotification);
+        panValueLabel.setText (pan == 0.f ? "C" : (pan > 0.f ? "R" + juce::String (pan, 2)
+                                                              : "L" + juce::String (-pan, 2)),
+                               dontSendNotification);
+    }
+
+    // Set fader position without triggering onFaderChange (used for sync)
+    void setFaderNoCallback (float v)
+    {
+        fader.setValue ((double) v, dontSendNotification);
+        faderValueLabel.setText (juce::String (v, 2), dontSendNotification);
+    }
+
+    // Change accent colour programmatically (e.g. on project load)
+    void setAccentColor (juce::Colour c)
+    {
+        accentColor = c;
+        nameLabel.setColour (Label::backgroundColourId, accentColor.withAlpha (0.35f));
+        repaint();
+    }
+
+    // Called by the UI timer — passes post-fader peak values (0.0 – 1.0+)
+    void updateMeter (float l, float r) { ledMeter.setLevels (l, r); }
+
+    // Visually dim this strip when another channel is soloed
+    void setSoloDimmed (bool dimmed) { setAlpha (dimmed ? 0.38f : 1.0f); }
+
+    bool isSoloed() const { return soloBtn.getToggleState(); }
+
+    // Force solo button state without firing onSoloChange (used by exclusive-solo logic)
+    void setSoloActive (bool active) { soloBtn.setToggleState (active, dontSendNotification); }
+
+    void mouseDown (const MouseEvent& e) override
+    {
+        if (e.mods.isRightButtonDown())
+            showColorMenu();
+    }
+
+    void paint (Graphics& g) override
+    {
+        auto bounds = getLocalBounds().reduced (2);
+        g.setColour (juce::Colour (0xff20202a));
+        g.fillRoundedRectangle (bounds.toFloat(), 4.0f);
+        g.setColour (juce::Colour (0xff333344));
+        g.drawRoundedRectangle (bounds.toFloat(), 4.0f, 1.0f);
+
+        g.setColour (accentColor.withAlpha (0.7f));
+        g.fillRect (getLocalBounds().reduced (2).removeFromBottom (3));
+
+        g.setColour (juce::Colours::black.withAlpha (0.2f));
+        g.fillRect (fader.getBounds().reduced (8, 0));
+    }
+
+    // Draw fader tick marks on top of the slider
+    void paintOverChildren (Graphics& g) override
+    {
+        auto fb = fader.getBounds();
+        if (fb.isEmpty()) return;
+
+        // Must match FaderLookAndFeel::getSliderThumbRadius() = 5
+        const float thumbInset = 5.0f;
+        float trackTop    = (float) fb.getY()      + thumbInset;
+        float trackBottom = (float) fb.getBottom() - thumbInset;
+        float trackH = trackBottom - trackTop;
+        if (trackH <= 0.0f) return;
+
+        double maxVal = fader.getMaximum();
+        auto valueToY = [&] (double v) -> float
+        {
+            return trackBottom - (float) (v / maxVal * trackH);
+        };
+
+        auto isMajor = [] (double v) -> bool
+        {
+            double rem = v - std::floor (v / 0.5 + 0.5) * 0.5;
+            return std::abs (rem) < 0.001;
+        };
+
+        // Minor ticks every 0.05 (left-edge short lines only)
+        int numSteps = (int) std::round (maxVal / 0.05);
+        for (int i = 0; i <= numSteps; ++i)
+        {
+            double v = i * 0.05;
+            if (v > maxVal + 0.001) break;
+            if (isMajor (v)) continue;
+            g.setColour (juce::Colour (0x88aaaaaa));
+            float y = valueToY (v);
+            g.drawHorizontalLine ((int) y, (float) fb.getX(), (float) (fb.getX() + 7));
+        }
+
+        // Major ticks — full width lines
+        // 0.0
+        g.setColour (juce::Colour (0xaa9999aa));
+        g.drawHorizontalLine ((int) valueToY (0.0), (float) fb.getX(), (float) fb.getRight());
+
+        // 0.5
+        g.setColour (juce::Colour (0xbbaaaabb));
+        g.drawHorizontalLine ((int) valueToY (0.5), (float) fb.getX(), (float) fb.getRight());
+
+        // 1.0 (0 dB / unity) — most prominent
+        g.setColour (juce::Colour (0xddccccdd));
+        g.drawHorizontalLine ((int) valueToY (1.0), (float) fb.getX(), (float) fb.getRight());
+
+        // MAX (1.5) — channels only, red tint
+        if (! isMasterStrip)
+        {
+            g.setColour (juce::Colour (0xbbdd6666));
+            g.drawHorizontalLine ((int) valueToY (1.5), (float) fb.getX(), (float) fb.getRight());
+        }
+    }
+
+    void resized() override
+    {
+        auto area = getLocalBounds().reduced (6);
+
+        if (ledMeter.isVisible())
+            ledMeter.setBounds (area.removeFromTop (28).reduced (10, 2));
+
+        nameLabel.setBounds (area.removeFromTop (22));
+        area.removeFromTop (4);
+
+        if (! fxSlots.isEmpty())
+        {
+            for (auto* slot : fxSlots)
+                slot->setBounds (area.removeFromTop (17).reduced (0, 1));
+            area.removeFromTop (4);
+        }
+
+        panSlider.setBounds (area.removeFromTop (16).reduced (8, 0));
+        panValueLabel.setBounds (area.removeFromTop (11));
+        area.removeFromTop (2);
+
+        auto footer = area.removeFromBottom (24);
+        muteBtn.setBounds (footer.removeFromLeft (footer.getWidth() / 2).reduced (2));
+        soloBtn.setBounds (footer.reduced (2));
+
+        faderValueLabel.setBounds (area.removeFromBottom (12));
+        {
+            auto fb = area.reduced (4, 0);
+            int w = jmax (16, fb.getWidth() / 3);
+            fader.setBounds (fb.withSizeKeepingCentre (w, fb.getHeight()));
+        }
+    }
+
+private:
+    // Custom LookAndFeel: rectangular thumb for the vertical fader
+    struct FaderLookAndFeel : public juce::LookAndFeel_V4
+    {
+        // thumbH = 9 → half = 4.5 → radius = 5
+        // JUCE uses this to compute sliderPos range: [y+5, y+height-5]
+        // paintOverChildren must use the same thumbInset (5.0f)
+        int getSliderThumbRadius (Slider&) override { return 5; }
+
+        void drawLinearSlider (Graphics& g, int x, int y, int width, int height,
+                               float sliderPos, float minSliderPos, float maxSliderPos,
+                               Slider::SliderStyle style, Slider& slider) override
+        {
+            if (style != Slider::LinearVertical)
+            {
+                LookAndFeel_V4::drawLinearSlider (g, x, y, width, height, sliderPos,
+                                                  minSliderPos, maxSliderPos, style, slider);
+                return;
+            }
+
+            // Track (within thumb travel range)
+            const float thumbRadius = 5.0f;
+            const float trackW = 4.0f;
+            const float cx = (float) x + (float) width * 0.5f;
+            g.setColour (slider.findColour (Slider::trackColourId));
+            g.fillRect (cx - trackW * 0.5f, (float) y + thumbRadius,
+                        trackW, (float) height - 2.0f * thumbRadius);
+
+            // Rectangular thumb — sliderPos is the thumb CENTER y
+            const float thumbW = (float) width * 0.85f;
+            const float thumbH = 9.0f;
+            const float ty = sliderPos - thumbH * 0.5f;
+            auto base = slider.isEnabled() ? slider.findColour (Slider::thumbColourId)
+                                           : juce::Colours::grey;
+            g.setColour (base);
+            g.fillRect (cx - thumbW * 0.5f, ty, thumbW, thumbH);
+            g.setColour (base.brighter (0.6f));
+            g.drawHorizontalLine ((int) ty, cx - thumbW * 0.5f, cx + thumbW * 0.5f);
+            g.setColour (base.darker (0.4f));
+            g.drawHorizontalLine ((int) (ty + thumbH - 1.0f), cx - thumbW * 0.5f, cx + thumbW * 0.5f);
+        }
+
+        void drawLinearSliderThumb (Graphics& g, int x, int y, int width, int height,
+                                    float sliderPos, float minSliderPos, float maxSliderPos,
+                                    Slider::SliderStyle style, Slider& slider) override
+        {
+            LookAndFeel_V4::drawLinearSliderThumb (g, x, y, width, height, sliderPos,
+                                                   minSliderPos, maxSliderPos, style, slider);
+        }
+    };
+
+    // Real LED meter — 12 segments, L and R bars
+    struct RealLedMeter : public Component
+    {
+        void setLevels (float l, float r) { levelL = l; levelR = r; repaint(); }
+
+        void paint (Graphics& g) override
+        {
+            auto area = getLocalBounds();
+            int half = area.getWidth() / 2 - 1;
+            drawBar (g, area.removeFromLeft (half), levelL);
+            area.removeFromLeft (2);
+            drawBar (g, area, levelR);
+        }
+
+    private:
+        void drawBar (Graphics& g, Rectangle<int> area, float level)
+        {
+            const int N    = 12;
+            const int segH = jmax (1, (area.getHeight() - (N - 1)) / N);
+            int filled = jmin (N, (int) (level * N + 0.5f));
+
+            for (int i = 0; i < N; ++i)
+            {
+                int y = area.getBottom() - (i + 1) * segH - i;
+                Rectangle<int> seg (area.getX(), y, area.getWidth(), segH);
+
+                juce::Colour c;
+                if      (i >= N - 2) c = juce::Colour (0xffff2222);   // top 2:  red
+                else if (i >= N - 5) c = juce::Colour (0xffffcc00);   // next 3: yellow
+                else                 c = juce::Colour (0xff00dd44);   // rest:   green
+
+                g.setColour (i < filled ? c : c.withAlpha (0.1f));
+                g.fillRect (seg);
+            }
+        }
+
+        float levelL = 0.f, levelR = 0.f;
+    };
+
+    void showColorMenu()
+    {
+        static const struct { const char* name; juce::Colour color; } kPalette[] = {
+            { "Steel Blue",   juce::Colour (0xff2a4a6a) },
+            { "Dark Red",     juce::Colour (0xff6a2a2a) },
+            { "Forest Green", juce::Colour (0xff2a6a2a) },
+            { "Burnt Orange", juce::Colour (0xff6a4a2a) },
+            { "Violet",       juce::Colour (0xff4a2a6a) },
+            { "Teal",         juce::Colour (0xff2a6a6a) },
+        };
+        PopupMenu m;
+        for (int i = 0; i < 6; ++i)
+            m.addItem (i + 1, kPalette[i].name, true, accentColor == kPalette[i].color);
+        m.showMenuAsync (PopupMenu::Options().withTargetComponent (this),
+            [this] (int r)
+            {
+                static const juce::Colour kColors[] = {
+                    juce::Colour (0xff2a4a6a), juce::Colour (0xff6a2a2a),
+                    juce::Colour (0xff2a6a2a), juce::Colour (0xff6a4a2a),
+                    juce::Colour (0xff4a2a6a), juce::Colour (0xff2a6a6a),
+                };
+                if (r >= 1 && r <= 6)
+                {
+                    accentColor = kColors[r - 1];
+                    nameLabel.setColour (Label::backgroundColourId, accentColor.withAlpha (0.35f));
+                    repaint();
+                    if (onColorChange) onColorChange (accentColor);
+                }
+            });
+    }
+
+    FaderLookAndFeel         faderLF;    // must be declared before fader
+    juce::Colour             accentColor;
+    bool                     isMasterStrip = false;
+    Label                    nameLabel;
+    RealLedMeter             ledMeter;
+    juce::OwnedArray<Label>  fxSlots;
+    Slider                   panSlider, fader;
+    Label                    panValueLabel, faderValueLabel;
+    TextButton               muteBtn, soloBtn;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MixerStrip)
+};
+
+// =====================================================================
+// MixerContentComponent
+// =====================================================================
+class MixerContentComponent : public Component,
+                              private juce::Timer
+{
+public:
+    MixerContentComponent()
+    {
+        meterBtn = std::make_unique<IconButton> ("Toggle LED Meters", Icons::led);
+        meterBtn->setClickingTogglesState (true);
+        meterBtn->setToggleState (true, dontSendNotification);
+        meterBtn->setColour (TextButton::buttonColourId,   juce::Colour (0xff333344));
+        meterBtn->setColour (TextButton::buttonOnColourId, juce::Colour (0xff2a4a3a));
+        meterBtn->onClick = [this] { applyMeterVisibility(); };
+        addAndMakeVisible (*meterBtn);
+
+        masterStrip = std::make_unique<MixerStrip> ("MASTER", juce::Colour (0xff444455), true);
+        addAndMakeVisible (*masterStrip);
+        masterStrip->onFaderChange = [this] (float v) {
+            if (onMasterGainChange) onMasterGainChange (v);
+        };
+
+        startTimer (kMeterIntervalMs);  // start meter refresh timer
+    }
+
+    ~MixerContentComponent() override { stopTimer(); }
+
+    // Called when Core volume slider changes — updates MASTER fader position without callback loop
+    void setMasterGain (float v) { masterStrip->setFaderNoCallback (v); }
+
+    std::function<void(float)> onMasterGainChange;
+
+    // Rebuild channel strips to match the supplied Instrument bridge list.
+    void updateBridges (const juce::Array<BridgeInstance*>& instrumentBridges)
+    {
+        bridges_.clear();
+        strips.clear();
+        bool metersOn = meterBtn->getToggleState();
+
+        for (int i = 0; i < instrumentBridges.size(); ++i)
+        {
+            auto* b = instrumentBridges[i];
+            bridges_.add (b);
+
+            juce::String name = b->mixerCustomName.isNotEmpty()
+                                ? b->mixerCustomName
+                                : juce::File (b->getPluginPath()).getFileNameWithoutExtension();
+            juce::Colour color = b->mixerCustomColor.getAlpha() > 0
+                                 ? b->mixerCustomColor
+                                 : getMixerStripColor (i);
+            auto* strip = strips.add (new MixerStrip (name, color));
+            strip->setMeterVisible (metersOn);
+            strip->setInitialValues (b->mixerGain.load(),
+                                     b->mixerPan.load(),
+                                     b->mixerMuted.load());
+
+            // Wire fader/pan/mute/solo callbacks → BridgeInstance atomics
+            strip->onFaderChange = [b] (float v) {
+                b->mixerGain.store (v, std::memory_order_relaxed);
+            };
+            strip->onPanChange = [b] (float v) {
+                b->mixerPan.store (v, std::memory_order_relaxed);
+            };
+            strip->onMuteChange = [b] (bool muted) {
+                b->mixerMuted.store (muted, std::memory_order_relaxed);
+            };
+            strip->onSoloChange = [this, b] (bool soloed) {
+                b->mixerSoloed.store (soloed, std::memory_order_relaxed);
+                updateSoloDimming();
+            };
+            strip->onNameChange = [b] (const juce::String& newName) {
+                b->mixerCustomName = newName;
+            };
+            strip->onColorChange = [b] (juce::Colour c) {
+                b->mixerCustomColor = c;
+            };
+
+            addAndMakeVisible (strip);
+        }
+
+        resized();
+        repaint();
+    }
+
+    void paint (Graphics& g) override
+    {
+        g.fillAll (juce::Colour (0xff14141f));
+
+        auto header = getLocalBounds().removeFromTop (40);
+        g.setColour (juce::Colour (0xff1a1a25));
+        g.fillRect (header);
+        g.setColour (juce::Colours::white.withAlpha (0.7f));
+        g.setFont (Font (16.0f, Font::bold));
+        g.drawText ("MIXER CONSOLE",
+                    header.reduced (12, 0).removeFromLeft (300),
+                    Justification::centredLeft);
+
+        if (strips.isEmpty())
+        {
+            g.setColour (juce::Colours::white.withAlpha (0.18f));
+            g.setFont (Font (13.0f));
+            g.drawText ("No instruments loaded.\nLaunch a Bridge to add channels.",
+                        getLocalBounds().withTrimmedTop (40).withTrimmedRight (120).reduced (20),
+                        Justification::centred, true);
+        }
+    }
+
+    void resized() override
+    {
+        auto area   = getLocalBounds();
+        auto header = area.removeFromTop (40);
+        meterBtn->setBounds (header.removeFromRight (36).reduced (4));
+
+        masterStrip->setBounds (area.removeFromRight (100).reduced (4));
+        area.removeFromRight (8);
+
+        const int stripW = 80;
+        for (auto* s : strips)
+            s->setBounds (area.removeFromLeft (stripW).reduced (2));
+    }
+
+private:
+    static constexpr int kMeterIntervalMs = 33;  // ~30 fps
+
+    void timerCallback() override
+    {
+        for (int i = 0; i < strips.size() && i < bridges_.size(); ++i)
+            strips[i]->updateMeter (bridges_[i]->exchangePeakL(),
+                                    bridges_[i]->exchangePeakR());
+    }
+
+    void applyMeterVisibility()
+    {
+        bool v = meterBtn->getToggleState();
+        for (auto* s : strips) s->setMeterVisible (v);
+        masterStrip->setMeterVisible (v);
+
+        // Stop the timer when meters are hidden to save CPU
+        if (v) startTimer (kMeterIntervalMs);
+        else   stopTimer();
+
+        resized();
+    }
+
+    // Update solo-dimming on all strips.
+    // Called when any solo button is toggled.
+    void updateSoloDimming()
+    {
+        bool anySoloed = false;
+        for (auto* s : strips)
+            if (s->isSoloed()) { anySoloed = true; break; }
+
+        for (auto* s : strips)
+            s->setSoloDimmed (anySoloed && ! s->isSoloed());
+    }
+
+    std::unique_ptr<IconButton>      meterBtn;
+    juce::OwnedArray<MixerStrip>     strips;
+    std::unique_ptr<MixerStrip>      masterStrip;
+    juce::Array<BridgeInstance*>     bridges_;   // parallel to strips[]
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MixerContentComponent)
+};
+
+// =====================================================================
+// MixerWindow
+// =====================================================================
+class MixerWindow : public DocumentWindow
+{
+public:
+    explicit MixerWindow (const juce::String& title)
+        : DocumentWindow (title, juce::Colour (0xff14141f), DocumentWindow::allButtons)
+    {
+        setUsingNativeTitleBar (true);
+        content = new MixerContentComponent();
+        content->onMasterGainChange = [this] (float v) {
+            if (onMasterGainChange) onMasterGainChange (v);
+        };
+        setContentOwned (content, true);
+        setResizable (true, false);
+        centreWithSize (720, 480);
+    }
+
+    void updateBridges (const juce::Array<BridgeInstance*>& instrumentBridges)
+    {
+        if (content != nullptr)
+            content->updateBridges (instrumentBridges);
+    }
+
+    // Sync MASTER fader from Core slider (no callback loop)
+    void setMasterGain (float v)
+    {
+        if (content != nullptr) content->setMasterGain (v);
+    }
+
+    void closeButtonPressed() override
+    {
+        if (onClose) onClose();
+    }
+
+    std::function<void()>      onClose;
+    std::function<void(float)> onMasterGainChange;
+
+private:
+    MixerContentComponent* content = nullptr;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MixerWindow)
+};

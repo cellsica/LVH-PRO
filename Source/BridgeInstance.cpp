@@ -49,6 +49,14 @@ bool BridgeInstance::launch (const juce::String& pluginPath, const juce::File& b
         if (onDisconnected) onDisconnected (this);
     };
 
+    ipcManager.onWindowPosReceived = [this] (int x, int y, int w, int h) {
+        lastWindowBounds = { x, y, w, h };
+    };
+
+    ipcManager.onStateReceived = [this] (const juce::MemoryBlock& state) {
+        if (onStateReceived) onStateReceived (this, state);
+    };
+
     // Launch the Bridge child process.
     juce::String args = "--plugin \"" + pluginPath + "\""
                       + " --ipc-pipe " + pipeName
@@ -104,4 +112,22 @@ bool BridgeInstance::sendAudioConfig (float sampleRate, int32_t bufferSize)
     if (state != State::Connected)
         return false;
     return ipcManager.sendAudioConfig (sampleRate, bufferSize);
+}
+
+bool BridgeInstance::sendWindowPos (int x, int y, int w, int h)
+{
+    if (state != State::Connected) return false;
+    return ipcManager.sendWindowPos (x, y, w, h);
+}
+
+bool BridgeInstance::sendRequestState()
+{
+    if (state != State::Connected) return false;
+    return ipcManager.sendRequestState();
+}
+
+bool BridgeInstance::sendSetState (const juce::MemoryBlock& stateBytes)
+{
+    if (state != State::Connected) return false;
+    return ipcManager.sendSetState (stateBytes);
 }
