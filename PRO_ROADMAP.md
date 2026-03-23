@@ -62,8 +62,9 @@
 - [x] `LvhProApplication` から `bridges` 配列の所有権を移動。
 - [x] 指示書 B 案の採用により `ProjectSerializer` との依存関係を最小化。
 
-### Mission 026: リファクタリング Phase D (UIManager の抽出) 🔜
-- [ ] `UIManager` クラスの新設。各種ウィンドウ（Mixer / Settings）のライフサイクルと、UI同士の連携ロジックの集約。
+### Mission 026: リファクタリング Phase D (UIManager の抽出) ✅
+- [x] `UIManager` クラスの新設。各種ウィンドウ（Mixer / Settings）のライフサイクルと、UI同士の連携ロジックの集約。
+- [x] `Main.cpp` の「オーケストレーター」化が完了。
 
 ## フェーズ 5: プロフェッショナル機能の拡充 (進行中提示)
 ### Mission 027: Stage Performance Mode (ライブ演奏特化機能) 🔜
