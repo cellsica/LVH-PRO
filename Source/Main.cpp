@@ -7,6 +7,7 @@
 #include "MidiRoutingManager.h"
 #include "ProjectSerializer.h"
 #include "BridgeManager.h"
+#include "UIManager.h"
 
 // =====================================================================
 // Main Application
@@ -85,6 +86,8 @@ public:
 
         keyboardState.addListener (this);
 
+        uiManager_.setMainComponent (mainComp());
+        wireUIManagerCallbacks();
         wireUICallbacks();
         wireBridgeManagerCallbacks();
         wireSerializerCallbacks();
@@ -122,7 +125,7 @@ public:
 
     void shutdown() override
     {
-        settingsWindow.reset();
+        uiManager_.shutdown();
         keyboardState.removeListener (this);
 
         if (scanToken) scanToken->store (false);
@@ -146,62 +149,6 @@ public:
     void systemRequestedQuit() override { quit(); }
 
 private:
-    std::unique_ptr<MixerWindow> mixerWindow;
-
-    void toggleMixerWindow (bool show)
-    {
-        if (show)
-        {
-            if (mixerWindow == nullptr)
-            {
-                mixerWindow = std::make_unique<MixerWindow> ("Mixer Console");
-                mixerWindow->onClose = [this] {
-                    if (auto* mc = mainComp()) mc->setMixerWindowVisible (false);
-                    mixerWindow->setVisible (false);
-                };
-                mixerWindow->onMasterGainChange = [this] (float v) {
-                    masterVolume = (double) v;
-                    audioEngine.setOutputGain (v);
-                    if (auto* mc = mainComp())
-                    {
-                        mc->getVolumeSlider().setValue ((double) v, dontSendNotification);
-                        mc->setVolumeDisplay ((double) v);
-                    }
-                };
-                mixerWindow->onToggleFxWindow = [this] (BridgeInstance* b) {
-                    // Bring the FX plugin window to front by re-sending its last known bounds.
-                    auto bounds = b->getWindowBounds();
-                    if (bounds.getWidth() > 0 && bounds.getHeight() > 0)
-                        b->sendWindowPos (bounds.getX(), bounds.getY(),
-                                          bounds.getWidth(), bounds.getHeight());
-                };
-            }
-
-            // Sync MASTER fader to current Core slider value
-            if (auto* mc = mainComp())
-                mixerWindow->setMasterGain ((float) mc->getVolumeSlider().getValue());
-
-            // Populate with the currently connected bridges split by role
-            juce::Array<BridgeInstance*> instruments, effects;
-            for (auto* b : bridgeManager_.getBridges())
-            {
-                if (b->getState() != BridgeInstance::State::Connected) continue;
-                if (b->getRole() == BridgeInstance::Role::Effect)
-                    effects.add (b);
-                else
-                    instruments.add (b);
-            }
-            mixerWindow->updateBridges (instruments, effects);
-
-            mixerWindow->setVisible (true);
-            mixerWindow->toFront (true);
-        }
-        else
-        {
-            if (mixerWindow != nullptr)
-                mixerWindow->setVisible (false);
-        }
-    }
 
     File getCacheFile() const
     {
@@ -274,47 +221,9 @@ private:
         scanThread->startThread();
     }
 
-    void openSettings()
+    void wireUIManagerCallbacks()
     {
-        if (settingsWindow == nullptr)
-        {
-            SettingsWindow::Callbacks cbs;
-            cbs.onShowLevelMeter = [this] (bool v) {
-                if (auto* mc = mainComp()) mc->setLevelMeterVisible (v);
-            };
-            cbs.onShowMidiMonitor = [this] (bool v) {
-                if (auto* mc = mainComp()) mc->setMidiMonitorVisible (v);
-            };
-            cbs.onShowInfoMonitor = [this] (bool v) {
-                if (auto* mc = mainComp()) mc->setMonitorPanelVisible (v);
-            };
-            cbs.onTransposeChange = [this] (int v) {
-                audioEngine.setTranspose (v);
-                if (auto* mc = mainComp()) mc->getMonitorPanel().setTransposeDisplay (v);
-            };
-            cbs.onChannelFilterChange = [this] (int v) {
-                audioEngine.setChannelFilter (v);
-            };
-            cbs.onPluginPathsChanged = [this] {
-                startPluginScan();
-            };
-            settingsWindow = std::make_unique<SettingsWindow> (
-                deviceManager, appProperties.getUserSettings(), cbs);
-        }
-
-        // Update plugin info page
-        if (auto* slot = audioEngine.getSlot())
-            if (slot->isLoaded())
-                if (auto* proc = slot->getProcessor())
-                    settingsWindow->updatePluginInfo (
-                        proc->getName(),
-                        proc->getLatencySamples(),
-                        proc->getPluginDescription().pluginFormatName,
-                        proc->getTotalNumInputChannels(),
-                        proc->getTotalNumOutputChannels());
-
-        settingsWindow->setVisible (true);
-        settingsWindow->toFront (true);
+        uiManager_.onStartPluginScan = [this] { startPluginScan(); };
     }
 
     void wireBridgeManagerCallbacks()
@@ -325,8 +234,7 @@ private:
 
         bridgeManager_.onGraphRebuilt = [this] (juce::Array<BridgeInstance*> instruments,
                                                   juce::Array<BridgeInstance*> effects) {
-            if (mixerWindow != nullptr)
-                mixerWindow->updateBridges (instruments, effects);
+            uiManager_.updateMixerBridges (instruments, effects);
         };
 
         bridgeManager_.onBridgeDisconnectedMidi = [this] (BridgeInstance* b) {
@@ -364,7 +272,7 @@ private:
         };
 
         projectSerializer_.getMasterVolume = [this] () -> double {
-            return mainComp() ? mainComp()->getVolumeSlider().getValue() : masterVolume;
+            return uiManager_.getMasterVolume();
         };
 
         projectSerializer_.getCoreWindowBounds = [this] () -> juce::Rectangle<int> {
@@ -372,23 +280,15 @@ private:
         };
 
         projectSerializer_.getMixerVisible = [this] () -> bool {
-            return mixerWindow != nullptr && mixerWindow->isVisible();
+            return uiManager_.isMixerWindowVisible();
         };
 
         projectSerializer_.getMixerWindowBounds = [this] () -> juce::Rectangle<int> {
-            return mixerWindow != nullptr ? mixerWindow->getBounds() : juce::Rectangle<int>{};
+            return uiManager_.getMixerWindowBounds();
         };
 
         projectSerializer_.onMasterVolumeChanged = [this] (double vol) {
-            masterVolume = vol;
-            if (auto* mc = mainComp())
-            {
-                mc->getVolumeSlider().setValue (vol, juce::dontSendNotification);
-                mc->setVolumeDisplay (vol);
-                audioEngine.setOutputGain ((float) vol);
-                mc->pushSystemMessage ("  masterVol loaded: " + juce::String (vol, 3));
-            }
-            if (mixerWindow != nullptr) mixerWindow->setMasterGain ((float) vol);
+            uiManager_.setMasterVolume (vol);
         };
 
         projectSerializer_.onCoreWindowBoundsChanged = [this] (juce::Rectangle<int> b) {
@@ -396,18 +296,7 @@ private:
         };
 
         projectSerializer_.onMixerWindowRestored = [this] (bool visible, juce::Rectangle<int> bounds) {
-            if (visible)
-            {
-                toggleMixerWindow (true);
-                if (mixerWindow != nullptr && bounds.getWidth() > 100 && bounds.getHeight() > 50)
-                    mixerWindow->setBounds (bounds);
-                if (auto* mc = mainComp()) mc->setMixerWindowVisible (true);
-            }
-            else
-            {
-                if (mixerWindow != nullptr) mixerWindow->setVisible (false);
-                if (auto* mc = mainComp()) mc->setMixerWindowVisible (false);
-            }
+            uiManager_.restoreMixerWindow (visible, bounds);
         };
     }
 
@@ -416,258 +305,11 @@ private:
         auto* mc = mainComp();
         if (mc == nullptr) return;
 
-        // Speaker mute button + volume slider (share savedGain)
-        auto savedGain = std::make_shared<double> (1.0);
-
-        mc->getSpeakerButton().onClick = [this, mc, savedGain] {
-            bool muted = mc->getSpeakerButton().getToggleState();
-            if (muted)
-            {
-                *savedGain = mc->getVolumeSlider().getValue();
-                mc->getVolumeSlider().setValue (0.0, sendNotificationSync);
-            }
-            else
-            {
-                mc->getVolumeSlider().setValue (*savedGain > 0.0 ? *savedGain : 1.0,
-                                                sendNotificationSync);
-            }
-        };
-
-        mc->onVolumeChanged = [this, mc, savedGain] (double v) {
-            masterVolume = v;
-            audioEngine.setOutputGain ((float) v);
-            if (mixerWindow != nullptr) mixerWindow->setMasterGain ((float) v);
-            // If slider is moved away from 0 while muted, auto-unmute
-            if (v > 0.0 && mc->getSpeakerButton().getToggleState())
-            {
-                *savedGain = v;
-                mc->getSpeakerButton().setToggleState (false, dontSendNotification);
-            }
-        };
-
         // Level meter source
         mc->getLevelMeter().getPeak = [this] (int ch) { return audioEngine.exchangePeak (ch); };
 
         // Monitor panel: CPU usage source
         mc->getMonitorPanel().getCpuUsage = [this] { return deviceManager.getCpuUsage(); };
-
-        // LVH logo right-click: Instruments / Settings / MIDI / Bridge
-        mc->onLogoRightClick = [this] {
-            PopupMenu m;
-
-            // ── Select Instruments submenu (IDs 3000-3998 = plugins, 3 = refresh) ──
-            PopupMenu instrSub;
-            auto pluginTypes = knownPlugins.getTypes();
-            if (pluginTypes.isEmpty())
-            {
-                instrSub.addItem (3000, "(No plugins scanned yet)", false, false);
-            }
-            else
-            {
-                int id = 3000;
-                for (auto& t : pluginTypes)
-                    instrSub.addItem (id++, t.name);
-                instrSub.addSeparator();
-            }
-            instrSub.addItem (3, "Refresh Plugin List...");
-            m.addSubMenu ("Select Instruments", instrSub);
-            m.addSeparator();
-
-            // ── MIDI Input submenu (IDs 1000-1999) ──
-            PopupMenu midiSub;
-            auto midiInputs = MidiInput::getAvailableDevices();
-            if (midiInputs.isEmpty())
-            {
-                midiSub.addItem (1000, "No MIDI Device", false, false);
-            }
-            else
-            {
-                int id = 1000;
-                for (auto& d : midiInputs)
-                    midiSub.addItem (id++, d.name, true,
-                                     deviceManager.isMidiInputDeviceEnabled (d.identifier));
-            }
-            m.addSubMenu ("MIDI Input", midiSub);
-
-            // ── MIDI Route submenu (ID 4000 = All, 4001-4099 = individual bridge) ──
-            PopupMenu routeSub;
-            bool allMode = midiRouter.isRouteToAll();
-            routeSub.addItem (4000, "All Bridges", true, allMode);
-            if (! bridgeManager_.getBridges().isEmpty())
-            {
-                routeSub.addSeparator();
-                int rid = 4001;
-                for (auto* b : bridgeManager_.getBridges())
-                {
-                    juce::String label = juce::File (b->getPluginPath()).getFileNameWithoutExtension();
-                    routeSub.addItem (rid++, label, true,
-                                      ! allMode && midiRouter.getTarget() == b);
-                }
-            }
-            m.addSubMenu ("MIDI Route", routeSub);
-            m.addSeparator();
-            m.addItem (1, "Settings...");
-            m.addSeparator();
-            m.addItem (5001, "Save Project...");
-            m.addItem (5002, "Open Project...");
-            m.addSeparator();
-            m.addItem (2, "[Pro] Launch Bridge...");
-            m.addItem (5003, "[Pro] Launch Bridge as Effect...");
-
-            // ── Recent bridge files (IDs 2000-2019) ──
-            auto recents = bridgeManager_.getRecentBridgeFiles();
-            if (recents.size() > 0)
-            {
-                m.addSeparator();
-                int id = 2000;
-                for (auto& f : recents)
-                    m.addItem (id++, f.getFileNameWithoutExtension());
-            }
-
-            // Capture bridges snapshot for route selection (pointer + display name).
-            // BridgeInstance* pointers remain valid until onDisconnected on message thread.
-            struct BridgeEntry { BridgeInstance* ptr; };
-            juce::Array<BridgeEntry> bridgeSnapshot;
-            for (auto* b : bridgeManager_.getBridges()) bridgeSnapshot.add ({ b });
-
-            m.showMenuAsync (PopupMenu::Options(), [this, midiInputs, recents, pluginTypes, bridgeSnapshot] (int result) {
-                if (result == 1)
-                {
-                    openSettings();
-                }
-                else if (result == 5001)
-                {
-                    auto curFile = projectSerializer_.getCurrentProjectFile();
-                    auto chooser = std::make_shared<juce::FileChooser> (
-                        "Save Project...",
-                        curFile.existsAsFile()
-                            ? curFile.getParentDirectory()
-                            : juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
-                        "*.lvh");
-                    chooser->launchAsync (
-                        juce::FileBrowserComponent::saveMode
-                        | juce::FileBrowserComponent::canSelectFiles
-                        | juce::FileBrowserComponent::warnAboutOverwriting,
-                        [this, chooser] (const juce::FileChooser& fc) {
-                            auto f = fc.getResult();
-                            if (f.getFullPathName().isNotEmpty())
-                            {
-                                auto lvhFile = f.withFileExtension ("lvh");
-                                projectSerializer_.setCurrentProjectFile (lvhFile);
-                                projectSerializer_.saveProject (lvhFile);
-                            }
-                        });
-                }
-                else if (result == 5002)
-                {
-                    auto curFile = projectSerializer_.getCurrentProjectFile();
-                    auto chooser = std::make_shared<juce::FileChooser> (
-                        "Open Project...",
-                        curFile.existsAsFile()
-                            ? curFile.getParentDirectory()
-                            : juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
-                        "*.lvh");
-                    chooser->launchAsync (
-                        juce::FileBrowserComponent::openMode
-                        | juce::FileBrowserComponent::canSelectFiles,
-                        [this, chooser] (const juce::FileChooser& fc) {
-                            auto f = fc.getResult();
-                            if (f.existsAsFile())
-                            {
-                                projectSerializer_.setCurrentProjectFile (f);
-                                projectSerializer_.loadProject (f);
-                            }
-                        });
-                }
-                else if (result == 2)
-                {
-                    if (auto* mc = mainComp()) mc->onLaunchBridgeClicked();
-                }
-                else if (result == 5003)
-                {
-                    // Launch a VST3 plugin as an Effect bridge
-                    juce::File startDir;
-                    if (auto* prefs = appProperties.getUserSettings())
-                        if (prefs->getBoolValue ("rememberLastFolder", true))
-                        {
-                            juce::String last = prefs->getValue ("lastBridgeFolder");
-                            if (last.isNotEmpty()) startDir = juce::File (last);
-                        }
-                    if (! startDir.isDirectory())
-                        startDir = juce::File ("C:/Program Files/Common Files/VST3");
-                    if (! startDir.isDirectory())
-                        startDir = juce::File::getSpecialLocation (juce::File::userDesktopDirectory);
-
-                    auto chooser = std::make_shared<juce::FileChooser> (
-                        "Select a VST3 effect plugin to bridge...", startDir, "*.vst3");
-                    chooser->launchAsync (
-                        juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                        [this, chooser] (const juce::FileChooser& fc)
-                        {
-                            auto f = fc.getResult();
-                            if (f.existsAsFile())
-                                bridgeManager_.launchBridgeWithPath (f, BridgeInstance::Role::Effect);
-                        });
-                }
-                else if (result == 3)
-                {
-                    startPluginScan();
-                }
-                else if (result >= 1000 && result < 2000)
-                {
-                    int idx = result - 1000;
-                    if (idx < midiInputs.size())
-                    {
-                        auto& d = midiInputs[idx];
-                        bool wasEnabled = deviceManager.isMidiInputDeviceEnabled (d.identifier);
-                        for (auto& dev : midiInputs)
-                            deviceManager.setMidiInputDeviceEnabled (dev.identifier, false);
-                        if (! wasEnabled)
-                            deviceManager.setMidiInputDeviceEnabled (d.identifier, true);
-                    }
-                }
-                else if (result >= 2000 && result < 3000)
-                {
-                    int idx = result - 2000;
-                    if (idx < recents.size())
-                        bridgeManager_.launchBridgeWithPath (recents[idx]);
-                }
-                else if (result >= 3000 && result < 3999)
-                {
-                    int idx = result - 3000;
-                    if (idx < pluginTypes.size())
-                    {
-                        juce::File pluginFile (pluginTypes[idx].fileOrIdentifier);
-                        if (pluginFile.exists())   // existsAsFile() fails for .vst3 bundle dirs
-                            bridgeManager_.launchBridgeWithPath (pluginFile);
-                        else if (auto* mc = mainComp())
-                            mc->pushSystemMessage ("Plugin not found: "
-                                                   + pluginTypes[idx].fileOrIdentifier);
-                    }
-                }
-                else if (result == 4000)
-                {
-                    midiRouter.setRouteToAll();
-                    if (auto* mc = mainComp())
-                        mc->pushSystemMessage ("MIDI Route: All Bridges");
-                }
-                else if (result >= 4001 && result < 4100)
-                {
-                    int idx = result - 4001;
-                    if (idx < bridgeSnapshot.size())
-                    {
-                        auto* target = bridgeSnapshot[idx].ptr;
-                        midiRouter.setRouteToTarget (target);
-                        if (auto* mc = mainComp())
-                        {
-                            juce::String name = juce::File (target->getPluginPath())
-                                                    .getFileNameWithoutExtension();
-                            mc->pushSystemMessage ("MIDI Route: " + name + " only");
-                        }
-                    }
-                }
-            });
-        };
 
         mc->onPanicClicked = [this] { audioEngine.allNotesOff(); };
 
@@ -680,39 +322,6 @@ private:
                 mc->getKeyboardComponent().setOctaveOffset (newOffset);
                 mc->setOctaveDisplay (4 + newOffset);
             }
-        };
-
-        mc->onMixerToggle = [this] (bool show) { toggleMixerWindow (show); };
-
-        mc->onLaunchBridgeClicked = [this] {
-
-            // Determine the start directory:
-            //   1. Last opened folder (if "remember" is enabled and stored)
-            //   2. Default VST3 system folder
-            //   3. Desktop as final fallback
-            juce::File startDir;
-            if (auto* prefs = appProperties.getUserSettings())
-                if (prefs->getBoolValue ("rememberLastFolder", true))
-                {
-                    juce::String last = prefs->getValue ("lastBridgeFolder");
-                    if (last.isNotEmpty()) startDir = juce::File (last);
-                }
-            if (! startDir.isDirectory())
-                startDir = juce::File ("C:/Program Files/Common Files/VST3");
-            if (! startDir.isDirectory())
-                startDir = juce::File::getSpecialLocation (juce::File::userDesktopDirectory);
-
-            auto chooser = std::make_shared<juce::FileChooser> (
-                "Select a VST3 plugin to bridge...", startDir, "*.vst3");
-
-            chooser->launchAsync (
-                juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                [this, chooser] (const juce::FileChooser& fc)
-                {
-                    auto result = fc.getResult();
-                    if (result.existsAsFile())
-                        bridgeManager_.launchBridgeWithPath (result);
-                });
         };
     }
 
@@ -739,22 +348,22 @@ private:
         void closeButtonPressed() override { JUCEApplication::getInstance()->systemRequestedQuit(); }
     };
 
-    double masterVolume = 1.0;  // mirrors volume slider; updated in onValueChange
-
     MidiKeyboardState keyboardState;
     AudioDeviceManager deviceManager;
     KnownPluginList knownPlugins;
     AudioEngine audioEngine { keyboardState };
     ApplicationProperties appProperties;
-    BridgeManager    bridgeManager_  { audioEngine, deviceManager, appProperties };
-    MidiRoutingManager midiRouter    { bridgeManager_.getBridges() };           // must be declared after bridgeManager_
+    BridgeManager      bridgeManager_     { audioEngine, deviceManager, appProperties };
+    MidiRoutingManager midiRouter         { bridgeManager_.getBridges() };
     ProjectSerializer  projectSerializer_ { bridgeManager_.getBridges(), audioEngine, midiRouter,
-                                            deviceManager, appProperties };  // after midiRouter
+                                            deviceManager, appProperties };
     std::unique_ptr<MainWindow> mainWindow;
+    // UIManager declared after mainWindow → destroyed before mainWindow (reverse order)
+    UIManager uiManager_ { audioEngine, bridgeManager_, projectSerializer_,
+                            midiRouter, deviceManager, appProperties, knownPlugins };
     std::unique_ptr<PCKeyboardListener> pcKeyListener;
     std::unique_ptr<PluginScanThread> scanThread;
     std::shared_ptr<std::atomic<bool>> scanToken;
-    std::unique_ptr<SettingsWindow> settingsWindow;
 };
 
 START_JUCE_APPLICATION (LvhProApplication)
