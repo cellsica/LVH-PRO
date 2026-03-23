@@ -58,6 +58,7 @@ public:
     bool sendWindowPos     (int x, int y, int w, int h);
     bool sendRequestState();
     bool sendSetState      (const juce::MemoryBlock& stateBytes);
+    bool sendWindowTitle   (const juce::String& title);
 
     juce::Rectangle<int> getWindowBounds() const noexcept { return lastWindowBounds; }
 
@@ -79,6 +80,13 @@ public:
     std::atomic<bool>  mixerSoloed  { false };
     std::atomic<bool>  mixerBypassed { false };  // Effect bypass (audio-thread safe)
 
+    // ── FX parent association (message-thread only) ──────────────────
+    // For Role::Effect bridges only.
+    // Empty        = master chain effect.
+    // Non-empty    = per-channel effect; value is the parent instrument's pluginPath_.
+    const juce::String& getFxParentPath() const noexcept { return fxParentPath_; }
+    void setFxParentPath (const juce::String& path) { fxParentPath_ = path; }
+
     // ── Mixer UI customization (message-thread only) ──────────────────
     juce::String mixerCustomName;                                   // empty = use plugin filename
     juce::Colour mixerCustomColor { juce::Colours::transparentBlack }; // transparent = use palette default
@@ -99,6 +107,7 @@ private:
     State                state           = State::Idle;
     Role                 role_           = Role::Instrument;
     juce::String         pluginPath_;
+    juce::String         fxParentPath_;   // empty = master FX; non-empty = per-channel FX parent path
     juce::Rectangle<int> lastWindowBounds { 0, 0, 0, 0 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BridgeInstance)

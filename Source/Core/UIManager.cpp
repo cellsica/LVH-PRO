@@ -115,6 +115,10 @@ void UIManager::toggleMixerWindow (bool show)
                     b->sendWindowPos (bounds.getX(), bounds.getY(),
                                       bounds.getWidth(), bounds.getHeight());
             };
+
+            mixerWindow_->onAddFx = [this] (BridgeInstance* parent) {
+                showPluginPicker (BridgeInstance::Role::Effect, parent);
+            };
         }
 
         // Sync MASTER fader to current Core slider value
@@ -256,6 +260,49 @@ void UIManager::launchBridgeFileChooser (BridgeInstance::Role role)
         });
 }
 
+// ── Plugin picker popup (used by Mixer + slots) ───────────────────────────
+
+void UIManager::showPluginPicker (BridgeInstance::Role fixedRole, BridgeInstance* parentInstrument)
+{
+    auto pluginTypes = knownPlugins_.getTypes();
+
+    juce::PopupMenu m;
+    if (pluginTypes.isEmpty())
+    {
+        m.addItem (1, "(No plugins scanned yet)", false, false);
+    }
+    else
+    {
+        int id = 100;
+        for (auto& t : pluginTypes)
+            m.addItem (id++, t.name);
+        m.addSeparator();
+    }
+    m.addItem (1, "Refresh Plugin List...");
+
+    juce::String parentPath = parentInstrument ? parentInstrument->getPluginPath() : juce::String{};
+
+    m.showMenuAsync (juce::PopupMenu::Options(),
+        [this, pluginTypes, fixedRole, parentPath] (int result)
+        {
+            if (result == 1)
+            {
+                if (onStartPluginScan) onStartPluginScan();
+                return;
+            }
+            int idx = result - 100;
+            if (idx >= 0 && idx < pluginTypes.size())
+            {
+                auto& desc = pluginTypes[idx];
+                juce::File pluginFile (desc.fileOrIdentifier);
+                if (pluginFile.exists())
+                    bridgeManager_.launchBridgeWithPath (pluginFile, fixedRole, {}, std::nullopt, {}, parentPath);
+                else if (mc_ != nullptr)
+                    mc_->pushSystemMessage ("Plugin not found: " + desc.fileOrIdentifier);
+            }
+        });
+}
+
 // ── Main popup menu ───────────────────────────────────────────────────────
 
 void UIManager::showMainMenu()
@@ -277,7 +324,7 @@ void UIManager::showMainMenu()
         instrSub.addSeparator();
     }
     instrSub.addItem (3, "Refresh Plugin List...");
-    m.addSubMenu ("Select Instruments", instrSub);
+    m.addSubMenu ("Select Plugins", instrSub);
     m.addSeparator();
 
     // ── MIDI Input submenu (IDs 1000-1999) ──
@@ -317,9 +364,6 @@ void UIManager::showMainMenu()
     m.addSeparator();
     m.addItem (5001, "Save Project...");
     m.addItem (5002, "Open Project...");
-    m.addSeparator();
-    m.addItem (2, "[Pro] Launch Bridge...");
-    m.addItem (5003, "[Pro] Launch Bridge as Effect...");
 
     // ── Recent bridge files (IDs 2000-2019) ──
     auto recents = bridgeManager_.getRecentBridgeFiles();
@@ -388,14 +432,6 @@ void UIManager::showMainMenu()
                         }
                     });
             }
-            else if (result == 2)
-            {
-                launchBridgeFileChooser();
-            }
-            else if (result == 5003)
-            {
-                launchBridgeFileChooser (BridgeInstance::Role::Effect);
-            }
             else if (result == 3)
             {
                 if (onStartPluginScan) onStartPluginScan();
@@ -424,12 +460,14 @@ void UIManager::showMainMenu()
                 int idx = result - 3000;
                 if (idx < pluginTypes.size())
                 {
-                    juce::File pluginFile (pluginTypes[idx].fileOrIdentifier);
+                    auto& desc = pluginTypes[idx];
+                    juce::File pluginFile (desc.fileOrIdentifier);
+                    auto role = desc.isInstrument ? BridgeInstance::Role::Instrument
+                                                  : BridgeInstance::Role::Effect;
                     if (pluginFile.exists())
-                        bridgeManager_.launchBridgeWithPath (pluginFile);
+                        bridgeManager_.launchBridgeWithPath (pluginFile, role);
                     else if (mc_ != nullptr)
-                        mc_->pushSystemMessage ("Plugin not found: "
-                                               + pluginTypes[idx].fileOrIdentifier);
+                        mc_->pushSystemMessage ("Plugin not found: " + desc.fileOrIdentifier);
                 }
             }
             else if (result == 4000)

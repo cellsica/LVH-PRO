@@ -217,6 +217,10 @@ private:
                                  : String (knownPlugins.getNumTypes()) + " plugins. Ready.";
                     mainWindow->setName (getApplicationName() + "  \xe2\x80\x94  " + msg);
                 }
+                // Force cursor reset on all windows (e.g. MixerWindow may still show
+                // the OS busy cursor after a scan triggered from its FX slot picker)
+                for (int i = 0; i < Desktop::getInstance().getNumMouseSources(); ++i)
+                    Desktop::getInstance().getMouseSource (i)->forceMouseCursorUpdate();
             });
         scanThread->startThread();
     }
@@ -255,7 +259,8 @@ private:
             if (auto* mc = mainComp()) mc->pushSystemMessage (msg);
         };
 
-        projectSerializer_.onLaunchBridge = [this] (const juce::File& f, BridgeInstance::Role role) {
+        projectSerializer_.onLaunchBridge = [this] (const juce::File& f, BridgeInstance::Role role,
+                                                    const juce::String& fxParentPath) {
             // Closure injection: take all pending data here and pass by value to BridgeManager.
             // BridgeManager never needs to call back into ProjectSerializer.
             auto path = f.getFullPathName();
@@ -263,7 +268,8 @@ private:
                 f, role,
                 projectSerializer_.takePendingState  (path),
                 projectSerializer_.takePendingMixer  (path),
-                projectSerializer_.takePendingBounds (path));
+                projectSerializer_.takePendingBounds (path),
+                fxParentPath);
         };
 
         projectSerializer_.onProjectResetRequired = [this] {

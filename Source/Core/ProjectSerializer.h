@@ -47,8 +47,9 @@ public:
     // General system message (UI log)
     std::function<void(const juce::String&)> onMessage;
 
-    // Request LvhProApplication to launch a bridge (avoids circular dependency)
-    std::function<void(const juce::File&, BridgeInstance::Role)> onLaunchBridge;
+    // Request LvhProApplication to launch a bridge (avoids circular dependency).
+    // fxParentPath is empty for instruments and master effects; non-empty for per-channel FX.
+    std::function<void(const juce::File&, BridgeInstance::Role, const juce::String& fxParentPath)> onLaunchBridge;
 
     // Called at the start of loadProject: tear down graph + clear bridges array
     std::function<void()> onProjectResetRequired;

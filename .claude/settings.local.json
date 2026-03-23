@@ -61,7 +61,10 @@
       "Bash(cmd /c \"taskkill /F /IM LVH-Bridge.exe /T 2>nul; exit 0\")",
       "Bash(cmd /c \"wmic process where name='LVH-PRO.exe' get ProcessId,Name 2>nul\")",
       "Bash(ls /c/Projects/LVH-PRO/.agent/to_kaede_0*.md)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(cmd /c \"taskkill /F /IM LVH-PRO.exe & taskkill /F /IM LVH-Bridge.exe & exit 0\")",
+      "Bash(find C:/Projects/LVH-PRO -name AudioEngine.* -type f)",
+      "Bash(cmd /c \"taskkill /F /IM LVH-PRO.exe /IM LVH-Bridge.exe 2>nul; exit 0\")"
     ]
   }
 }

@@ -75,6 +75,19 @@ juce::MemoryBlock IpcProtocol::makeStateData (const juce::MemoryBlock& stateByte
     return makeRawMessage (IpcMessageType::StateData, payload.getData(), payload.getSize());
 }
 
+juce::MemoryBlock IpcProtocol::makeSetWindowTitle (const juce::String& title)
+{
+    juce::MemoryBlock utf8 (title.toUTF8(), std::strlen (title.toUTF8()));
+    return makeRawMessage (IpcMessageType::SetWindowTitle, utf8.getData(), utf8.getSize());
+}
+
+juce::String IpcProtocol::parseSetWindowTitle (const juce::MemoryBlock& data)
+{
+    if (data.getSize() <= 4) return {};
+    return juce::String::fromUTF8 (static_cast<const char*> (data.getData()) + 4,
+                                   (int) data.getSize() - 4);
+}
+
 juce::MemoryBlock IpcProtocol::makeSetState (const juce::MemoryBlock& stateBytes)
 {
     uint32_t sz = static_cast<uint32_t> (stateBytes.getSize());
@@ -387,6 +400,11 @@ bool CoreIpcManager::sendSetState (const juce::MemoryBlock& stateBytes)
     return sendMessage (IpcProtocol::makeSetState (stateBytes));
 }
 
+bool CoreIpcManager::sendWindowTitle (const juce::String& title)
+{
+    return sendMessage (IpcProtocol::makeSetWindowTitle (title));
+}
+
 void CoreIpcManager::connectionMade()
 {
     juce::Logger::writeToLog ("[Core IPC] Bridge connected. Sending handshake.");
@@ -546,6 +564,14 @@ void BridgeIpcClient::messageReceived (const juce::MemoryBlock& message)
             juce::Logger::writeToLog ("[Bridge IPC] RequestState received.");
             if (onRequestStateReceived) onRequestStateReceived();
             break;
+
+        case IpcMessageType::SetWindowTitle:
+        {
+            auto title = IpcProtocol::parseSetWindowTitle (message);
+            juce::Logger::writeToLog ("[Bridge IPC] SetWindowTitle: " + title);
+            if (onWindowTitleReceived) onWindowTitleReceived (title);
+            break;
+        }
 
         case IpcMessageType::SetState:
         {

@@ -59,7 +59,8 @@ public:
         BridgeInstance::Role                          role          = BridgeInstance::Role::Instrument,
         juce::MemoryBlock                             pendingState  = {},
         std::optional<ProjectSerializer::MixerSettings> pendingMixer = std::nullopt,
-        juce::Rectangle<int>                          pendingBounds = {});
+        juce::Rectangle<int>                          pendingBounds = {},
+        juce::String                                  fxParentPath  = {});
 
     // Destroy all bridges (call audioEngine.buildGraphWithSineWave() first).
     void clearBridges();

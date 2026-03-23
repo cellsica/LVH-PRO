@@ -128,6 +128,8 @@ void ProjectSerializer::writeProjectXml (const juce::File& file,
                 el->setAttribute ("customName", b->mixerCustomName);
             if (b->mixerCustomColor.getAlpha() > 0)
                 el->setAttribute ("customColor", b->mixerCustomColor.toDisplayString (true));
+            if (b->getFxParentPath().isNotEmpty())
+                el->setAttribute ("fxParentPath", b->getFxParentPath());
 
             for (const auto& entry : stateEntries)
                 if (entry.bridge == b && entry.received && entry.state.getSize() > 0)
@@ -338,10 +340,11 @@ void ProjectSerializer::loadProject (const juce::File& file)
                     ms.customColor = juce::Colour::fromString (colorStr);
                 pendingMixerSettings_[pluginPath] = ms;
 
+                juce::String fxParentPath = el->getStringAttribute ("fxParentPath");
                 juce::File pluginFile (pluginPath);
                 if (pluginFile.exists())
                 {
-                    if (onLaunchBridge) onLaunchBridge (pluginFile, role);
+                    if (onLaunchBridge) onLaunchBridge (pluginFile, role, fxParentPath);
                 }
                 else if (onMessage)
                 {

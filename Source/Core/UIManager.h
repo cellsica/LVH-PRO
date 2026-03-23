@@ -81,6 +81,7 @@ public:
 private:
     // ── Private helpers ───────────────────────────────────────────────────
     void showMainMenu();
+    void showPluginPicker (BridgeInstance::Role fixedRole, BridgeInstance* parentInstrument = nullptr);
     juce::File getBridgeStartDir() const;
 
     // ── Constructor-injected references ───────────────────────────────────

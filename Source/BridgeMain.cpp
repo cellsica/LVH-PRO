@@ -196,6 +196,10 @@ public:
                 if (mainWindow != nullptr && w > 0 && h > 0)
                     mainWindow->setBounds (x, y, w, h);
             };
+            ipcClient->onWindowTitleReceived = [this] (const juce::String& title) {
+                if (mainWindow != nullptr && title.isNotEmpty())
+                    mainWindow->setName (title);
+            };
             ipcClient->onRequestStateReceived = [this] {
                 if (mainWindow == nullptr) return;
                 juce::MemoryBlock state;

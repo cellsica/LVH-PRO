@@ -126,6 +126,12 @@ bool BridgeInstance::sendRequestState()
     return ipcManager.sendRequestState();
 }
 
+bool BridgeInstance::sendWindowTitle (const juce::String& title)
+{
+    if (state != State::Connected) return false;
+    return ipcManager.sendWindowTitle (title);
+}
+
 bool BridgeInstance::sendSetState (const juce::MemoryBlock& stateBytes)
 {
     if (state != State::Connected) return false;

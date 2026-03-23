@@ -16,6 +16,7 @@ enum class IpcMessageType : uint32_t
     RequestState  = 0x07,  // Core → Bridge: request plugin state dump
     StateData     = 0x08,  // Bridge → Core: plugin state binary payload
     SetState      = 0x09,  // Core → Bridge: restore plugin state from binary payload
+    SetWindowTitle = 0x0A, // Core → Bridge: update the Bridge window title string
 };
 
 // Shared memory layout: header + audio I/O buffers (stereo, up to 4096 samples)
@@ -51,13 +52,15 @@ namespace IpcProtocol
     juce::MemoryBlock makeHeartbeat();
     juce::MemoryBlock makeWindowPos   (int x, int y, int w, int h);
     juce::MemoryBlock makeRequestState();
-    juce::MemoryBlock makeStateData   (const juce::MemoryBlock& stateBytes);
-    juce::MemoryBlock makeSetState    (const juce::MemoryBlock& stateBytes);
+    juce::MemoryBlock makeStateData      (const juce::MemoryBlock& stateBytes);
+    juce::MemoryBlock makeSetState       (const juce::MemoryBlock& stateBytes);
+    juce::MemoryBlock makeSetWindowTitle (const juce::String& title);
 
-    IpcMessageType    getType        (const juce::MemoryBlock& data);
-    juce::MidiMessage parseMidi      (const juce::MemoryBlock& data);
-    void              parseWindowPos (const juce::MemoryBlock& data, int& x, int& y, int& w, int& h);
-    juce::MemoryBlock parseStateData (const juce::MemoryBlock& data);  // for StateData and SetState
+    IpcMessageType    getType             (const juce::MemoryBlock& data);
+    juce::MidiMessage parseMidi           (const juce::MemoryBlock& data);
+    void              parseWindowPos      (const juce::MemoryBlock& data, int& x, int& y, int& w, int& h);
+    juce::MemoryBlock parseStateData      (const juce::MemoryBlock& data);  // for StateData and SetState
+    juce::String      parseSetWindowTitle (const juce::MemoryBlock& data);
 }
 
 // =====================================================================
@@ -84,6 +87,7 @@ public:
     bool sendWindowPos     (int x, int y, int w, int h);
     bool sendRequestState();
     bool sendSetState      (const juce::MemoryBlock& stateBytes);
+    bool sendWindowTitle   (const juce::String& title);
 
     std::function<void()>                        onConnected;
     std::function<void()>                        onDisconnected;
@@ -233,6 +237,7 @@ public:
     std::function<void(int,int,int,int)>            onWindowPosReceived;
     std::function<void()>                           onRequestStateReceived;
     std::function<void(const juce::MemoryBlock&)>   onSetStateReceived;
+    std::function<void(const juce::String&)>        onWindowTitleReceived;
 
 private:
     void connectionMade() override;

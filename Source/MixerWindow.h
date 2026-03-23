@@ -26,8 +26,10 @@ static juce::Colour getMixerStripColor (int index)
 class FXSlotComponent : public Component
 {
 public:
-    BridgeInstance*       bridge = nullptr;
+    BridgeInstance*       bridge       = nullptr;
+    BridgeInstance*       parentBridge = nullptr;  // instrument context (nullptr = master chain)
     std::function<void()> onToggleWindow;
+    std::function<void(BridgeInstance*)> onAddFx;  // fired when placeholder (+) is clicked
 
     FXSlotComponent()
     {
@@ -55,7 +57,11 @@ public:
 
     void mouseDown (const MouseEvent&) override
     {
-        if (bridge == nullptr) return;  // placeholder — ignore clicks
+        if (bridge == nullptr)
+        {
+            if (onAddFx) onAddFx (parentBridge);  // pass instrument context (nullptr = master chain)
+            return;
+        }
         windowShown_ = ! windowShown_;
         if (onToggleWindow) onToggleWindow();
         repaint();
@@ -80,7 +86,8 @@ public:
                    : windowShown_  ? juce::Colours::white.withAlpha (0.85f)
                                    : juce::Colour (0xffaaaacc));
         g.setFont (Font (9.5f));
-        g.drawText (nameStr, textArea, Justification::centredLeft, true);
+        g.drawText (nameStr, textArea,
+                    isPlaceholder ? Justification::centred : Justification::centredLeft, true);
     }
 
     void resized() override
@@ -105,6 +112,10 @@ private:
 class MixerStrip : public Component
 {
 public:
+    static constexpr int kFxSlotH       = 17;  // height per FX slot row (px)
+    static constexpr int kFxVisibleRows  = 3;   // always-visible rows (fixed area height)
+    static constexpr int kFxAreaH        = kFxVisibleRows * kFxSlotH;  // 85 px
+
     // Callbacks — wired by MixerContentComponent after construction
     std::function<void(float)>              onFaderChange;  // linear gain 0.0–1.5 (ch) / 0.0–1.0 (master)
     std::function<void(float)>              onPanChange;    // -1.0 to +1.0
@@ -112,6 +123,7 @@ public:
     std::function<void(bool)>               onSoloChange;
     std::function<void(const juce::String&)> onNameChange;  // fired when user edits channel name
     std::function<void(juce::Colour)>        onColorChange; // fired when user picks accent colour
+    std::function<void(BridgeInstance*)>     onAddFx;       // bubbled up from placeholder FXSlotComponents
 
     ~MixerStrip() override { fader.setLookAndFeel (nullptr); }
 
@@ -134,16 +146,9 @@ public:
 
         addAndMakeVisible (ledMeter);
 
-        if (! isMaster)
-        {
-            for (int i = 0; i < 4; ++i)
-            {
-                auto* slot = fxSlots.add (new FXSlotComponent());
-                slot->setFxName ("-");
-                // bridge == nullptr → placeholder; FXSlotComponent handles this internally
-                addAndMakeVisible (slot);
-            }
-        }
+        fxViewport_.setScrollBarsShown (true, false);  // vertical scroll only
+        fxViewport_.setViewedComponent (&fxContent_, false);
+        addAndMakeVisible (fxViewport_);
 
         panSlider.setSliderStyle (Slider::LinearHorizontal);
         panSlider.setTextBoxStyle (Slider::NoTextBox, false, 0, 0);
@@ -207,18 +212,18 @@ public:
 
     void setMeterVisible (bool v) { ledMeter.setVisible (v); resized(); }
 
-    // FX slot management (used by MixerContentComponent for the Master strip)
+    // FX slot management
     FXSlotComponent* addFxSlot()
     {
-        auto* slot = fxSlots.add (new FXSlotComponent());
-        addAndMakeVisible (slot);
+        auto* slot = fxContent_.slots.add (new FXSlotComponent());
+        fxContent_.addAndMakeVisible (slot);
         resized();
         return slot;
     }
 
     void clearFxSlots()
     {
-        fxSlots.clear();
+        fxContent_.slots.clear();
         resized();
     }
 
@@ -350,12 +355,14 @@ public:
         nameLabel.setBounds (area.removeFromTop (22));
         area.removeFromTop (4);
 
-        if (! fxSlots.isEmpty())
+        // Scrollable FX area — always kFxAreaH tall regardless of slot count
+        fxViewport_.setBounds (area.removeFromTop (kFxAreaH).reduced (0, 1));
         {
-            for (auto* slot : fxSlots)
-                slot->setBounds (area.removeFromTop (17).reduced (0, 1));
-            area.removeFromTop (4);
+            int contentW = juce::jmax (1, fxViewport_.getMaximumVisibleWidth());
+            int contentH = juce::jmax (kFxAreaH, fxContent_.slots.size() * kFxSlotH);
+            fxContent_.setSize (contentW, contentH);
         }
+        area.removeFromTop (4);
 
         panSlider.setBounds (area.removeFromTop (16).reduced (8, 0));
         panValueLabel.setBounds (area.removeFromTop (11));
@@ -494,12 +501,28 @@ private:
             });
     }
 
-    FaderLookAndFeel         faderLF;    // must be declared before fader
+    // Scrollable FX container (inner component + viewport)
+    struct FxContent : public juce::Component
+    {
+        juce::OwnedArray<FXSlotComponent> slots;
+        void resized() override
+        {
+            int y = 0;
+            for (auto* s : slots)
+            {
+                s->setBounds (0, y, getWidth(), MixerStrip::kFxSlotH - 2);
+                y += MixerStrip::kFxSlotH;
+            }
+        }
+    };
+
+    FaderLookAndFeel         faderLF;      // must be declared before fader
     juce::Colour             accentColor;
     bool                     isMasterStrip = false;
     Label                    nameLabel;
     RealLedMeter             ledMeter;
-    juce::OwnedArray<FXSlotComponent> fxSlots;
+    FxContent                fxContent_;   // must be declared before fxViewport_
+    juce::Viewport           fxViewport_;
     Slider                   panSlider, fader;
     Label                    panValueLabel, faderValueLabel;
     TextButton               muteBtn, soloBtn;
@@ -538,8 +561,9 @@ public:
     // Called when Core volume slider changes — updates MASTER fader position without callback loop
     void setMasterGain (float v) { masterStrip->setFaderNoCallback (v); }
 
-    std::function<void(float)>          onMasterGainChange;
+    std::function<void(float)>           onMasterGainChange;
     std::function<void(BridgeInstance*)> onToggleFxWindow;
+    std::function<void(BridgeInstance*)> onAddFx;            // bubbled up from any placeholder (+) slot
 
     // Rebuild channel strips and FX slots to match the supplied bridge lists.
     void updateBridges (const juce::Array<BridgeInstance*>& instrumentBridges,
@@ -582,18 +606,55 @@ public:
             };
             strip->onNameChange = [b] (const juce::String& newName) {
                 b->mixerCustomName = newName;
+                // Reflect the new strip label in the Bridge window title
+                juce::String title = (b->getRole() == BridgeInstance::Role::Effect)
+                                     ? "LVH-Bridge [MASTER]: [" + newName + "]"
+                                     : "LVH-Bridge [" + newName + "]";
+                b->sendWindowTitle (title);
             };
             strip->onColorChange = [b] (juce::Colour c) {
                 b->mixerCustomColor = c;
             };
+            strip->onAddFx = [this] (BridgeInstance* parent) {
+                if (onAddFx) onAddFx (parent);
+            };
+
+            // Per-channel FX slots for this instrument strip
+            strip->clearFxSlots();
+            for (auto* fx : effectBridges)
+            {
+                if (fx->getFxParentPath().isEmpty()) continue;
+                if (juce::File (fx->getFxParentPath()) != juce::File (b->getPluginPath())) continue;
+
+                juce::String fxName = fx->mixerCustomName.isNotEmpty()
+                                      ? fx->mixerCustomName
+                                      : juce::File (fx->getPluginPath()).getFileNameWithoutExtension();
+                auto* slot = strip->addFxSlot();
+                slot->bridge = fx;
+                slot->setFxName (fxName);
+                slot->setBypassed (fx->mixerBypassed.load());
+                slot->onToggleWindow = [this, fx] {
+                    if (onToggleFxWindow) onToggleFxWindow (fx);
+                };
+            }
+            // One + placeholder for adding per-channel FX to this instrument
+            {
+                auto* placeholder = strip->addFxSlot();
+                placeholder->setFxName ("+");
+                placeholder->parentBridge = b;
+                placeholder->onAddFx = [this] (BridgeInstance* parent) {
+                    if (onAddFx) onAddFx (parent);
+                };
+            }
 
             addAndMakeVisible (strip);
         }
 
-        // Rebuild FX slots in the Master strip from effectBridges
+        // Rebuild FX slots in the Master strip from master effects (fxParentPath empty)
         masterStrip->clearFxSlots();
         for (auto* b : effectBridges)
         {
+            if (b->getFxParentPath().isNotEmpty()) continue;  // skip per-channel FX
             juce::String name = b->mixerCustomName.isNotEmpty()
                                 ? b->mixerCustomName
                                 : juce::File (b->getPluginPath()).getFileNameWithoutExtension();
@@ -604,6 +665,18 @@ public:
             slot->onToggleWindow = [this, b] {
                 if (onToggleFxWindow) onToggleFxWindow (b);
             };
+        }
+
+        // Always show kMasterFxSlots slots — pad remaining with + placeholders
+        int numMasterFx = 0;
+        for (auto* b : effectBridges)
+            if (b->getFxParentPath().isEmpty()) ++numMasterFx;
+        int numPlaceholders = jmax (0, MixerStrip::kFxVisibleRows - numMasterFx);
+        for (int i = 0; i < numPlaceholders; ++i)
+        {
+            auto* slot = masterStrip->addFxSlot();
+            slot->setFxName ("+");
+            slot->onAddFx = [this] (BridgeInstance* parent) { if (onAddFx) onAddFx (parent); };
         }
 
         resized();
@@ -707,6 +780,9 @@ public:
         content->onToggleFxWindow = [this] (BridgeInstance* b) {
             if (onToggleFxWindow) onToggleFxWindow (b);
         };
+        content->onAddFx = [this] (BridgeInstance* parent) {
+            if (onAddFx) onAddFx (parent);
+        };
         setContentOwned (content, true);
         setResizable (true, false);
         centreWithSize (720, 480);
@@ -733,6 +809,7 @@ public:
     std::function<void()>                onClose;
     std::function<void(float)>           onMasterGainChange;
     std::function<void(BridgeInstance*)> onToggleFxWindow;
+    std::function<void(BridgeInstance*)> onAddFx;  // user clicked +; arg = parent instrument (nullptr = master)
 
 private:
     MixerContentComponent* content = nullptr;

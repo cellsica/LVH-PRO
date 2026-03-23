@@ -20,11 +20,19 @@ public:
     static constexpr int kProcessTimeoutMs = 15;
    #endif
 
+    struct FxEntry
+    {
+        SharedMemoryBuffer* shm;
+        SyncEvents*         events;
+        BridgeInstance*     bridge = nullptr;  // for bypass check
+    };
+
     struct BridgeSource
     {
         SharedMemoryBuffer* shm;
         SyncEvents*         events;
         BridgeInstance*     bridge = nullptr;  // for mixer state + peak reporting (nullable)
+        std::vector<FxEntry> fxChain;          // per-channel FX, applied before mixing
     };
 
     explicit MultiSourceBridgeProcessor (std::vector<BridgeSource> sources)
@@ -36,12 +44,23 @@ public:
     void prepareToPlay (double sampleRate, int maxBlockSize) override
     {
         for (auto& src : sources_)
+        {
             if (auto* layout = src.shm->getLayout())
             {
                 layout->sampleRate  = static_cast<float> (sampleRate);
                 layout->bufferSize  = maxBlockSize;
                 layout->numChannels = 2;
             }
+            for (auto& fx : src.fxChain)
+                if (auto* layout = fx.shm->getLayout())
+                {
+                    layout->sampleRate  = static_cast<float> (sampleRate);
+                    layout->bufferSize  = maxBlockSize;
+                    layout->numChannels = 2;
+                }
+        }
+        // Pre-allocate temp buffer for per-channel FX processing (avoids audio-thread allocation)
+        tmpBuffer_.setSize (2, maxBlockSize, false, true, true);
     }
 
     void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
@@ -61,7 +80,7 @@ public:
             if (src.events->isOpen())
                 src.events->signalRequest();
 
-        // Step 2: Wait for each bridge, apply mixer state, accumulate into output
+        // Step 2: Wait for each bridge, run per-channel FX chain, apply mixer state, accumulate
         for (auto& src : sources_)
         {
             if (! src.events->isOpen()) continue;
@@ -69,6 +88,41 @@ public:
 
             auto* layout = src.shm->getLayout();
             if (layout == nullptr) continue;
+
+            // Copy instrument output into tmpBuffer for FX chain processing
+            if (tmpBuffer_.getNumSamples() >= numSamples)
+            {
+                for (int ch = 0; ch < numChannels; ++ch)
+                    std::memcpy (tmpBuffer_.getWritePointer (ch),
+                                 layout->audioOut[ch],
+                                 (size_t) numSamples * sizeof (float));
+            }
+
+            // Run per-channel FX chain serially on tmpBuffer
+            for (auto& fx : src.fxChain)
+            {
+                if (! fx.events->isOpen()) continue;
+                // Bypass check
+                if (fx.bridge != nullptr && fx.bridge->mixerBypassed.load (std::memory_order_relaxed))
+                    continue;
+
+                auto* fxLayout = fx.shm->getLayout();
+                if (fxLayout == nullptr) continue;
+
+                // Write tmpBuffer into FX bridge's audioIn
+                for (int ch = 0; ch < numChannels; ++ch)
+                    std::memcpy (fxLayout->audioIn[ch],
+                                 tmpBuffer_.getReadPointer (ch),
+                                 (size_t) numSamples * sizeof (float));
+
+                fx.events->signalRequest();
+                if (fx.events->waitForDone (kProcessTimeoutMs))
+                    for (int ch = 0; ch < numChannels; ++ch)
+                        std::memcpy (tmpBuffer_.getWritePointer (ch),
+                                     fxLayout->audioOut[ch],
+                                     (size_t) numSamples * sizeof (float));
+                // On timeout: tmpBuffer remains unchanged (dry passthrough for this FX)
+            }
 
             // Determine whether this channel should be heard
             bool active = true;
@@ -95,8 +149,8 @@ public:
 
                 for (int i = 0; i < numSamples; ++i)
                 {
-                    float l = layout->audioOut[0][i] * gainL;
-                    float r = (numChannels >= 2) ? layout->audioOut[1][i] * gainR : l;
+                    float l = tmpBuffer_.getReadPointer (0)[i] * gainL;
+                    float r = (numChannels >= 2) ? tmpBuffer_.getReadPointer (1)[i] * gainR : l;
                     outL[i] += l;
                     if (outR != nullptr) outR[i] += r;
 
@@ -140,7 +194,8 @@ public:
     void setStateInformation (const void*, int) override       {}
 
 private:
-    std::vector<BridgeSource> sources_;
+    std::vector<BridgeSource>    sources_;
+    juce::AudioBuffer<float>     tmpBuffer_;  // pre-allocated; used for per-channel FX chain processing
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MultiSourceBridgeProcessor)
 };

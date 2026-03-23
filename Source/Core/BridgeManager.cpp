@@ -1,4 +1,5 @@
 #include "BridgeManager.h"
+#include <map>
 
 BridgeManager::BridgeManager (AudioEngine&              audioEngine,
                                juce::AudioDeviceManager& deviceManager,
@@ -15,7 +16,8 @@ void BridgeManager::launchBridgeWithPath (
     BridgeInstance::Role                           role,
     juce::MemoryBlock                              pendingState,
     std::optional<ProjectSerializer::MixerSettings> pendingMixer,
-    juce::Rectangle<int>                           pendingBounds)
+    juce::Rectangle<int>                           pendingBounds,
+    juce::String                                   fxParentPath)
 {
     auto bridgeExe = juce::File::getSpecialLocation (juce::File::currentExecutableFile)
                          .getParentDirectory()
@@ -30,6 +32,8 @@ void BridgeManager::launchBridgeWithPath (
 
     auto* bridge = bridges_.add (new BridgeInstance());
     bridge->setRole (role);
+    if (fxParentPath.isNotEmpty())
+        bridge->setFxParentPath (fxParentPath);
     juce::String pluginName = pluginFile.getFileNameWithoutExtension()
                               + (role == BridgeInstance::Role::Effect ? " [FX]" : "");
     juce::String pluginPathStr = pluginFile.getFullPathName();
@@ -67,6 +71,30 @@ void BridgeManager::launchBridgeWithPath (
         }
 
         b->sendAudioConfig (sr, bs);
+
+        // Update Bridge window title:
+        //   Instruments:       "LVH-Bridge [StripName]"
+        //   Master FX:         "LVH-Bridge [MASTER]: [FxName]"
+        //   Per-channel FX:    "LVH-Bridge [ParentName]: [FxName]"
+        {
+            juce::String displayName = b->mixerCustomName.isNotEmpty()
+                                       ? b->mixerCustomName
+                                       : juce::File (pluginPathStr).getFileNameWithoutExtension();
+            juce::String title;
+            if (b->getRole() == BridgeInstance::Role::Effect)
+            {
+                juce::String parentLabel = "MASTER";
+                if (b->getFxParentPath().isNotEmpty())
+                    parentLabel = juce::File (b->getFxParentPath()).getFileNameWithoutExtension();
+                title = "LVH-Bridge [" + parentLabel + "]: [" + displayName + "]";
+            }
+            else
+            {
+                title = "LVH-Bridge [" + displayName + "]";
+            }
+            b->sendWindowTitle (title);
+        }
+
         if (onMessage) onMessage ("Bridge connected: " + pluginName);
         juce::MessageManager::callAsync ([this] { rebuildBridgeGraph(); });
 
@@ -138,16 +166,40 @@ void BridgeManager::addToRecentBridgeFiles (const juce::File& file)
 
 void BridgeManager::rebuildBridgeGraph()
 {
-    juce::Array<BridgeInstance*> instruments, effects;
+    juce::Array<BridgeInstance*> instruments, allEffects;
     for (auto* b : bridges_)
     {
         if (b->getState() != BridgeInstance::State::Connected)
             continue;
         if (b->getRole() == BridgeInstance::Role::Effect)
-            effects.add (b);
+            allEffects.add (b);
         else
             instruments.add (b);
     }
-    audioEngine_.rebuildBridgeGraph (instruments, effects);
-    if (onGraphRebuilt) onGraphRebuilt (instruments, effects);
+
+    // Split effects into master chain and per-instrument FX chains
+    juce::Array<BridgeInstance*> masterEffects;
+    std::map<BridgeInstance*, juce::Array<BridgeInstance*>> perChannelFxMap;
+
+    for (auto* fx : allEffects)
+    {
+        if (fx->getFxParentPath().isEmpty())
+        {
+            masterEffects.add (fx);
+        }
+        else
+        {
+            juce::File parentFile (fx->getFxParentPath());
+            for (auto* instr : instruments)
+                if (juce::File (instr->getPluginPath()) == parentFile)
+                {
+                    perChannelFxMap[instr].add (fx);
+                    break;
+                }
+        }
+    }
+
+    audioEngine_.rebuildBridgeGraph (instruments, masterEffects, perChannelFxMap);
+    // Pass all effects so the mixer UI can display both master and per-channel slots
+    if (onGraphRebuilt) onGraphRebuilt (instruments, allEffects);
 }

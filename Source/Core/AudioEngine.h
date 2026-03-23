@@ -3,6 +3,7 @@
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <functional>
 #include <atomic>
+#include <map>
 #include "SineWaveProcessor.h"
 #include "PluginSlot.h"
 #include "MidiInjectionsProcessor.h"
@@ -155,14 +156,17 @@ public:
     }
 
     /** Rebuild Core's audio graph for serial effect-chain routing.
-        Instruments are processed in parallel (MultiSourceBridgeProcessor),
-        then the mixed output is fed through each Effect bridge in order.
+        Instruments are processed in parallel (MultiSourceBridgeProcessor), each with
+        its own per-channel FX chain (perChannelFxMap), then the mixed output is fed
+        through each master effect bridge in order.
         Pass empty arrays to fall back to the sine-wave generator.
-        Graph: [Instruments(parallel)] → [Effect1] → [Effect2] → ... → [Gain/Meter] → [Out] */
-    void rebuildBridgeGraph (const juce::Array<BridgeInstance*>& instrumentBridges,
-                             const juce::Array<BridgeInstance*>& effectBridges)
+        Graph: [Instr(parallel+per-chan FX)] → [MasterFX1] → [MasterFX2] → ... → [Gain/Meter] → [Out] */
+    void rebuildBridgeGraph (
+        const juce::Array<BridgeInstance*>& instrumentBridges,
+        const juce::Array<BridgeInstance*>& masterEffects,
+        const std::map<BridgeInstance*, juce::Array<BridgeInstance*>>& perChannelFxMap = {})
     {
-        if (instrumentBridges.isEmpty() && effectBridges.isEmpty())
+        if (instrumentBridges.isEmpty() && masterEffects.isEmpty())
         {
             buildGraphWithSineWave();
             return;
@@ -185,19 +189,26 @@ public:
         for (int ch = 0; ch < 2; ++ch)
             audioGraph.addConnection ({{mgNode->nodeID, ch}, {outNode->nodeID, ch}});
 
-        // Build signal chain: instruments (parallel mix) → effects (serial) → gain/meter
+        // Build signal chain: instruments (parallel mix + per-chan FX) → master effects (serial) → gain/meter
         AudioProcessorGraph::Node::Ptr lastNode;
 
         if (! instrumentBridges.isEmpty())
         {
             std::vector<MultiSourceBridgeProcessor::BridgeSource> sources;
             for (auto* b : instrumentBridges)
-                sources.push_back ({ &b->getSharedMemory(), &b->getSyncEvents(), b });
+            {
+                MultiSourceBridgeProcessor::BridgeSource src { &b->getSharedMemory(), &b->getSyncEvents(), b };
+                auto it = perChannelFxMap.find (b);
+                if (it != perChannelFxMap.end())
+                    for (auto* fx : it->second)
+                        src.fxChain.push_back ({ &fx->getSharedMemory(), &fx->getSyncEvents(), fx });
+                sources.push_back (std::move (src));
+            }
             lastNode = audioGraph.addNode (
                 std::make_unique<MultiSourceBridgeProcessor> (std::move (sources)));
         }
 
-        for (auto* b : effectBridges)
+        for (auto* b : masterEffects)
         {
             auto effectNode = audioGraph.addNode (
                 std::make_unique<BridgeEffectProcessor> (
