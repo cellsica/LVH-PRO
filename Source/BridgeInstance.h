@@ -75,8 +75,9 @@ public:
     // Read by the audio thread (MultiSourceBridgeProcessor::processBlock).
     std::atomic<float> mixerGain   { 1.0f };  // linear, 0.0 – 1.5
     std::atomic<float> mixerPan    { 0.0f };  // -1.0 (L) … 0.0 (C) … +1.0 (R)
-    std::atomic<bool>  mixerMuted  { false };
-    std::atomic<bool>  mixerSoloed { false };
+    std::atomic<bool>  mixerMuted   { false };
+    std::atomic<bool>  mixerSoloed  { false };
+    std::atomic<bool>  mixerBypassed { false };  // Effect bypass (audio-thread safe)
 
     // ── Mixer UI customization (message-thread only) ──────────────────
     juce::String mixerCustomName;                                   // empty = use plugin filename

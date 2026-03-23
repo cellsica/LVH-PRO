@@ -160,11 +160,12 @@ public:
     static constexpr int kProcessTimeoutMs = 15;
    #endif
 
-    BridgeEffectProcessor (SharedMemoryBuffer& shm, SyncEvents& events)
+    BridgeEffectProcessor (SharedMemoryBuffer& shm, SyncEvents& events,
+                           BridgeInstance* bridge = nullptr)
         : juce::AudioProcessor (BusesProperties()
               .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
               .withOutput ("Output", juce::AudioChannelSet::stereo(), true))
-        , shm (shm), events (events)
+        , shm (shm), events (events), bridge_ (bridge)
     {}
 
     void prepareToPlay (double sampleRate, int maxBlockSize) override
@@ -179,6 +180,10 @@ public:
 
     void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
     {
+        // Bypass: leave the input buffer unchanged (passthrough)
+        if (bridge_ != nullptr && bridge_->mixerBypassed.load (std::memory_order_relaxed))
+            return;
+
         auto* layout = shm.getLayout();
         if (layout == nullptr || ! events.isOpen())
             return;
@@ -223,6 +228,7 @@ public:
 private:
     SharedMemoryBuffer& shm;
     SyncEvents&         events;
+    BridgeInstance*     bridge_ = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BridgeEffectProcessor)
 };

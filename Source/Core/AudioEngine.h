@@ -201,7 +201,7 @@ public:
         {
             auto effectNode = audioGraph.addNode (
                 std::make_unique<BridgeEffectProcessor> (
-                    b->getSharedMemory(), b->getSyncEvents()));
+                    b->getSharedMemory(), b->getSyncEvents(), b));
             if (lastNode != nullptr)
                 for (int ch = 0; ch < 2; ++ch)
                     audioGraph.addConnection ({{lastNode->nodeID, ch}, {effectNode->nodeID, ch}});

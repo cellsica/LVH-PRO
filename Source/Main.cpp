@@ -178,19 +178,30 @@ private:
                         mc->setVolumeDisplay ((double) v);
                     }
                 };
+                mixerWindow->onToggleFxWindow = [this] (BridgeInstance* b) {
+                    // Bring the FX plugin window to front by re-sending its last known bounds.
+                    auto bounds = b->getWindowBounds();
+                    if (bounds.getWidth() > 0 && bounds.getHeight() > 0)
+                        b->sendWindowPos (bounds.getX(), bounds.getY(),
+                                          bounds.getWidth(), bounds.getHeight());
+                };
             }
 
             // Sync MASTER fader to current Core slider value
             if (auto* mc = mainComp())
                 mixerWindow->setMasterGain ((float) mc->getVolumeSlider().getValue());
 
-            // Populate with the currently connected Instrument bridges
-            juce::Array<BridgeInstance*> instruments;
+            // Populate with the currently connected bridges split by role
+            juce::Array<BridgeInstance*> instruments, effects;
             for (auto* b : bridges)
-                if (b->getState() == BridgeInstance::State::Connected
-                    && b->getRole() == BridgeInstance::Role::Instrument)
+            {
+                if (b->getState() != BridgeInstance::State::Connected) continue;
+                if (b->getRole() == BridgeInstance::Role::Effect)
+                    effects.add (b);
+                else
                     instruments.add (b);
-            mixerWindow->updateBridges (instruments);
+            }
+            mixerWindow->updateBridges (instruments, effects);
 
             mixerWindow->setVisible (true);
             mixerWindow->toFront (true);
@@ -632,7 +643,7 @@ private:
 
         // Keep the Mixer Console in sync with the current bridge list
         if (mixerWindow != nullptr)
-            mixerWindow->updateBridges (instruments);
+            mixerWindow->updateBridges (instruments, effects);
     }
 
     // Returns up to recentBridgeCount recent bridge plugin files (newest first).
@@ -704,9 +715,10 @@ private:
             auto mit = pendingMixerSettings.find (pluginPathStr);
             if (mit != pendingMixerSettings.end())
             {
-                b->mixerGain.store  (mit->second.gain,  std::memory_order_relaxed);
-                b->mixerPan.store   (mit->second.pan,   std::memory_order_relaxed);
-                b->mixerMuted.store (mit->second.muted, std::memory_order_relaxed);
+                b->mixerGain.store     (mit->second.gain,     std::memory_order_relaxed);
+                b->mixerPan.store      (mit->second.pan,      std::memory_order_relaxed);
+                b->mixerMuted.store    (mit->second.muted,    std::memory_order_relaxed);
+                b->mixerBypassed.store (mit->second.bypassed, std::memory_order_relaxed);
                 b->mixerCustomName  = mit->second.customName;
                 b->mixerCustomColor = mit->second.customColor;
                 pendingMixerSettings.erase (mit);
@@ -852,9 +864,10 @@ private:
                 el->setAttribute ("h", bounds.getHeight());
 
                 // Mixer state
-                el->setAttribute ("gain",  (double) b->mixerGain.load());
-                el->setAttribute ("pan",   (double) b->mixerPan.load());
-                el->setAttribute ("muted", b->mixerMuted.load() ? 1 : 0);
+                el->setAttribute ("gain",     (double) b->mixerGain.load());
+                el->setAttribute ("pan",      (double) b->mixerPan.load());
+                el->setAttribute ("muted",    b->mixerMuted.load()    ? 1 : 0);
+                el->setAttribute ("bypassed", b->mixerBypassed.load() ? 1 : 0);
                 if (b->mixerCustomName.isNotEmpty())
                     el->setAttribute ("customName", b->mixerCustomName);
                 if (b->mixerCustomColor.getAlpha() > 0)
@@ -895,6 +908,17 @@ private:
             settingsEl->setAttribute ("coreWindowY", b.getY());
             settingsEl->setAttribute ("coreWindowW", b.getWidth());
             settingsEl->setAttribute ("coreWindowH", b.getHeight());
+        }
+
+        // Save enabled MIDI input device (identifier + name for fallback matching)
+        for (auto& d : juce::MidiInput::getAvailableDevices())
+        {
+            if (deviceManager.isMidiInputDeviceEnabled (d.identifier))
+            {
+                settingsEl->setAttribute ("midiInputIdentifier", d.identifier);
+                settingsEl->setAttribute ("midiInputName",       d.name);
+                break;
+            }
         }
 
         // Mixer Console position + visibility
@@ -982,6 +1006,35 @@ private:
                 mainWindow->setBounds (coreX, coreY, coreW, coreH);
             }
 
+            // Restore MIDI input device (match by identifier first, then by name)
+            {
+                juce::String savedId   = settingsEl->getStringAttribute ("midiInputIdentifier");
+                juce::String savedName = settingsEl->getStringAttribute ("midiInputName");
+                if (savedId.isNotEmpty() || savedName.isNotEmpty())
+                {
+                    auto midiDevices = juce::MidiInput::getAvailableDevices();
+                    juce::String targetId;
+
+                    // Prefer identifier match
+                    for (auto& d : midiDevices)
+                        if (d.identifier == savedId) { targetId = d.identifier; break; }
+
+                    // Fallback: name match (handles device re-enumeration across OS restarts)
+                    if (targetId.isEmpty() && savedName.isNotEmpty())
+                        for (auto& d : midiDevices)
+                            if (d.name == savedName) { targetId = d.identifier; break; }
+
+                    if (targetId.isNotEmpty())
+                    {
+                        for (auto& d : midiDevices)
+                            deviceManager.setMidiInputDeviceEnabled (d.identifier, false);
+                        deviceManager.setMidiInputDeviceEnabled (targetId, true);
+                        if (auto* mc = mainComp())
+                            mc->pushSystemMessage ("MIDI IN restored: " + savedName);
+                    }
+                }
+            }
+
             // Restore Mixer Console visibility + position
             bool mixerWasVisible = settingsEl->getIntAttribute ("mixerVisible", 0) != 0;
             int mixerW = settingsEl->getIntAttribute ("mixerWindowW", 0);
@@ -1049,9 +1102,10 @@ private:
 
                     // Store mixer settings for restoration after connect
                     MixerSettings ms;
-                    ms.gain  = (float) el->getDoubleAttribute ("gain",  1.0);
-                    ms.pan   = (float) el->getDoubleAttribute ("pan",   0.0);
-                    ms.muted = el->getIntAttribute ("muted", 0) != 0;
+                    ms.gain     = (float) el->getDoubleAttribute ("gain",  1.0);
+                    ms.pan      = (float) el->getDoubleAttribute ("pan",   0.0);
+                    ms.muted    = el->getIntAttribute ("muted",    0) != 0;
+                    ms.bypassed = el->getIntAttribute ("bypassed", 0) != 0;
                     ms.customName = el->getStringAttribute ("customName");
                     juce::String colorStr = el->getStringAttribute ("customColor");
                     if (colorStr.isNotEmpty())
@@ -1116,9 +1170,10 @@ private:
     // Project persistence
     struct MixerSettings
     {
-        float        gain  = 1.f;
-        float        pan   = 0.f;
-        bool         muted = false;
+        float        gain     = 1.f;
+        float        pan      = 0.f;
+        bool         muted    = false;
+        bool         bypassed = false;
         juce::String customName;
         juce::Colour customColor { juce::Colours::transparentBlack };
     };

@@ -18,6 +18,88 @@ static juce::Colour getMixerStripColor (int index)
 }
 
 // =====================================================================
+// FXSlotComponent
+// One FX slot in the Master strip: shows name, [B] bypass button.
+// Click on name area → onToggleWindow callback.
+// [B] button        → toggles BridgeInstance::mixerBypassed.
+// =====================================================================
+class FXSlotComponent : public Component
+{
+public:
+    BridgeInstance*       bridge = nullptr;
+    std::function<void()> onToggleWindow;
+
+    FXSlotComponent()
+    {
+        bypassBtn.setButtonText ("B");
+        bypassBtn.setClickingTogglesState (true);
+        bypassBtn.setColour (TextButton::buttonColourId,   juce::Colour (0xff2a2a38));
+        bypassBtn.setColour (TextButton::buttonOnColourId, juce::Colour (0xffcc3333));
+        bypassBtn.setTooltip ("Bypass FX");
+        bypassBtn.onClick = [this] {
+            if (bridge != nullptr)
+                bridge->mixerBypassed.store (bypassBtn.getToggleState(),
+                                             std::memory_order_relaxed);
+            repaint();
+        };
+        addAndMakeVisible (bypassBtn);
+    }
+
+    void setFxName (const juce::String& name) { nameStr = name; repaint(); }
+
+    void setBypassed (bool b)
+    {
+        bypassBtn.setToggleState (b, dontSendNotification);
+        repaint();
+    }
+
+    void mouseDown (const MouseEvent&) override
+    {
+        if (bridge == nullptr) return;  // placeholder — ignore clicks
+        windowShown_ = ! windowShown_;
+        if (onToggleWindow) onToggleWindow();
+        repaint();
+    }
+
+    void paint (Graphics& g) override
+    {
+        auto bounds = getLocalBounds().reduced (1);
+        bool isPlaceholder = (bridge == nullptr);
+        bool bypassed = bypassBtn.getToggleState();
+
+        g.setColour (isPlaceholder ? juce::Colour (0xff1a1a25)
+                   : bypassed      ? juce::Colour (0xff1e1414)
+                                   : juce::Colour (0xff1e1e30));
+        g.fillRoundedRectangle (bounds.toFloat(), 2.0f);
+        g.setColour (juce::Colour (0xff333344));
+        g.drawRoundedRectangle (bounds.toFloat(), 2.0f, 1.0f);
+
+        auto textArea = bounds.withTrimmedRight (isPlaceholder ? 4 : 22).reduced (3, 0);
+        g.setColour (isPlaceholder ? juce::Colour (0xff444455)
+                   : bypassed      ? juce::Colour (0xff555566)
+                   : windowShown_  ? juce::Colours::white.withAlpha (0.85f)
+                                   : juce::Colour (0xffaaaacc));
+        g.setFont (Font (9.5f));
+        g.drawText (nameStr, textArea, Justification::centredLeft, true);
+    }
+
+    void resized() override
+    {
+        if (bridge != nullptr)
+            bypassBtn.setBounds (getLocalBounds().removeFromRight (20).reduced (1));
+        else
+            bypassBtn.setBounds ({});  // hide bypass button for placeholders
+    }
+
+private:
+    juce::String nameStr;
+    TextButton   bypassBtn;
+    bool         windowShown_ = true;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FXSlotComponent)
+};
+
+// =====================================================================
 // MixerStrip
 // =====================================================================
 class MixerStrip : public Component
@@ -56,13 +138,9 @@ public:
         {
             for (int i = 0; i < 4; ++i)
             {
-                auto* slot = fxSlots.add (new Label());
-                slot->setText ("-", dontSendNotification);
-                slot->setJustificationType (Justification::centred);
-                slot->setFont (Font (10.0f));
-                slot->setColour (Label::outlineColourId,    juce::Colour (0xff333344));
-                slot->setColour (Label::backgroundColourId, juce::Colour (0xff1a1a25));
-                slot->setColour (Label::textColourId,       juce::Colour (0xff555566));
+                auto* slot = fxSlots.add (new FXSlotComponent());
+                slot->setFxName ("-");
+                // bridge == nullptr → placeholder; FXSlotComponent handles this internally
                 addAndMakeVisible (slot);
             }
         }
@@ -128,6 +206,21 @@ public:
     }
 
     void setMeterVisible (bool v) { ledMeter.setVisible (v); resized(); }
+
+    // FX slot management (used by MixerContentComponent for the Master strip)
+    FXSlotComponent* addFxSlot()
+    {
+        auto* slot = fxSlots.add (new FXSlotComponent());
+        addAndMakeVisible (slot);
+        resized();
+        return slot;
+    }
+
+    void clearFxSlots()
+    {
+        fxSlots.clear();
+        resized();
+    }
 
     // Initialise UI controls from saved values without triggering callbacks
     void setInitialValues (float gain, float pan, bool muted)
@@ -406,7 +499,7 @@ private:
     bool                     isMasterStrip = false;
     Label                    nameLabel;
     RealLedMeter             ledMeter;
-    juce::OwnedArray<Label>  fxSlots;
+    juce::OwnedArray<FXSlotComponent> fxSlots;
     Slider                   panSlider, fader;
     Label                    panValueLabel, faderValueLabel;
     TextButton               muteBtn, soloBtn;
@@ -445,10 +538,12 @@ public:
     // Called when Core volume slider changes — updates MASTER fader position without callback loop
     void setMasterGain (float v) { masterStrip->setFaderNoCallback (v); }
 
-    std::function<void(float)> onMasterGainChange;
+    std::function<void(float)>          onMasterGainChange;
+    std::function<void(BridgeInstance*)> onToggleFxWindow;
 
-    // Rebuild channel strips to match the supplied Instrument bridge list.
-    void updateBridges (const juce::Array<BridgeInstance*>& instrumentBridges)
+    // Rebuild channel strips and FX slots to match the supplied bridge lists.
+    void updateBridges (const juce::Array<BridgeInstance*>& instrumentBridges,
+                        const juce::Array<BridgeInstance*>& effectBridges = {})
     {
         bridges_.clear();
         strips.clear();
@@ -493,6 +588,22 @@ public:
             };
 
             addAndMakeVisible (strip);
+        }
+
+        // Rebuild FX slots in the Master strip from effectBridges
+        masterStrip->clearFxSlots();
+        for (auto* b : effectBridges)
+        {
+            juce::String name = b->mixerCustomName.isNotEmpty()
+                                ? b->mixerCustomName
+                                : juce::File (b->getPluginPath()).getFileNameWithoutExtension();
+            auto* slot = masterStrip->addFxSlot();
+            slot->bridge = b;
+            slot->setFxName (name);
+            slot->setBypassed (b->mixerBypassed.load());
+            slot->onToggleWindow = [this, b] {
+                if (onToggleFxWindow) onToggleFxWindow (b);
+            };
         }
 
         resized();
@@ -593,15 +704,19 @@ public:
         content->onMasterGainChange = [this] (float v) {
             if (onMasterGainChange) onMasterGainChange (v);
         };
+        content->onToggleFxWindow = [this] (BridgeInstance* b) {
+            if (onToggleFxWindow) onToggleFxWindow (b);
+        };
         setContentOwned (content, true);
         setResizable (true, false);
         centreWithSize (720, 480);
     }
 
-    void updateBridges (const juce::Array<BridgeInstance*>& instrumentBridges)
+    void updateBridges (const juce::Array<BridgeInstance*>& instrumentBridges,
+                        const juce::Array<BridgeInstance*>& effectBridges = {})
     {
         if (content != nullptr)
-            content->updateBridges (instrumentBridges);
+            content->updateBridges (instrumentBridges, effectBridges);
     }
 
     // Sync MASTER fader from Core slider (no callback loop)
@@ -615,8 +730,9 @@ public:
         if (onClose) onClose();
     }
 
-    std::function<void()>      onClose;
-    std::function<void(float)> onMasterGainChange;
+    std::function<void()>                onClose;
+    std::function<void(float)>           onMasterGainChange;
+    std::function<void(BridgeInstance*)> onToggleFxWindow;
 
 private:
     MixerContentComponent* content = nullptr;
