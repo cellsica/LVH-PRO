@@ -49,7 +49,9 @@
 ## 確認済みの未完了タスク 🔜
 - [x] **Mission 020**: ミキサー UI 強化 ＆ カスタマイズ (Phase 3) ✅ (しずく020)
 - [x] **Mission 021**: エフェクト管理 ＆ FX・セクション (Phase 4) ✅ (しずく021)
-- [ ] **Mission 022**: Stage Performance Mode & Stage Set (.stg) 🔜
+- [x] **Mission 022**: リファクタリング設計・フェーズ移行計画の策定 ✅ (022)
+- [ ] **Mission 023**: リファクタリング Phase A (MidiRoutingManager の独立化) 🔜
+- [ ] **Mission 024**: Stage Performance Mode & Stage Set (.stg) 🔜
 - [ ] Window Orbit 2.0 (ウィンドウ吸着機能)
 
 

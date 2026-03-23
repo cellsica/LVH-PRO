@@ -4,6 +4,7 @@
 #include "PluginScanThread.h"
 #include "PluginSlot.h"
 #include "BridgeInstance.h"
+#include "MidiRoutingManager.h"
 
 // =====================================================================
 // Main Application
@@ -19,27 +20,12 @@ public:
     const String getApplicationVersion() override { return "0.1.0"; }
     bool moreThanOneInstanceAllowed() override    { return true; }
 
-    // MIDI routing helper — called from MIDI thread or message thread.
-    // Uses atomic reads: no locking, negligible overhead.
-    void sendMidiToBridges (const juce::MidiMessage& msg)
-    {
-        if (routeToAll.load (std::memory_order_relaxed))
-        {
-            for (auto* b : bridges) b->sendMidi (msg);
-        }
-        else
-        {
-            if (auto* t = midiTargetBridge.load (std::memory_order_relaxed))
-                t->sendMidi (msg);
-        }
-    }
-
     // Hardware MIDI input
     void handleIncomingMidiMessage (MidiInput*, const MidiMessage& message) override
     {
         keyboardState.processNextMidiEvent (message);
         // Forward to selected Bridge(s) via IPC.
-        sendMidiToBridges (message);
+        midiRouter.sendMidi (message);
         auto msg = message;
         MessageManager::callAsync ([this, msg] {
             if (auto* mc = mainComp()) mc->getMonitorPanel().pushMidiMessage (msg);
@@ -56,7 +42,7 @@ public:
                         + " Vel: " + String (roundToInt (velocity * 127.f))
                         + " Ch: "  + String (channel);
             auto msg = MidiMessage::noteOn (channel, note, velocity);
-            sendMidiToBridges (msg);
+            midiRouter.sendMidi (msg);
             if (auto* mc = mainComp())
             {
                 mc->setMidiMonitorText (text);
@@ -69,7 +55,7 @@ public:
         // Called on the audio thread — defer to message thread.
         MessageManager::callAsync ([this, channel, note, velocity] {
             auto msg = MidiMessage::noteOff (channel, note, velocity);
-            sendMidiToBridges (msg);
+            midiRouter.sendMidi (msg);
             if (auto* mc = mainComp())
                 mc->getMonitorPanel().pushMidiMessage (msg);
         });
@@ -92,7 +78,7 @@ public:
         mainWindow.reset (new MainWindow (getApplicationName(), keyboardState));
 
         pcKeyListener = std::make_unique<PCKeyboardListener> (keyboardState);
-        pcKeyListener->onOctaveShift = [this] (int delta) { applyOctaveShift (delta); };
+        pcKeyListener->onOctaveShift = [this] (int delta) { midiRouter.applyOctaveShift (delta); };
         mainWindow->addKeyListener (pcKeyListener.get());
 
         keyboardState.addListener (this);
@@ -407,7 +393,7 @@ private:
 
             // ── MIDI Route submenu (ID 4000 = All, 4001-4099 = individual bridge) ──
             PopupMenu routeSub;
-            bool allMode = routeToAll.load();
+            bool allMode = midiRouter.isRouteToAll();
             routeSub.addItem (4000, "All Bridges", true, allMode);
             if (! bridges.isEmpty())
             {
@@ -417,7 +403,7 @@ private:
                 {
                     juce::String label = juce::File (b->getPluginPath()).getFileNameWithoutExtension();
                     routeSub.addItem (rid++, label, true,
-                                      ! allMode && midiTargetBridge.load() == b);
+                                      ! allMode && midiRouter.getTarget() == b);
                 }
             }
             m.addSubMenu ("MIDI Route", routeSub);
@@ -560,9 +546,7 @@ private:
                 }
                 else if (result == 4000)
                 {
-                    // All Bridges mode
-                    midiTargetBridge.store (nullptr);
-                    routeToAll.store (true);
+                    midiRouter.setRouteToAll();
                     if (auto* mc = mainComp())
                         mc->pushSystemMessage ("MIDI Route: All Bridges");
                 }
@@ -572,8 +556,7 @@ private:
                     if (idx < bridgeSnapshot.size())
                     {
                         auto* target = bridgeSnapshot[idx].ptr;
-                        midiTargetBridge.store (target);
-                        routeToAll.store (false);
+                        midiRouter.setRouteToTarget (target);
                         if (auto* mc = mainComp())
                         {
                             juce::String name = juce::File (target->getPluginPath())
@@ -587,7 +570,16 @@ private:
 
         mc->onPanicClicked = [this] { audioEngine.allNotesOff(); };
 
-        mc->onOctaveShift = [this] (int delta) { applyOctaveShift (delta); };
+        mc->onOctaveShift = [this] (int delta) { midiRouter.applyOctaveShift (delta); };
+
+        midiRouter.onOctaveChanged = [this] (int newOffset) {
+            if (pcKeyListener) pcKeyListener->setOctaveOffset (newOffset);
+            if (auto* mc = mainComp())
+            {
+                mc->getKeyboardComponent().setOctaveOffset (newOffset);
+                mc->setOctaveDisplay (4 + newOffset);
+            }
+        };
 
         mc->onMixerToggle = [this] (bool show) { toggleMixerWindow (show); };
 
@@ -742,12 +734,7 @@ private:
             }
 
             // Restore MIDI routing target
-            if (pendingMidiTarget.isNotEmpty() && pluginPathStr == pendingMidiTarget)
-            {
-                midiTargetBridge.store (b);
-                routeToAll.store (false);
-                pendingMidiTarget = juce::String();
-            }
+            midiRouter.tryApplyPendingTarget (pluginPathStr, b);
         };
 
         bridge->onDisconnected = [this, pluginName] (BridgeInstance* b) {
@@ -755,13 +742,9 @@ private:
                 if (auto* mc = mainComp())
                     mc->pushSystemMessage ("Bridge disconnected: " + pluginName);
                 // If this bridge was the solo MIDI target, fall back to All mode.
-                if (midiTargetBridge.load() == b)
-                {
-                    midiTargetBridge.store (nullptr);
-                    routeToAll.store (true);
+                if (midiRouter.handleBridgeDisconnected (b))
                     if (auto* mc = mainComp())
                         mc->pushSystemMessage ("MIDI Route reset to: All Bridges");
-                }
                 // Rebuild the graph BEFORE removing the bridge (state is already Idle,
                 // so this bridge is excluded from the active list automatically).
                 rebuildBridgeGraph();
@@ -885,13 +868,13 @@ private:
         }
 
         auto* routeEl = xml->createNewChildElement ("MidiRouting");
-        routeEl->setAttribute ("routeToAll", routeToAll.load() ? 1 : 0);
-        if (! routeToAll.load())
-            if (auto* t = midiTargetBridge.load())
+        routeEl->setAttribute ("routeToAll", midiRouter.isRouteToAll() ? 1 : 0);
+        if (! midiRouter.isRouteToAll())
+            if (auto* t = midiRouter.getTarget())
                 routeEl->setAttribute ("targetPlugin", t->getPluginPath());
 
         auto* settingsEl = xml->createNewChildElement ("Settings");
-        settingsEl->setAttribute ("octaveOffset", octaveOffset);
+        settingsEl->setAttribute ("octaveOffset", midiRouter.getOctaveOffset());
         double savedVolume = mainComp() ? mainComp()->getVolumeSlider().getValue() : masterVolume;
         settingsEl->setAttribute ("masterVolume", savedVolume);
         if (auto* prefs = appProperties.getUserSettings())
@@ -968,13 +951,13 @@ private:
         pendingWindowBounds.clear();
         pendingPluginStates.clear();
         pendingMixerSettings.clear();
-        pendingMidiTarget = String();
+        midiRouter.resetForProjectLoad();
 
         // Restore settings
         if (auto* settingsEl = xml->getChildByName ("Settings"))
         {
             int targetOctave = settingsEl->getIntAttribute ("octaveOffset", 0);
-            applyOctaveShift (targetOctave - octaveOffset);
+            midiRouter.applyOctaveShift (targetOctave - midiRouter.getOctaveOffset());
 
             int transpose = settingsEl->getIntAttribute ("transpose", 0);
             int channel   = settingsEl->getIntAttribute ("channelFilter", 0);
@@ -1064,10 +1047,10 @@ private:
         if (auto* routeEl = xml->getChildByName ("MidiRouting"))
         {
             bool allMode = routeEl->getIntAttribute ("routeToAll", 1) != 0;
-            routeToAll.store (allMode);
-            midiTargetBridge.store (nullptr);
-            if (! allMode)
-                pendingMidiTarget = routeEl->getStringAttribute ("targetPlugin");
+            if (allMode)
+                midiRouter.setRouteToAll();
+            else
+                midiRouter.setPendingTarget (routeEl->getStringAttribute ("targetPlugin"));
         }
 
         // Launch bridges
@@ -1125,17 +1108,6 @@ private:
             mc->pushSystemMessage ("Project loaded: " + file.getFileNameWithoutExtension());
     }
 
-    void applyOctaveShift (int delta)
-    {
-        octaveOffset = jlimit (-3, 3, octaveOffset + delta);
-        if (pcKeyListener) pcKeyListener->setOctaveOffset (octaveOffset);
-        if (auto* mc = mainComp())
-        {
-            mc->getKeyboardComponent().setOctaveOffset (octaveOffset);
-            mc->setOctaveDisplay (4 + octaveOffset);
-        }
-    }
-
     MainComponent* mainComp()
     {
         return mainWindow != nullptr
@@ -1159,13 +1131,7 @@ private:
         void closeButtonPressed() override { JUCEApplication::getInstance()->systemRequestedQuit(); }
     };
 
-    // MIDI routing state.
-    // Accessed from MIDI input thread and message thread — use atomics.
-    std::atomic<bool>            routeToAll       { true };
-    std::atomic<BridgeInstance*> midiTargetBridge { nullptr };
-
-    int    octaveOffset    = 0;    // message thread only
-    double masterVolume    = 1.0;  // mirrors volume slider; updated in onValueChange
+    double masterVolume = 1.0;  // mirrors volume slider; updated in onValueChange
 
     // Project persistence
     struct MixerSettings
@@ -1181,14 +1147,13 @@ private:
     std::map<juce::String, juce::Rectangle<int>>    pendingWindowBounds;
     std::map<juce::String, juce::MemoryBlock>       pendingPluginStates;
     std::map<juce::String, MixerSettings>           pendingMixerSettings;
-    juce::String                                    pendingMidiTarget;
-
     MidiKeyboardState keyboardState;
     AudioDeviceManager deviceManager;
     KnownPluginList knownPlugins;
     AudioEngine audioEngine { keyboardState };
     ApplicationProperties appProperties;
     juce::OwnedArray<BridgeInstance> bridges;
+    MidiRoutingManager               midiRouter { bridges };  // must be declared after bridges
     std::unique_ptr<MainWindow> mainWindow;
     std::unique_ptr<PCKeyboardListener> pcKeyListener;
     std::unique_ptr<PluginScanThread> scanThread;
