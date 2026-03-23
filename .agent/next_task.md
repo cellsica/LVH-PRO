@@ -54,7 +54,7 @@
 - [x] **Mission 024**: リファクタリング Phase B (ProjectSerializer の抽出) ✅ (しずく024)
 - [x] **Mission 025**: リファクタリング Phase C (BridgeManager の抽出) ✅ (しずく025)
 - [x] **Mission 026**: リファクタリング Phase D (UIManager の抽出) ✅ (しずく026)
-- [ ] **Mission 027**: ミキサー主導のプラグイン追加と UI の整理 🔜 (しずく027)
+- [x] **Mission 027**: ミキサー主導のプラグイン追加と UI の整理 ✅ (しずく027)
 - [ ] **Mission 028**: Stage Performance Mode & Stage Set (.stg) 🔜
 
 
@@ -86,4 +86,6 @@
 - [2026-03-23] しずく：Mission 025 (Phase C) 完了！BridgeManagerの抽出。依存関係をB案で最適化。
 - [2026-03-23] かえで：Mission 026 (Phase D) 指示書作成。
 - [2026-03-23] しずく：Mission 026 (Phase D) 完了！UIManagerの抽出。God Class解体完了！
-- [2026-03-23] かえde：Mission 027 (Mixer-Driven Plugin Loading & UI Refinement) 指示書作成。🔜
+- [2026-03-23] かえで：Mission 027 (Mixer-Driven Plugin Loading & UI Refinement) 指示書作成。
+- [2026-03-23] しずく：Mission 027 完了！ミキサーからのFX追加フロー完成。Ver 0.2.1-alphaリリース。
+- [2026-03-23] かえで：Stage Performance Mode (Mission 028) の構築準備開始。🔜
