@@ -49,12 +49,16 @@
 ### Mission 022: リファクタリング設計とフェーズ化 ✅
 - [x] しずくとの協働による「クロージャ注入パターン」および Phase A〜D への段階移行プラン策定。
 
-### Mission 023: リファクタリング Phase A (MidiRoutingManager) 🔜
-- [ ] `MidiRoutingManager` の新設。独立性が最も高いMIDI制御の分離。
-- [ ] Phase B〜D（ProjectSerializer, BridgeManager, UIManager）に向けた基盤整理。
+### Mission 023: リファクタリング Phase A (MidiRoutingManager) ✅
+- [x] `MidiRoutingManager` の新設。独立性が最も高いMIDI制御の分離。
+- [x] Phase B〜D（ProjectSerializer, BridgeManager, UIManager）に向けた基盤整理。
+
+### Mission 024: リファクタリング Phase B (ProjectSerializer の抽出) 🔜
+- [ ] `ProjectSerializer` クラスの新設。XMLのパース・生成ロジックと pending データの分離。
+- [ ] ファイル読み書き、最近使ったファイルリストの管理。
 
 ## フェーズ 5: プロフェッショナル機能の拡充 (進行中提示)
-### Mission 024: Stage Performance Mode (ライブ演奏特化機能) 🔜
+### Mission 025: Stage Performance Mode (ライブ演奏特化機能) 🔜
 - [ ] **Stage Set (.stg)**: 複数のプロジェクト (.lvh) を管理する JSON 形式の定義。
 - [ ] **セットリスト・エディタ**: プロジェクトの追加、エイリアス設定、並び順編集。
 - [ ] **ワンタッチ・ロード**: タップでの瞬時プロジェクト切り替え。
