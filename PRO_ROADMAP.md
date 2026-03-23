@@ -57,12 +57,16 @@
 - [x] `ProjectSerializer` クラスの新設。XMLのパース・生成ロジックと pending データの分離。
 - [x] ファイル読み書き、最近使ったファイルリストの管理。
 
-### Mission 025: リファクタリング Phase C (BridgeManager の抽出) 🔜
-- [ ] `BridgeManager` クラスの新設。ブリッジのライフサイクル（起動、再構築、リスト所有）の抽出。
-- [ ] `LvhProApplication` から `bridges` 配列の所有権を移動。
+### Mission 025: リファクタリング Phase C (BridgeManager の抽出) ✅
+- [x] `BridgeManager` クラスの新設。ブリッジのライフサイクル（起動、再構築、リスト所有）の抽出。
+- [x] `LvhProApplication` から `bridges` 配列の所有権を移動。
+- [x] 指示書 B 案の採用により `ProjectSerializer` との依存関係を最小化。
+
+### Mission 026: リファクタリング Phase D (UIManager の抽出) 🔜
+- [ ] `UIManager` クラスの新設。各種ウィンドウ（Mixer / Settings）のライフサイクルと、UI同士の連携ロジックの集約。
 
 ## フェーズ 5: プロフェッショナル機能の拡充 (進行中提示)
-### Mission 026: Stage Performance Mode (ライブ演奏特化機能) 🔜
+### Mission 027: Stage Performance Mode (ライブ演奏特化機能) 🔜
 - [ ] **Stage Set (.stg)**: 複数のプロジェクト (.lvh) を管理する JSON 形式の定義。
 - [ ] **セットリスト・エディタ**: プロジェクトの追加、エイリアス設定、並び順編集。
 - [ ] **ワンタッチ・ロード**: タップでの瞬時プロジェクト切り替え。
