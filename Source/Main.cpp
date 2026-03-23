@@ -6,6 +6,7 @@
 #include "BridgeInstance.h"
 #include "MidiRoutingManager.h"
 #include "ProjectSerializer.h"
+#include "BridgeManager.h"
 
 // =====================================================================
 // Main Application
@@ -85,6 +86,7 @@ public:
         keyboardState.addListener (this);
 
         wireUICallbacks();
+        wireBridgeManagerCallbacks();
         wireSerializerCallbacks();
 
         // Apply saved settings
@@ -133,7 +135,7 @@ public:
         // removed from the graph before we destroy the BridgeInstances (which
         // own the SHM/SyncEvents those processors reference).
         audioEngine.buildGraphWithSineWave();
-        bridges.clear(); // calls BridgeInstance::shutdown() on each bridge
+        bridgeManager_.clearBridges(); // calls BridgeInstance::shutdown() on each bridge
 
         deviceManager.removeMidiInputDeviceCallback (String(), this);
         deviceManager.removeMidiInputDeviceCallback (String(), &audioEngine.getPlayer());
@@ -181,7 +183,7 @@ private:
 
             // Populate with the currently connected bridges split by role
             juce::Array<BridgeInstance*> instruments, effects;
-            for (auto* b : bridges)
+            for (auto* b : bridgeManager_.getBridges())
             {
                 if (b->getState() != BridgeInstance::State::Connected) continue;
                 if (b->getRole() == BridgeInstance::Role::Effect)
@@ -315,6 +317,30 @@ private:
         settingsWindow->toFront (true);
     }
 
+    void wireBridgeManagerCallbacks()
+    {
+        bridgeManager_.onMessage = [this] (const juce::String& msg) {
+            if (auto* mc = mainComp()) mc->pushSystemMessage (msg);
+        };
+
+        bridgeManager_.onGraphRebuilt = [this] (juce::Array<BridgeInstance*> instruments,
+                                                  juce::Array<BridgeInstance*> effects) {
+            if (mixerWindow != nullptr)
+                mixerWindow->updateBridges (instruments, effects);
+        };
+
+        bridgeManager_.onBridgeDisconnectedMidi = [this] (BridgeInstance* b) {
+            if (midiRouter.handleBridgeDisconnected (b))
+                if (auto* mc = mainComp())
+                    mc->pushSystemMessage ("MIDI Route reset to: All Bridges");
+        };
+
+        bridgeManager_.onApplyPendingMidiTarget = [this] (const juce::String& path,
+                                                           BridgeInstance* b) {
+            midiRouter.tryApplyPendingTarget (path, b);
+        };
+    }
+
     void wireSerializerCallbacks()
     {
         projectSerializer_.onMessage = [this] (const juce::String& msg) {
@@ -322,12 +348,19 @@ private:
         };
 
         projectSerializer_.onLaunchBridge = [this] (const juce::File& f, BridgeInstance::Role role) {
-            launchBridgeWithPath (f, role);
+            // Closure injection: take all pending data here and pass by value to BridgeManager.
+            // BridgeManager never needs to call back into ProjectSerializer.
+            auto path = f.getFullPathName();
+            bridgeManager_.launchBridgeWithPath (
+                f, role,
+                projectSerializer_.takePendingState  (path),
+                projectSerializer_.takePendingMixer  (path),
+                projectSerializer_.takePendingBounds (path));
         };
 
         projectSerializer_.onProjectResetRequired = [this] {
             audioEngine.buildGraphWithSineWave();
-            bridges.clear();
+            bridgeManager_.clearBridges();
         };
 
         projectSerializer_.getMasterVolume = [this] () -> double {
@@ -460,11 +493,11 @@ private:
             PopupMenu routeSub;
             bool allMode = midiRouter.isRouteToAll();
             routeSub.addItem (4000, "All Bridges", true, allMode);
-            if (! bridges.isEmpty())
+            if (! bridgeManager_.getBridges().isEmpty())
             {
                 routeSub.addSeparator();
                 int rid = 4001;
-                for (auto* b : bridges)
+                for (auto* b : bridgeManager_.getBridges())
                 {
                     juce::String label = juce::File (b->getPluginPath()).getFileNameWithoutExtension();
                     routeSub.addItem (rid++, label, true,
@@ -482,7 +515,7 @@ private:
             m.addItem (5003, "[Pro] Launch Bridge as Effect...");
 
             // ── Recent bridge files (IDs 2000-2019) ──
-            auto recents = getRecentBridgeFiles();
+            auto recents = bridgeManager_.getRecentBridgeFiles();
             if (recents.size() > 0)
             {
                 m.addSeparator();
@@ -495,7 +528,7 @@ private:
             // BridgeInstance* pointers remain valid until onDisconnected on message thread.
             struct BridgeEntry { BridgeInstance* ptr; };
             juce::Array<BridgeEntry> bridgeSnapshot;
-            for (auto* b : bridges) bridgeSnapshot.add ({ b });
+            for (auto* b : bridgeManager_.getBridges()) bridgeSnapshot.add ({ b });
 
             m.showMenuAsync (PopupMenu::Options(), [this, midiInputs, recents, pluginTypes, bridgeSnapshot] (int result) {
                 if (result == 1)
@@ -573,7 +606,7 @@ private:
                         {
                             auto f = fc.getResult();
                             if (f.existsAsFile())
-                                launchBridgeWithPath (f, BridgeInstance::Role::Effect);
+                                bridgeManager_.launchBridgeWithPath (f, BridgeInstance::Role::Effect);
                         });
                 }
                 else if (result == 3)
@@ -597,7 +630,7 @@ private:
                 {
                     int idx = result - 2000;
                     if (idx < recents.size())
-                        launchBridgeWithPath (recents[idx]);
+                        bridgeManager_.launchBridgeWithPath (recents[idx]);
                 }
                 else if (result >= 3000 && result < 3999)
                 {
@@ -606,7 +639,7 @@ private:
                     {
                         juce::File pluginFile (pluginTypes[idx].fileOrIdentifier);
                         if (pluginFile.exists())   // existsAsFile() fails for .vst3 bundle dirs
-                            launchBridgeWithPath (pluginFile);
+                            bridgeManager_.launchBridgeWithPath (pluginFile);
                         else if (auto* mc = mainComp())
                             mc->pushSystemMessage ("Plugin not found: "
                                                    + pluginTypes[idx].fileOrIdentifier);
@@ -678,161 +711,9 @@ private:
                 {
                     auto result = fc.getResult();
                     if (result.existsAsFile())
-                        launchBridgeWithPath (result);
+                        bridgeManager_.launchBridgeWithPath (result);
                 });
         };
-    }
-
-    // Collect all Connected bridges, split by role, and rebuild the audio graph.
-    // Instruments are mixed in parallel; Effects are chained serially after them.
-    // Also refreshes the Mixer Console if it is open.
-    // Falls back to sine wave if no bridges are connected.
-    void rebuildBridgeGraph()
-    {
-        juce::Array<BridgeInstance*> instruments, effects;
-        for (auto* b : bridges)
-        {
-            if (b->getState() != BridgeInstance::State::Connected)
-                continue;
-            if (b->getRole() == BridgeInstance::Role::Effect)
-                effects.add (b);
-            else
-                instruments.add (b);
-        }
-        audioEngine.rebuildBridgeGraph (instruments, effects);
-
-        // Keep the Mixer Console in sync with the current bridge list
-        if (mixerWindow != nullptr)
-            mixerWindow->updateBridges (instruments, effects);
-    }
-
-    // Returns up to recentBridgeCount recent bridge plugin files (newest first).
-    juce::Array<juce::File> getRecentBridgeFiles()
-    {
-        auto* prefs = appProperties.getUserSettings();
-        if (prefs == nullptr) return {};
-        const int maxDisplay = prefs->getIntValue ("recentBridgeCount", 5);
-        auto parts = juce::StringArray::fromTokens (prefs->getValue ("recentBridgeFiles"), "|", "");
-        juce::Array<juce::File> result;
-        for (int i = 0; i < juce::jmin (maxDisplay, parts.size()); ++i)
-            if (parts[i].isNotEmpty())
-                result.add (juce::File (parts[i]));
-        return result;
-    }
-
-    // Prepends file to the stored recent list (newest first), capped at 20 entries.
-    void addToRecentBridgeFiles (const juce::File& file)
-    {
-        auto* prefs = appProperties.getUserSettings();
-        if (prefs == nullptr) return;
-        auto parts = juce::StringArray::fromTokens (prefs->getValue ("recentBridgeFiles"), "|", "");
-        parts.removeString (file.getFullPathName());
-        parts.insert (0, file.getFullPathName());
-        while (parts.size() > 20) parts.remove (parts.size() - 1);
-        prefs->setValue ("recentBridgeFiles", parts.joinIntoString ("|"));
-    }
-
-    // Common bridge launch logic used by both the file chooser and recent-file menu.
-    // role defaults to Instrument; pass Role::Effect to launch as an effect bridge.
-    void launchBridgeWithPath (const juce::File& pluginFile,
-                               BridgeInstance::Role role = BridgeInstance::Role::Instrument)
-    {
-        auto bridgeExe = juce::File::getSpecialLocation (juce::File::currentExecutableFile)
-                             .getParentDirectory()
-                             .getChildFile ("LVH-Bridge.exe");
-
-        if (! bridgeExe.existsAsFile())
-        {
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
-                "Bridge Error", "LVH-Bridge.exe not found.");
-            return;
-        }
-
-        auto* bridge = bridges.add (new BridgeInstance());
-        bridge->setRole (role);
-        juce::String pluginName = pluginFile.getFileNameWithoutExtension()
-                                  + (role == BridgeInstance::Role::Effect ? " [FX]" : "");
-
-        juce::String pluginPathStr = pluginFile.getFullPathName();
-
-        // Closure injection: capture all pending data BEFORE spawning the bridge.
-        // onConnected never calls back into projectSerializer_.
-        auto pendingState  = projectSerializer_.takePendingState  (pluginPathStr);
-        auto pendingMixer  = projectSerializer_.takePendingMixer  (pluginPathStr);
-        auto pendingBounds = projectSerializer_.takePendingBounds (pluginPathStr);
-
-        bridge->onConnected = [this, pluginName, pluginPathStr,
-                                pendingState  = std::move (pendingState),
-                                pendingMixer,
-                                pendingBounds] (BridgeInstance* b) mutable {
-            auto& setup = deviceManager.getAudioDeviceSetup();
-            auto sr = static_cast<float> (setup.sampleRate > 0.0 ? setup.sampleRate : 44100.0);
-            auto bs = setup.bufferSize > 0 ? setup.bufferSize : 512;
-
-            // Send SetState BEFORE AudioConfig so the Bridge can apply it
-            // before prepareToPlay (correct VST3 restore order: setState → prepareToPlay).
-            if (pendingState.getSize() > 0)
-            {
-                if (auto* mc = mainComp())
-                    mc->pushSystemMessage ("Restoring plugin state for: " + pluginName
-                        + " (" + juce::String ((int) pendingState.getSize()) + " bytes)");
-                b->sendSetState (pendingState);
-            }
-
-            // Restore mixer settings before rebuildBridgeGraph so MixerStrip reads correct values
-            if (pendingMixer.has_value())
-            {
-                const auto& ms = *pendingMixer;
-                b->mixerGain.store     (ms.gain,     std::memory_order_relaxed);
-                b->mixerPan.store      (ms.pan,      std::memory_order_relaxed);
-                b->mixerMuted.store    (ms.muted,    std::memory_order_relaxed);
-                b->mixerBypassed.store (ms.bypassed, std::memory_order_relaxed);
-                b->mixerCustomName  = ms.customName;
-                b->mixerCustomColor = ms.customColor;
-            }
-
-            b->sendAudioConfig (sr, bs);
-            if (auto* mc = mainComp())
-                mc->pushSystemMessage ("Bridge connected: " + pluginName);
-            juce::MessageManager::callAsync ([this] { rebuildBridgeGraph(); });
-
-            // Restore window position from project load
-            if (pendingBounds.getWidth() > 0 && pendingBounds.getHeight() > 0)
-            {
-                juce::Timer::callAfterDelay (800, [b, pendingBounds] {
-                    b->sendWindowPos (pendingBounds.getX(), pendingBounds.getY(),
-                                      pendingBounds.getWidth(), pendingBounds.getHeight());
-                });
-            }
-
-            // Restore MIDI routing target
-            midiRouter.tryApplyPendingTarget (pluginPathStr, b);
-        };
-
-        bridge->onDisconnected = [this, pluginName] (BridgeInstance* b) {
-            juce::MessageManager::callAsync ([this, b, pluginName] {
-                if (auto* mc = mainComp())
-                    mc->pushSystemMessage ("Bridge disconnected: " + pluginName);
-                // If this bridge was the solo MIDI target, fall back to All mode.
-                if (midiRouter.handleBridgeDisconnected (b))
-                    if (auto* mc = mainComp())
-                        mc->pushSystemMessage ("MIDI Route reset to: All Bridges");
-                // Rebuild the graph BEFORE removing the bridge (state is already Idle,
-                // so this bridge is excluded from the active list automatically).
-                rebuildBridgeGraph();
-                bridges.removeObject (b);
-            });
-        };
-
-        if (auto* mc = mainComp())
-            mc->pushSystemMessage ("Launching bridge: " + pluginName);
-        bridge->launch (pluginFile.getFullPathName(), bridgeExe);
-
-        addToRecentBridgeFiles (pluginFile);
-        if (auto* prefs = appProperties.getUserSettings())
-            if (prefs->getBoolValue ("rememberLastFolder", true))
-                prefs->setValue ("lastBridgeFolder",
-                                 pluginFile.getParentDirectory().getFullPathName());
     }
 
     MainComponent* mainComp()
@@ -865,10 +746,10 @@ private:
     KnownPluginList knownPlugins;
     AudioEngine audioEngine { keyboardState };
     ApplicationProperties appProperties;
-    juce::OwnedArray<BridgeInstance> bridges;
-    MidiRoutingManager               midiRouter        { bridges };           // must be declared after bridges
-    ProjectSerializer                projectSerializer_ { bridges, audioEngine, midiRouter,
-                                                          deviceManager, appProperties };  // after midiRouter
+    BridgeManager    bridgeManager_  { audioEngine, deviceManager, appProperties };
+    MidiRoutingManager midiRouter    { bridgeManager_.getBridges() };           // must be declared after bridgeManager_
+    ProjectSerializer  projectSerializer_ { bridgeManager_.getBridges(), audioEngine, midiRouter,
+                                            deviceManager, appProperties };  // after midiRouter
     std::unique_ptr<MainWindow> mainWindow;
     std::unique_ptr<PCKeyboardListener> pcKeyListener;
     std::unique_ptr<PluginScanThread> scanThread;
