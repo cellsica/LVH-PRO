@@ -51,8 +51,8 @@
 - [x] **Mission 021**: エフェクト管理 ＆ FX・セクション (Phase 4) ✅ (しずく021)
 - [x] **Mission 022**: リファクタリング設計・フェーズ移行計画の策定 ✅ (022)
 - [x] **Mission 023**: リファクタリング Phase A (MidiRoutingManager の独立化) ✅ (しずく023)
-- [ ] **Mission 024**: リファクタリング Phase B (ProjectSerializer の抽出) 🔜
-- [ ] Window Orbit 2.0 (ウィンドウ吸着機能)
+- [x] **Mission 024**: リファクタリング Phase B (ProjectSerializer の抽出) ✅ (しずく024)
+- [ ] **Mission 025**: リファクタリング Phase C (BridgeManager の抽出) 🔜
 
 
 
@@ -77,4 +77,6 @@
 - [2026-03-23] しずく：Mission 021 (Phase 4) 完了！FXバイパス機能とMIDI INの保存に対応。
 - [2026-03-23] かえで：Main.cppのリファクタリング（分割）計画案を作成し、しずくにレビュー依頼。
 - [2026-03-23] しずく：Mission 023 (Phase A) 完了！MidiRoutingManagerの抽出に成功。
-- [2026-03-23] かえで：Mission 024 (Phase B) 指示書作成予定。🔜
+- [2026-03-23] かえで：Mission 024 (Phase B) 指示書作成。
+- [2026-03-23] しずく：Mission 024 (Phase B) 完了！ProjectSerializerの抽出。250行削減！
+- [2026-03-23] かえで：Mission 025 (Phase C) 指示書作成予定。🔜
