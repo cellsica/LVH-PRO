@@ -3,6 +3,7 @@
 #include "MixerWindow.h"
 #include "SettingsWindow.h"
 #include "StageWindow.h"
+#include "../LanguageManager.h"
 
 UIManager::UIManager (AudioEngine&                  audioEngine,
                        BridgeManager&                bridgeManager,
@@ -30,6 +31,12 @@ void UIManager::setMainComponent (MainComponent* mc)
 {
     mc_ = mc;
     if (mc == nullptr) return;
+
+    // Restore saved language before any window is created
+    LanguageManager::getInstance().init (appProperties_.getUserSettings());
+
+    // Load persisted MIDI mappings for Mixer channels
+    loadMixerMappings();
 
     // Speaker mute button + volume slider (share savedGain)
     auto savedGain = std::make_shared<double> (1.0);
@@ -143,6 +150,13 @@ void UIManager::toggleMixerWindow (bool show)
             mixerWindow_->onAddFx = [this] (BridgeInstance* parent) {
                 showPluginPicker (BridgeInstance::Role::Effect, parent);
             };
+
+            mixerWindow_->onMidiLearnRequest = [this] (BridgeInstance* b, MixerParam p) {
+                startMidiLearn (b, p);
+            };
+            mixerWindow_->onMidiClearMapping = [this] (BridgeInstance* b, MixerParam p) {
+                clearMidiMapping (b, p);
+            };
         }
 
         // Restore pin state
@@ -234,7 +248,7 @@ void UIManager::toggleStageWindow (bool show)
             // Add .lvh file to the set
             stageWindow_->setOnAdd ([this] {
                 auto chooser = std::make_shared<juce::FileChooser> (
-                    "Add project to set...",
+                    LvhStr ("STR_ADD_BRIDGE_DIALOG"),
                     juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
                     "*.lvh");
                 chooser->launchAsync (
@@ -254,7 +268,7 @@ void UIManager::toggleStageWindow (bool show)
             stageWindow_->setOnSaveSet ([this] {
                 auto curFile = stageManager_.getCurrentFile();
                 auto chooser = std::make_shared<juce::FileChooser> (
-                    "Save Stage Set...",
+                    LvhStr ("STR_SAVE_SET_DIALOG"),
                     curFile.existsAsFile()
                         ? curFile   // pre-fill filename for easy overwrite
                         : juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
@@ -282,7 +296,7 @@ void UIManager::toggleStageWindow (bool show)
             stageWindow_->setOnLoadSet ([this] {
                 executeSafeSetOperation ([this] {
                     auto chooser = std::make_shared<juce::FileChooser> (
-                        "Open Stage Set...",
+                        LvhStr ("STR_OPEN_SET_DIALOG"),
                         juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
                         "*.stg");
                     chooser->launchAsync (
@@ -351,8 +365,8 @@ void UIManager::executeSafeSetOperation (std::function<void()> action)
 
     juce::NativeMessageBox::showYesNoCancelBox (
         juce::MessageBoxIconType::QuestionIcon,
-        "Unsaved Changes",
-        "The current set has unsaved changes.\nDo you want to save before continuing?",
+        LvhStr ("STR_UNSAVED_TITLE"),
+        LvhStr ("STR_UNSAVED_MSG"),
         nullptr,
         juce::ModalCallbackFunction::create (
             [this, action] (int result)
@@ -363,7 +377,7 @@ void UIManager::executeSafeSetOperation (std::function<void()> action)
                 {
                     auto curFile = stageManager_.getCurrentFile();
                     auto chooser = std::make_shared<juce::FileChooser> (
-                        "Save Stage Set...",
+                        LvhStr ("STR_SAVE_SET_DIALOG"),
                         curFile.existsAsFile()
                             ? curFile   // pre-fill filename for easy overwrite
                             : juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
@@ -423,23 +437,220 @@ void UIManager::openSettings()
         cbs.onPluginPathsChanged = [this] {
             if (onStartPluginScan) onStartPluginScan();
         };
+        cbs.onLanguageChanged = [this] (juce::String /*lang*/) {
+            refreshAllWindows();
+        };
         settingsWindow_ = std::make_unique<SettingsWindow> (
             deviceManager_, appProperties_.getUserSettings(), cbs);
     }
 
-    // Update plugin info page
-    if (auto* slot = audioEngine_.getSlot())
-        if (slot->isLoaded())
-            if (auto* proc = slot->getProcessor())
-                settingsWindow_->updatePluginInfo (
-                    proc->getName(),
-                    proc->getLatencySamples(),
-                    proc->getPluginDescription().pluginFormatName,
-                    proc->getTotalNumInputChannels(),
-                    proc->getTotalNumOutputChannels());
-
     settingsWindow_->setVisible (true);
     settingsWindow_->toFront (true);
+}
+
+// ── Language refresh ──────────────────────────────────────────────────────
+
+void UIManager::refreshAllWindows()
+{
+    if (settingsWindow_ != nullptr) settingsWindow_->refresh();
+    if (stageWindow_    != nullptr) stageWindow_   ->refreshLanguage();
+    if (mixerWindow_    != nullptr) mixerWindow_   ->refresh();
+}
+
+// ── MIDI remote control ───────────────────────────────────────────────────
+
+void UIManager::handleMidiRemote (const juce::MidiMessage& msg)
+{
+    auto* prefs = appProperties_.getUserSettings();
+    if (prefs == nullptr) return;
+
+    // ── Mixer MIDI Learn capture ──────────────────────────────────────────
+    if (learnState_.active && msg.isController())
+    {
+        int cc = msg.getControllerNumber();
+        juce::String key = learnState_.bridge != nullptr
+                           ? learnState_.bridge->getPluginPath()
+                           : "__MASTER__";
+        auto& m = mixerMappings_[key];
+        switch (learnState_.param)
+        {
+            case MixerParam::Fader: m.ccFader = cc; break;
+            case MixerParam::Pan:   m.ccPan   = cc; break;
+            case MixerParam::Mute:  m.ccMute  = cc; break;
+            case MixerParam::Solo:  m.ccSolo  = cc; break;
+        }
+        saveMixerMappings();
+        if (mixerWindow_ != nullptr)
+            mixerWindow_->setStripLearnMode (learnState_.bridge, learnState_.param, false);
+        learnState_.active = false;
+        return;
+    }
+
+    // ── Mixer CC apply ────────────────────────────────────────────────────
+    if (msg.isController() && mixerWindow_ != nullptr)
+    {
+        int cc = msg.getControllerNumber();
+        float norm = (float) msg.getControllerValue() / 127.0f;
+
+        for (auto& [path, map] : mixerMappings_)
+        {
+            // ── Master strip (no BridgeInstance) ─────────────────────────
+            if (path == "__MASTER__")
+            {
+                if (map.ccFader >= 0 && cc == map.ccFader)
+                {
+                    setMasterVolume ((double) norm);
+                    mixerWindow_->applyMidiValue (nullptr, MixerParam::Fader, norm);
+                }
+                if (map.ccPan >= 0 && cc == map.ccPan)
+                {
+                    float pan = norm * 2.0f - 1.0f;
+                    mixerWindow_->applyMidiValue (nullptr, MixerParam::Pan, pan);
+                }
+                continue;
+            }
+
+            // ── Instrument / FX strip ─────────────────────────────────────
+            auto* bridge = findBridgeByPath (path);
+            if (bridge == nullptr) continue;
+
+            if (map.ccFader >= 0 && cc == map.ccFader)
+            {
+                float gain = norm * (bridge->getRole() == BridgeInstance::Role::Instrument ? 1.5f : 1.0f);
+                bridge->mixerGain.store (gain, std::memory_order_relaxed);
+                mixerWindow_->applyMidiValue (bridge, MixerParam::Fader, gain);
+            }
+            if (map.ccPan >= 0 && cc == map.ccPan)
+            {
+                float pan = norm * 2.0f - 1.0f;
+                bridge->mixerPan.store (pan, std::memory_order_relaxed);
+                mixerWindow_->applyMidiValue (bridge, MixerParam::Pan, pan);
+            }
+            if (map.ccMute >= 0 && cc == map.ccMute && msg.getControllerValue() >= 64)
+            {
+                bool muted = ! bridge->mixerMuted.load();
+                bridge->mixerMuted.store (muted, std::memory_order_relaxed);
+                mixerWindow_->applyMidiValue (bridge, MixerParam::Mute, muted ? 1.f : 0.f);
+            }
+            if (map.ccSolo >= 0 && cc == map.ccSolo && msg.getControllerValue() >= 64)
+            {
+                bool soloed = ! bridge->mixerSoloed.load();
+                bridge->mixerSoloed.store (soloed, std::memory_order_relaxed);
+                mixerWindow_->applyMidiValue (bridge, MixerParam::Solo, soloed ? 1.f : 0.f);
+            }
+        }
+    }
+
+    // ── Stage remote ─────────────────────────────────────────────────────
+    if (stageWindow_ == nullptr) return;
+
+    int method = prefs->getIntValue ("stageRemoteMethod", 0);
+    if (method == 0) return; // None — disabled
+
+    // Channel filter (0 = Any)
+    int remoteChannel = prefs->getIntValue ("stageRemoteChannel", 0);
+    if (remoteChannel != 0 && msg.getChannel() != remoteChannel) return;
+
+    // Program Change → navigate to absolute index
+    if (method == 1 && msg.isProgramChange())
+    {
+        stageWindow_->remoteNavigateTo (msg.getProgramChangeNumber());
+        return;
+    }
+
+    // Control Change → per-CC-number action (only fire on value >= 64 to
+    // avoid double-trigger from footswitch release)
+    if (method == 2 && msg.isController() && msg.getControllerValue() >= 64)
+    {
+        int cc   = msg.getControllerNumber();
+        int prev = prefs->getIntValue ("stageRemoteCCPrev", 21);
+        int next = prefs->getIntValue ("stageRemoteCCNext", 22);
+        int load = prefs->getIntValue ("stageRemoteCCLoad", 23);
+
+        if      (cc == prev) stageWindow_->remoteMoveSelection (-1);
+        else if (cc == next) stageWindow_->remoteMoveSelection (+1);
+        else if (cc == load) stageWindow_->remoteLoad();
+    }
+}
+
+// ── Mixer MIDI Learn / mapping helpers ───────────────────────────────────
+
+void UIManager::startMidiLearn (BridgeInstance* b, MixerParam p)
+{
+    // Cancel any previously active learn session first
+    if (learnState_.active && mixerWindow_ != nullptr)
+        mixerWindow_->setStripLearnMode (learnState_.bridge, learnState_.param, false);
+
+    learnState_ = { b, p, true };
+    if (mixerWindow_ != nullptr)
+        mixerWindow_->setStripLearnMode (b, p, true);
+}
+
+void UIManager::clearMidiMapping (BridgeInstance* b, MixerParam p)
+{
+    juce::String key = (b != nullptr) ? b->getPluginPath() : "__MASTER__";
+    auto it = mixerMappings_.find (key);
+    if (it == mixerMappings_.end()) return;
+    switch (p)
+    {
+        case MixerParam::Fader: it->second.ccFader = -1; break;
+        case MixerParam::Pan:   it->second.ccPan   = -1; break;
+        case MixerParam::Mute:  it->second.ccMute  = -1; break;
+        case MixerParam::Solo:  it->second.ccSolo  = -1; break;
+    }
+    saveMixerMappings();
+}
+
+void UIManager::saveMixerMappings()
+{
+    auto* prefs = appProperties_.getUserSettings();
+    if (prefs == nullptr) return;
+
+    juce::Array<juce::var> arr;
+    for (auto& [path, m] : mixerMappings_)
+    {
+        auto* obj = new juce::DynamicObject();
+        obj->setProperty ("path",    path);
+        obj->setProperty ("ccFader", m.ccFader);
+        obj->setProperty ("ccPan",   m.ccPan);
+        obj->setProperty ("ccMute",  m.ccMute);
+        obj->setProperty ("ccSolo",  m.ccSolo);
+        arr.add (juce::var (obj));
+    }
+    prefs->setValue ("mixerMidiMappings", juce::JSON::toString (arr));
+}
+
+void UIManager::loadMixerMappings()
+{
+    auto* prefs = appProperties_.getUserSettings();
+    if (prefs == nullptr) return;
+
+    auto parsed = juce::JSON::parse (prefs->getValue ("mixerMidiMappings", "[]"));
+    if (auto* arr = parsed.getArray())
+    {
+        for (auto& item : *arr)
+        {
+            if (auto* obj = item.getDynamicObject())
+            {
+                juce::String path = obj->getProperty ("path").toString();
+                if (path.isEmpty()) continue;
+                MixerMidiMapping m;
+                m.ccFader = (int) obj->getProperty ("ccFader");
+                m.ccPan   = (int) obj->getProperty ("ccPan");
+                m.ccMute  = (int) obj->getProperty ("ccMute");
+                m.ccSolo  = (int) obj->getProperty ("ccSolo");
+                mixerMappings_[path] = m;
+            }
+        }
+    }
+}
+
+BridgeInstance* UIManager::findBridgeByPath (const juce::String& path) const
+{
+    for (auto* b : bridgeManager_.getBridges())
+        if (b->getPluginPath() == path)
+            return b;
+    return nullptr;
 }
 
 // ── Bridge file choosers ──────────────────────────────────────────────────

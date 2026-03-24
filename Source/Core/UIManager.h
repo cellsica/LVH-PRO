@@ -5,10 +5,10 @@
 #include "ProjectSerializer.h"
 #include "MidiRoutingManager.h"
 #include "StageManager.h"
+#include "MixerWindow.h"   // full definition needed for MixerParam + learn/apply methods
 
 // Forward declarations — full definitions only needed in UIManager.cpp
 class MainComponent;
-class MixerWindow;
 class SettingsWindow;
 class StageWindow;
 
@@ -22,6 +22,7 @@ class StageWindow;
 //   - Bridge file choosers (launchBridgeFileChooser)
 //   - Volume/speaker button wiring (wired in setMainComponent)
 //   - masterVolume_ state
+//   - Mixer MIDI mappings (handleMidiRemote / MIDI Learn)
 //
 // Dependencies injected via constructor:
 //   audioEngine, bridgeManager, projectSerializer, midiRouter,
@@ -83,6 +84,13 @@ public:
     // Restore mixer window visibility + position from project load
     void restoreMixerWindow (bool visible, juce::Rectangle<int> bounds);
 
+    // Refresh all open windows after a language change
+    void refreshAllWindows();
+
+    // Process incoming MIDI for remote control (Master Volume + Stage + Mixer).
+    // Call from the message thread (e.g. via MessageManager::callAsync).
+    void handleMidiRemote (const juce::MidiMessage& msg);
+
     // ── Bridge file choosers ───────────────────────────────────────────────
     void launchBridgeFileChooser (BridgeInstance::Role role = BridgeInstance::Role::Instrument);
 
@@ -98,6 +106,29 @@ private:
     //   No     → discard changes, run action()
     //   Cancel → abort
     void executeSafeSetOperation (std::function<void()> action);
+
+    // ── Mixer MIDI mapping ────────────────────────────────────────────────
+    struct MixerMidiMapping
+    {
+        int ccFader = -1;   // -1 = not mapped
+        int ccPan   = -1;
+        int ccMute  = -1;
+        int ccSolo  = -1;
+    };
+
+    // Learn state (only one target active at a time)
+    struct LearnState
+    {
+        BridgeInstance* bridge = nullptr;
+        MixerParam      param  = MixerParam::Fader;
+        bool            active = false;
+    };
+
+    void startMidiLearn  (BridgeInstance* b, MixerParam p);
+    void clearMidiMapping (BridgeInstance* b, MixerParam p);
+    void saveMixerMappings();
+    void loadMixerMappings();
+    BridgeInstance* findBridgeByPath (const juce::String& path) const;
 
     // ── Constructor-injected references ───────────────────────────────────
     AudioEngine&                 audioEngine_;
@@ -115,6 +146,10 @@ private:
     std::unique_ptr<MixerWindow>     mixerWindow_;
     std::unique_ptr<SettingsWindow>  settingsWindow_;
     std::unique_ptr<StageWindow>     stageWindow_;
+
+    // Mixer MIDI mapping state
+    LearnState                               learnState_;
+    std::map<juce::String, MixerMidiMapping> mixerMappings_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (UIManager)
 };

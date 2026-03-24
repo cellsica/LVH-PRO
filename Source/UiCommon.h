@@ -10,6 +10,7 @@
 #include <map>
 #include <set>
 #include <atomic>
+#include "LanguageManager.h"
 
 using namespace juce;
 

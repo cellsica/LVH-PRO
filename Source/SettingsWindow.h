@@ -7,16 +7,20 @@
 class GeneralSettingsPage : public Component
 {
 public:
-    std::function<void(bool)> onShowLevelMeter, onShowMidiMonitor, onShowInfoMonitor;
+    std::function<void(bool)>          onShowLevelMeter, onShowMidiMonitor, onShowInfoMonitor;
+    std::function<void(juce::String)>  onLanguageChanged;
 
     explicit GeneralSettingsPage (PropertiesFile* prefs);
     void resized() override;
+    void refreshLanguage();
 
 private:
     ToggleButton showLevelMeter, showMidiMonitor, showInfoMonitor;
     ToggleButton rememberLastFolder;
     Label        recentCountLabel;
     Slider       recentCountSlider;
+    Label        languageLabel_;
+    ComboBox     languageCombo_;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GeneralSettingsPage)
 };
 
@@ -36,6 +40,7 @@ class PluginPathsPage : public Component, public ListBoxModel
 public:
     explicit PluginPathsPage (PropertiesFile* prefs);
     void resized() override;
+    void refreshLanguage();
 
     // ListBoxModel
     int  getNumRows() override;
@@ -62,24 +67,25 @@ public:
 
     explicit MidiSettingsPage (PropertiesFile* prefs);
     void resized() override;
+    void refreshLanguage();
 
 private:
+    // ── Transpose / Channel filter ────────────────────────────────────────
     Label    tpHeader, chHeader;
     Slider   tpSlider;
     ComboBox chCombo;
+
+    // ── Stage Remote Control ──────────────────────────────────────────────
+    Label    remoteHeader_, methodLabel_, remoteChanLabel_;
+    Label    ccPrevLabel_, ccNextLabel_, ccLoadLabel_;
+    ComboBox methodCombo_, remoteChanCombo_;
+    Slider   ccPrevSlider_, ccNextSlider_, ccLoadSlider_;
+
+    PropertiesFile* prefs_ = nullptr;   // kept for CC slider onChange
+
+    void updateCCVisibility();          // show/hide CC sliders based on method
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MidiSettingsPage)
-};
-
-class PluginInfoPage : public Component
-{
-public:
-    PluginInfoPage();
-    void update (const String& name, int latency, const String& format, int ins, int outs);
-    void resized() override;
-
-private:
-    Label nameLbl, latencyLbl, formatLbl, ioLbl;
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginInfoPage)
 };
 
 // =====================================================================
@@ -90,13 +96,14 @@ class SettingsWindow : public DocumentWindow
 public:
     struct Callbacks
     {
-        std::function<void(bool)> onShowLevelMeter, onShowMidiMonitor, onShowInfoMonitor;
-        std::function<void(int)>  onTransposeChange, onChannelFilterChange;
-        std::function<void()>     onPluginPathsChanged;
+        std::function<void(bool)>         onShowLevelMeter, onShowMidiMonitor, onShowInfoMonitor;
+        std::function<void(int)>          onTransposeChange, onChannelFilterChange;
+        std::function<void()>             onPluginPathsChanged;
+        std::function<void(juce::String)> onLanguageChanged;
     };
 
     SettingsWindow (AudioDeviceManager& dm, PropertiesFile* prefs, Callbacks cbs);
-    void updatePluginInfo (const String& name, int latency, const String& fmt, int ins, int outs);
+    void refresh();
     void closeButtonPressed() override;
 
 private:
@@ -107,7 +114,7 @@ private:
         static constexpr int rowH = 34;
 
         Content (AudioDeviceManager& dm, PropertiesFile* prefs, Callbacks& cbs);
-        void updatePluginInfo (const String& name, int latency, const String& fmt, int ins, int outs);
+        void refresh();
         void paint (Graphics& g) override;
         void mouseDown (const MouseEvent& e) override;
         void resized() override;
@@ -118,8 +125,10 @@ private:
 
         StringArray           names;
         OwnedArray<Component> pages;
-        int                   currentIdx = -1;
-        PluginInfoPage*       infoPage   = nullptr;
+        int                   currentIdx    = -1;
+        GeneralSettingsPage*  genPage_      = nullptr;
+        MidiSettingsPage*     midiPage_     = nullptr;
+        PluginPathsPage*      pathsPage_    = nullptr;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Content)
     };

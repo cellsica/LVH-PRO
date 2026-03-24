@@ -5,14 +5,36 @@
 // =====================================================================
 GeneralSettingsPage::GeneralSettingsPage (PropertiesFile* prefs)
 {
-    auto setup = [&] (ToggleButton& btn, const String& text, const String& key, bool def) {
-        btn.setButtonText (text);
+    // ── Language selector ────────────────────────────────────────────
+    languageLabel_.setText (LvhStr ("STR_LANGUAGE"), dontSendNotification);
+    languageLabel_.setFont (Font (12.f));
+    languageLabel_.setColour (Label::textColourId, Colour (0xffcccccc));
+    addAndMakeVisible (languageLabel_);
+
+    languageCombo_.addItem ("English", 1);
+    languageCombo_.addItem (CharPointer_UTF8 ("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e"), 2);  // 日本語
+    int savedLangId = LanguageManager::getInstance().isJapanese() ? 2 : 1;
+    languageCombo_.setSelectedId (savedLangId, dontSendNotification);
+    addAndMakeVisible (languageCombo_);
+
+    languageCombo_.onChange = [this, prefs] {
+        auto lang = (languageCombo_.getSelectedId() == 2)
+                    ? LanguageManager::Language::Japanese
+                    : LanguageManager::Language::English;
+        LanguageManager::getInstance().setLanguage (lang, prefs);
+        if (onLanguageChanged)
+            onLanguageChanged (lang == LanguageManager::Language::Japanese ? "ja" : "en");
+    };
+
+    // ── Visibility toggles ───────────────────────────────────────────
+    auto setup = [&] (ToggleButton& btn, const char* strId, const String& key, bool def) {
+        btn.setButtonText (LvhStr (strId));
         btn.setToggleState (prefs ? prefs->getBoolValue (key, def) : def, dontSendNotification);
         addAndMakeVisible (btn);
     };
-    setup (showLevelMeter,  "Level Meter (toolbar)",          "showLevelMeter",  true);
-    setup (showMidiMonitor, "MIDI Monitor (toolbar)",         "showMidiMonitor", true);
-    setup (showInfoMonitor, "Info Monitor Panel (main area)", "showInfoMonitor", true);
+    setup (showLevelMeter,  "STR_SHOW_LEVEL_METER",   "showLevelMeter",  true);
+    setup (showMidiMonitor, "STR_SHOW_MIDI_MONITOR",  "showMidiMonitor", true);
+    setup (showInfoMonitor, "STR_SHOW_INFO_MONITOR",  "showInfoMonitor", true);
 
     showLevelMeter.onClick = [this, prefs] {
         bool v = showLevelMeter.getToggleState();
@@ -30,8 +52,8 @@ GeneralSettingsPage::GeneralSettingsPage (PropertiesFile* prefs)
         if (onShowInfoMonitor) onShowInfoMonitor (v);
     };
 
-    // Bridge file browser settings
-    rememberLastFolder.setButtonText ("Remember last opened Bridge folder");
+    // ── Bridge file browser settings ─────────────────────────────────
+    rememberLastFolder.setButtonText (LvhStr ("STR_REMEMBER_FOLDER"));
     rememberLastFolder.setToggleState (
         prefs ? prefs->getBoolValue ("rememberLastFolder", true) : true, dontSendNotification);
     addAndMakeVisible (rememberLastFolder);
@@ -39,7 +61,7 @@ GeneralSettingsPage::GeneralSettingsPage (PropertiesFile* prefs)
         if (prefs) prefs->setValue ("rememberLastFolder", rememberLastFolder.getToggleState());
     };
 
-    recentCountLabel.setText ("Recent Bridges shown in menu:", dontSendNotification);
+    recentCountLabel.setText (LvhStr ("STR_RECENT_COUNT"), dontSendNotification);
     recentCountLabel.setFont (Font (12.f));
     recentCountLabel.setColour (Label::textColourId, Colour (0xffcccccc));
     addAndMakeVisible (recentCountLabel);
@@ -54,9 +76,30 @@ GeneralSettingsPage::GeneralSettingsPage (PropertiesFile* prefs)
     };
 }
 
+void GeneralSettingsPage::refreshLanguage()
+{
+    languageLabel_.setText (LvhStr ("STR_LANGUAGE"), dontSendNotification);
+    showLevelMeter .setButtonText (LvhStr ("STR_SHOW_LEVEL_METER"));
+    showMidiMonitor.setButtonText (LvhStr ("STR_SHOW_MIDI_MONITOR"));
+    showInfoMonitor.setButtonText (LvhStr ("STR_SHOW_INFO_MONITOR"));
+    rememberLastFolder.setButtonText (LvhStr ("STR_REMEMBER_FOLDER"));
+    recentCountLabel.setText (LvhStr ("STR_RECENT_COUNT"), dontSendNotification);
+
+    // Sync combo to current language without firing onChange
+    int id = LanguageManager::getInstance().isJapanese() ? 2 : 1;
+    languageCombo_.setSelectedId (id, dontSendNotification);
+}
+
 void GeneralSettingsPage::resized()
 {
     auto area = getLocalBounds().reduced (16, 12);
+
+    // Language row
+    auto langRow = area.removeFromTop (28);
+    languageLabel_.setBounds (langRow.removeFromLeft (80));
+    languageCombo_.setBounds (langRow.removeFromLeft (140));
+    area.removeFromTop (10);
+
     for (auto* btn : { &showLevelMeter, &showMidiMonitor, &showInfoMonitor })
     {
         btn->setBounds (area.removeFromTop (28));
@@ -98,7 +141,7 @@ PluginPathsPage::PluginPathsPage (PropertiesFile* p) : prefs (p)
     pathList.setRowHeight (24);
     addAndMakeVisible (pathList);
 
-    addBtn.setButtonText ("Add Path...");
+    addBtn.setButtonText (LvhStr ("STR_ADD_PATH"));
     addBtn.setColour (TextButton::buttonColourId, Colour (0xff333344));
     addAndMakeVisible (addBtn);
     addBtn.onClick = [this] {
@@ -118,7 +161,7 @@ PluginPathsPage::PluginPathsPage (PropertiesFile* p) : prefs (p)
             });
     };
 
-    rmBtn.setButtonText ("Remove");
+    rmBtn.setButtonText (LvhStr ("STR_REMOVE"));
     rmBtn.setColour (TextButton::buttonColourId, Colour (0xff333344));
     addAndMakeVisible (rmBtn);
     rmBtn.onClick = [this] {
@@ -143,6 +186,12 @@ void PluginPathsPage::loadPaths()
 void PluginPathsPage::savePaths()
 {
     if (prefs) prefs->setValue ("pluginScanPaths", paths.joinIntoString ("|"));
+}
+
+void PluginPathsPage::refreshLanguage()
+{
+    addBtn.setButtonText (LvhStr ("STR_ADD_PATH"));
+    rmBtn .setButtonText (LvhStr ("STR_REMOVE"));
 }
 
 int PluginPathsPage::getNumRows() { return paths.size(); }
@@ -172,8 +221,10 @@ void PluginPathsPage::resized()
 // MidiSettingsPage
 // =====================================================================
 MidiSettingsPage::MidiSettingsPage (PropertiesFile* prefs)
+    : prefs_ (prefs)
 {
-    tpHeader.setText ("Transpose (semitones):", dontSendNotification);
+    // ── Transpose ────────────────────────────────────────────────────────
+    tpHeader.setText (LvhStr ("STR_TRANSPOSE"), dontSendNotification);
     tpHeader.setFont (Font (12.f));
     tpHeader.setColour (Label::textColourId, Colour (0xffcccccc));
     addAndMakeVisible (tpHeader);
@@ -189,13 +240,15 @@ MidiSettingsPage::MidiSettingsPage (PropertiesFile* prefs)
         if (onTransposeChange) onTransposeChange (v);
     };
 
-    chHeader.setText ("MIDI Channel Filter:", dontSendNotification);
+    // ── Channel filter ───────────────────────────────────────────────────
+    chHeader.setText (LvhStr ("STR_CHANNEL_FILTER"), dontSendNotification);
     chHeader.setFont (Font (12.f));
     chHeader.setColour (Label::textColourId, Colour (0xffcccccc));
     addAndMakeVisible (chHeader);
 
-    chCombo.addItem ("All Channels", 1);
-    for (int i = 1; i <= 16; ++i) chCombo.addItem ("Channel " + String (i), i + 1);
+    chCombo.addItem (LvhStr ("STR_ALL_CHANNELS"), 1);
+    for (int i = 1; i <= 16; ++i)
+        chCombo.addItem (LvhStr ("STR_CHANNEL") + String (i), i + 1);
     chCombo.setSelectedId ((prefs ? prefs->getIntValue ("channelFilter", 0) : 0) + 1,
                            dontSendNotification);
     addAndMakeVisible (chCombo);
@@ -205,48 +258,155 @@ MidiSettingsPage::MidiSettingsPage (PropertiesFile* prefs)
         if (prefs) prefs->setValue ("channelFilter", v);
         if (onChannelFilterChange) onChannelFilterChange (v);
     };
+
+    // ── Stage Remote Control ─────────────────────────────────────────────
+    auto makeLabel = [this] (Label& lbl, const char* strId)
+    {
+        lbl.setText (LvhStr (strId), dontSendNotification);
+        lbl.setFont (Font (12.f));
+        lbl.setColour (Label::textColourId, Colour (0xffcccccc));
+        addAndMakeVisible (lbl);
+    };
+
+    remoteHeader_.setFont (Font (12.f, Font::bold));
+    remoteHeader_.setColour (Label::textColourId, Colour (0xffffaa44));
+    remoteHeader_.setText (LvhStr ("STR_STAGE_REMOTE"), dontSendNotification);
+    addAndMakeVisible (remoteHeader_);
+
+    makeLabel (methodLabel_,   "STR_REMOTE_METHOD");
+    makeLabel (remoteChanLabel_, "STR_REMOTE_CH");
+    makeLabel (ccPrevLabel_,   "STR_REMOTE_CC_PREV");
+    makeLabel (ccNextLabel_,   "STR_REMOTE_CC_NEXT");
+    makeLabel (ccLoadLabel_,   "STR_REMOTE_CC_LOAD");
+
+    // Method combo: None / Program Change / CC
+    methodCombo_.addItem (LvhStr ("STR_REMOTE_NONE"), 1);
+    methodCombo_.addItem (LvhStr ("STR_REMOTE_PC"),   2);
+    methodCombo_.addItem (LvhStr ("STR_REMOTE_CC"),   3);
+    methodCombo_.setSelectedId ((prefs ? prefs->getIntValue ("stageRemoteMethod", 0) : 0) + 1,
+                                dontSendNotification);
+    addAndMakeVisible (methodCombo_);
+
+    // Remote channel combo: Any / 1-16
+    remoteChanCombo_.addItem (LvhStr ("STR_ALL_CHANNELS"), 1);
+    for (int i = 1; i <= 16; ++i)
+        remoteChanCombo_.addItem (LvhStr ("STR_CHANNEL") + String (i), i + 1);
+    remoteChanCombo_.setSelectedId ((prefs ? prefs->getIntValue ("stageRemoteChannel", 0) : 0) + 1,
+                                    dontSendNotification);
+    addAndMakeVisible (remoteChanCombo_);
+
+    // CC number sliders (0-127)
+    auto makeCC = [this] (Slider& s, const char* prefKey, int defaultVal)
+    {
+        s.setRange (0, 127, 1);
+        s.setValue (prefs_ ? prefs_->getIntValue (prefKey, defaultVal) : defaultVal,
+                    dontSendNotification);
+        s.setTextBoxStyle (Slider::TextBoxRight, false, 44, 22);
+        s.onValueChange = [this, &s, prefKey] {
+            if (prefs_) prefs_->setValue (prefKey, (int) s.getValue());
+        };
+        addAndMakeVisible (s);
+    };
+    makeCC (ccPrevSlider_, "stageRemoteCCPrev", 21);
+    makeCC (ccNextSlider_, "stageRemoteCCNext", 22);
+    makeCC (ccLoadSlider_, "stageRemoteCCLoad", 23);
+
+    methodCombo_.onChange = [this] {
+        int v = methodCombo_.getSelectedId() - 1;
+        if (prefs_) prefs_->setValue ("stageRemoteMethod", v);
+        updateCCVisibility();
+        resized();
+    };
+
+    remoteChanCombo_.onChange = [this] {
+        if (prefs_) prefs_->setValue ("stageRemoteChannel",
+                                      remoteChanCombo_.getSelectedId() - 1);
+    };
+
+    updateCCVisibility();
+}
+
+void MidiSettingsPage::updateCCVisibility()
+{
+    bool ccMode = (methodCombo_.getSelectedId() == 3);
+    ccPrevLabel_ .setVisible (ccMode);
+    ccNextLabel_ .setVisible (ccMode);
+    ccLoadLabel_ .setVisible (ccMode);
+    ccPrevSlider_.setVisible (ccMode);
+    ccNextSlider_.setVisible (ccMode);
+    ccLoadSlider_.setVisible (ccMode);
+}
+
+void MidiSettingsPage::refreshLanguage()
+{
+    tpHeader.setText (LvhStr ("STR_TRANSPOSE"),      dontSendNotification);
+    chHeader.setText (LvhStr ("STR_CHANNEL_FILTER"), dontSendNotification);
+
+    int savedId = chCombo.getSelectedId();
+    chCombo.clear (dontSendNotification);
+    chCombo.addItem (LvhStr ("STR_ALL_CHANNELS"), 1);
+    for (int i = 1; i <= 16; ++i)
+        chCombo.addItem (LvhStr ("STR_CHANNEL") + String (i), i + 1);
+    chCombo.setSelectedId (savedId, dontSendNotification);
+
+    // Stage Remote labels
+    remoteHeader_.setText  (LvhStr ("STR_STAGE_REMOTE"),   dontSendNotification);
+    methodLabel_  .setText (LvhStr ("STR_REMOTE_METHOD"),  dontSendNotification);
+    remoteChanLabel_.setText(LvhStr ("STR_REMOTE_CH"),     dontSendNotification);
+    ccPrevLabel_  .setText (LvhStr ("STR_REMOTE_CC_PREV"), dontSendNotification);
+    ccNextLabel_  .setText (LvhStr ("STR_REMOTE_CC_NEXT"), dontSendNotification);
+    ccLoadLabel_  .setText (LvhStr ("STR_REMOTE_CC_LOAD"), dontSendNotification);
+
+    int savedMethod = methodCombo_.getSelectedId();
+    methodCombo_.clear (dontSendNotification);
+    methodCombo_.addItem (LvhStr ("STR_REMOTE_NONE"), 1);
+    methodCombo_.addItem (LvhStr ("STR_REMOTE_PC"),   2);
+    methodCombo_.addItem (LvhStr ("STR_REMOTE_CC"),   3);
+    methodCombo_.setSelectedId (savedMethod, dontSendNotification);
+
+    int savedChan = remoteChanCombo_.getSelectedId();
+    remoteChanCombo_.clear (dontSendNotification);
+    remoteChanCombo_.addItem (LvhStr ("STR_ALL_CHANNELS"), 1);
+    for (int i = 1; i <= 16; ++i)
+        remoteChanCombo_.addItem (LvhStr ("STR_CHANNEL") + String (i), i + 1);
+    remoteChanCombo_.setSelectedId (savedChan, dontSendNotification);
 }
 
 void MidiSettingsPage::resized()
 {
     auto area = getLocalBounds().reduced (16, 12);
+
+    // ── Transpose + Channel filter ───────────────────────────────────────
     tpHeader.setBounds (area.removeFromTop (22));
     tpSlider.setBounds (area.removeFromTop (32));
     area.removeFromTop (16);
     chHeader.setBounds (area.removeFromTop (22));
     chCombo .setBounds (area.removeFromTop (28).removeFromLeft (200));
-}
+    area.removeFromTop (20);
 
-// =====================================================================
-// PluginInfoPage
-// =====================================================================
-PluginInfoPage::PluginInfoPage()
-{
-    for (auto* l : { &nameLbl, &latencyLbl, &formatLbl, &ioLbl })
+    // ── Stage Remote Control ─────────────────────────────────────────────
+    remoteHeader_   .setBounds (area.removeFromTop (22));
+    area.removeFromTop (4);
+
+    auto row = area.removeFromTop (26);
+    methodLabel_    .setBounds (row.removeFromLeft (130));
+    methodCombo_    .setBounds (row.removeFromLeft (200));
+    area.removeFromTop (4);
+
+    row = area.removeFromTop (26);
+    remoteChanLabel_.setBounds (row.removeFromLeft (130));
+    remoteChanCombo_.setBounds (row.removeFromLeft (200));
+    area.removeFromTop (8);
+
+    // CC rows (hidden unless CC mode active)
+    for (auto [lbl, sld] : { std::pair<Label*, Slider*>{ &ccPrevLabel_, &ccPrevSlider_ },
+                              { &ccNextLabel_, &ccNextSlider_ },
+                              { &ccLoadLabel_, &ccLoadSlider_ } })
     {
-        l->setFont (Font (12.f));
-        l->setColour (Label::textColourId, Colour (0xffcccccc));
-        addAndMakeVisible (l);
-    }
-    update ("\xe2\x80\x94", 0, "\xe2\x80\x94", 0, 0);
-}
-
-void PluginInfoPage::update (const String& name, int latency, const String& format, int ins, int outs)
-{
-    nameLbl   .setText ("Plugin:   " + name,                          dontSendNotification);
-    latencyLbl.setText ("Latency:  " + String (latency) + " samples", dontSendNotification);
-    formatLbl .setText ("Format:   " + format,                        dontSendNotification);
-    ioLbl     .setText ("I/O:      " + String (ins) + " in / " + String (outs) + " out",
-                        dontSendNotification);
-}
-
-void PluginInfoPage::resized()
-{
-    auto area = getLocalBounds().reduced (16, 12);
-    for (auto* l : { &nameLbl, &latencyLbl, &formatLbl, &ioLbl })
-    {
-        l->setBounds (area.removeFromTop (24));
-        area.removeFromTop (6);
+        row = area.removeFromTop (26);
+        lbl->setBounds (row.removeFromLeft (100));
+        sld->setBounds (row.removeFromLeft (220));
+        area.removeFromTop (4);
     }
 }
 
@@ -265,10 +425,10 @@ SettingsWindow::SettingsWindow (AudioDeviceManager& dm, PropertiesFile* prefs, C
     centreWithSize (700, 450);
 }
 
-void SettingsWindow::updatePluginInfo (const String& name, int latency, const String& fmt, int ins, int outs)
+void SettingsWindow::refresh()
 {
     if (auto* c = dynamic_cast<Content*> (getContentComponent()))
-        c->updatePluginInfo (name, latency, fmt, ins, outs);
+        c->refresh();
 }
 
 void SettingsWindow::closeButtonPressed()
@@ -281,33 +441,44 @@ void SettingsWindow::closeButtonPressed()
 // =====================================================================
 SettingsWindow::Content::Content (AudioDeviceManager& dm, PropertiesFile* prefs, Callbacks& cbs)
 {
-    auto* genPage = new GeneralSettingsPage (prefs);
-    genPage->onShowLevelMeter  = cbs.onShowLevelMeter;
-    genPage->onShowMidiMonitor = cbs.onShowMidiMonitor;
-    genPage->onShowInfoMonitor = cbs.onShowInfoMonitor;
-    addPage ("General",      genPage);
-    addPage ("Audio / MIDI", new AudioMidiSettingsPage (dm));
+    genPage_ = new GeneralSettingsPage (prefs);
+    genPage_->onShowLevelMeter  = cbs.onShowLevelMeter;
+    genPage_->onShowMidiMonitor = cbs.onShowMidiMonitor;
+    genPage_->onShowInfoMonitor = cbs.onShowInfoMonitor;
+    genPage_->onLanguageChanged = cbs.onLanguageChanged;
+    addPage (LvhStr ("STR_NAV_GENERAL"), genPage_);
 
-    auto* pathsPage = new PluginPathsPage (prefs);
-    pathsPage->onPathsChanged = cbs.onPluginPathsChanged;
-    addPage ("Plugin Paths", pathsPage);
+    addPage (LvhStr ("STR_NAV_AUDIO_MIDI"), new AudioMidiSettingsPage (dm));
 
-    auto* midiPage = new MidiSettingsPage (prefs);
-    midiPage->onTransposeChange     = cbs.onTransposeChange;
-    midiPage->onChannelFilterChange = cbs.onChannelFilterChange;
-    addPage ("MIDI Settings", midiPage);
+    pathsPage_ = new PluginPathsPage (prefs);
+    pathsPage_->onPathsChanged = cbs.onPluginPathsChanged;
+    addPage (LvhStr ("STR_NAV_PLUGIN_PATHS"), pathsPage_);
 
-    infoPage = new PluginInfoPage();
-    addPage ("Info", infoPage);
+    midiPage_ = new MidiSettingsPage (prefs);
+    midiPage_->onTransposeChange     = cbs.onTransposeChange;
+    midiPage_->onChannelFilterChange = cbs.onChannelFilterChange;
+    addPage (LvhStr ("STR_NAV_MIDI_SETTINGS"), midiPage_);
 
     selectPage (0);
     setSize (700, 450);
 }
 
-void SettingsWindow::Content::updatePluginInfo (const String& name, int latency,
-                                                const String& fmt, int ins, int outs)
+void SettingsWindow::Content::refresh()
 {
-    if (infoPage) infoPage->update (name, latency, fmt, ins, outs);
+    // Update nav labels
+    if (names.size() == 4)
+    {
+        names.set (0, LvhStr ("STR_NAV_GENERAL"));
+        names.set (1, LvhStr ("STR_NAV_AUDIO_MIDI"));
+        names.set (2, LvhStr ("STR_NAV_PLUGIN_PATHS"));
+        names.set (3, LvhStr ("STR_NAV_MIDI_SETTINGS"));
+    }
+    repaint();
+
+    // Refresh each page's text content
+    if (genPage_)   genPage_  ->refreshLanguage();
+    if (midiPage_)  midiPage_ ->refreshLanguage();
+    if (pathsPage_) pathsPage_->refreshLanguage();
 }
 
 void SettingsWindow::Content::paint (Graphics& g)

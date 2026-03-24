@@ -39,7 +39,7 @@ public:
 
     SongStrip()
     {
-        loadBtn_.setButtonText ("LOAD");
+        loadBtn_.setButtonText (LvhStr ("STR_LOAD"));
         loadBtn_.setColour (juce::TextButton::buttonColourId,   juce::Colour (0xff1a3a1a));
         loadBtn_.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff22cc44));
         loadBtn_.setColour (juce::TextButton::textColourOffId,  juce::Colours::white);
@@ -156,8 +156,8 @@ private:
     void showContextMenu()
     {
         juce::PopupMenu m;
-        m.addItem (1, "Rename Alias");
-        m.addItem (2, "Delete");
+        m.addItem (1, LvhStr ("STR_RENAME_ALIAS"));
+        m.addItem (2, LvhStr ("STR_DELETE"));
         m.showMenuAsync (juce::PopupMenu::Options(),
             [this] (int result)
             {
@@ -297,10 +297,10 @@ public:
         : manager_ (manager)
     {
         // ── Toolbar buttons ──────────────────────────────────────────
-        configureButton (newBtn_,     "NEW",      juce::Colour (0xff2a2a38));
-        configureButton (loadSetBtn_, "OPEN SET", juce::Colour (0xff2a2a38));
-        configureButton (saveSetBtn_, "SAVE SET", juce::Colour (0xff2a2a38));
-        configureButton (addBtn_,     "+ ADD",    juce::Colour (0xff1a3a1a));
+        configureButton (newBtn_,     LvhStr ("STR_NEW"),      juce::Colour (0xff2a2a38));
+        configureButton (loadSetBtn_, LvhStr ("STR_OPEN_SET"), juce::Colour (0xff2a2a38));
+        configureButton (saveSetBtn_, LvhStr ("STR_SAVE_SET"), juce::Colour (0xff2a2a38));
+        configureButton (addBtn_,     LvhStr ("STR_ADD"),      juce::Colour (0xff1a3a1a));
 
         newBtn_.onClick     = [this] { if (onNewSetClicked)  onNewSetClicked(); };
         loadSetBtn_.onClick = [this] { if (onLoadSetClicked) onLoadSetClicked(); };
@@ -317,7 +317,7 @@ public:
         pinBtn_->setClickingTogglesState (true);
         pinBtn_->setColour (juce::TextButton::buttonColourId,   juce::Colour (0xff252535));
         pinBtn_->setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xffaa6600));
-        pinBtn_->setTooltip ("Pin window on top");
+        pinBtn_->setTooltip (LvhStr ("STR_PIN_TOOLTIP"));
         pinBtn_->onClick = [this] {
             if (onPinToggled) onPinToggled (pinBtn_->getToggleState());
         };
@@ -378,6 +378,16 @@ public:
         statusLabel_.setText (status, juce::dontSendNotification);
     }
 
+    void refreshLanguage()
+    {
+        newBtn_.setButtonText     (LvhStr ("STR_NEW"));
+        loadSetBtn_.setButtonText (LvhStr ("STR_OPEN_SET"));
+        saveSetBtn_.setButtonText (LvhStr ("STR_SAVE_SET"));
+        addBtn_.setButtonText     (LvhStr ("STR_ADD"));
+        pinBtn_->setTooltip       (LvhStr ("STR_PIN_TOOLTIP"));
+        refreshList();   // recreates SongStrips with updated LOAD button text
+    }
+
     void setPinState (bool pinned)
     {
         pinBtn_->setToggleState (pinned, juce::dontSendNotification);
@@ -426,7 +436,7 @@ public:
         statusLabel_.setText (msg, juce::dontSendNotification);
     }
 
-    // ── Keyboard navigation (called from StageWindow::keyPressed) ─────
+    // ── Keyboard / MIDI navigation ─────────────────────────────────────
     void moveSelection (int delta)
     {
         int n = manager_.getItems().size();
@@ -436,6 +446,19 @@ public:
         if (newSel != selectedIndex_)
         {
             selectedIndex_ = newSel;
+            refreshList();
+        }
+    }
+
+    // Navigate to an absolute index (used by MIDI Program Change).
+    void navigateTo (int index)
+    {
+        int n = manager_.getItems().size();
+        if (n == 0) return;
+        int clamped = juce::jlimit (0, n - 1, index);
+        if (clamped != selectedIndex_)
+        {
+            selectedIndex_ = clamped;
             refreshList();
         }
     }
@@ -474,12 +497,12 @@ private:
         if (index < 0 || index >= manager_.getItems().size()) return;
         juce::String currentAlias = manager_.getItems()[index].alias;
 
-        auto* dialog = new juce::AlertWindow ("Rename Alias",
-                                              "Enter new alias:",
+        auto* dialog = new juce::AlertWindow (LvhStr ("STR_RENAME_ALIAS_TITLE"),
+                                              LvhStr ("STR_RENAME_ALIAS_MSG"),
                                               juce::AlertWindow::NoIcon);
         dialog->addTextEditor ("alias", currentAlias);
-        dialog->addButton ("OK",     1, juce::KeyPress (juce::KeyPress::returnKey));
-        dialog->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+        dialog->addButton (LvhStr ("STR_OK"),     1, juce::KeyPress (juce::KeyPress::returnKey));
+        dialog->addButton (LvhStr ("STR_CANCEL"), 0, juce::KeyPress (juce::KeyPress::escapeKey));
         dialog->enterModalState (true,
             juce::ModalCallbackFunction::create ([this, index, dialog] (int result)
             {
@@ -499,8 +522,8 @@ private:
 
         juce::NativeMessageBox::showYesNoBox (
             juce::MessageBoxIconType::QuestionIcon,
-            "Delete Item",
-            "Remove \"" + alias + "\" from the set?",
+            LvhStr ("STR_DELETE_TITLE"),
+            LvhStr ("STR_DELETE_CONFIRM_PRE") + alias + LvhStr ("STR_DELETE_CONFIRM_POST"),
             nullptr,
             juce::ModalCallbackFunction::create ([this, index] (int result)
             {
@@ -565,6 +588,11 @@ public:
         if (content_) content_->setPinState (pinned);
     }
 
+    void refreshLanguage()
+    {
+        if (content_) content_->refreshLanguage();
+    }
+
     void closeButtonPressed() override
     {
         if (onClose) onClose();
@@ -587,6 +615,11 @@ public:
     void setOnSaveSet  (std::function<void()>    fn) { content_->onSaveSetClicked = std::move (fn); }
     void setOnLoadSet  (std::function<void()>    fn) { content_->onLoadSetClicked = std::move (fn); }
     void setOnNewSet   (std::function<void()>    fn) { content_->onNewSetClicked  = std::move (fn); }
+
+    // ── MIDI remote control (called from UIManager on message thread) ──
+    void remoteMoveSelection (int delta) { if (content_) content_->moveSelection (delta); }
+    void remoteNavigateTo    (int index) { if (content_) content_->navigateTo    (index); }
+    void remoteLoad          ()          { if (content_) content_->loadSelected  ();      }
 
     void refresh()
     {

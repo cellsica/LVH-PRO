@@ -32,6 +32,7 @@ public:
         midiRouter.sendMidi (message);
         auto msg = message;
         MessageManager::callAsync ([this, msg] {
+            uiManager_.handleMidiRemote (msg);
             if (auto* mc = mainComp()) mc->getMonitorPanel().pushMidiMessage (msg);
         });
     }

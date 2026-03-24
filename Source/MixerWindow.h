@@ -17,6 +17,9 @@ static juce::Colour getMixerStripColor (int index)
     return palette[index % 6];
 }
 
+// ── MIDI parameter — used by MixerStrip and UIManager ───────────────────
+enum class MixerParam { Fader, Pan, Mute, Solo };
+
 // =====================================================================
 // FXSlotComponent
 // One FX slot in the Master strip: shows name, [B] bypass button.
@@ -117,13 +120,15 @@ public:
     static constexpr int kFxAreaH        = kFxVisibleRows * kFxSlotH;  // 85 px
 
     // Callbacks — wired by MixerContentComponent after construction
-    std::function<void(float)>              onFaderChange;  // linear gain 0.0–1.5 (ch) / 0.0–1.0 (master)
-    std::function<void(float)>              onPanChange;    // -1.0 to +1.0
-    std::function<void(bool)>               onMuteChange;
-    std::function<void(bool)>               onSoloChange;
-    std::function<void(const juce::String&)> onNameChange;  // fired when user edits channel name
-    std::function<void(juce::Colour)>        onColorChange; // fired when user picks accent colour
-    std::function<void(BridgeInstance*)>     onAddFx;       // bubbled up from placeholder FXSlotComponents
+    std::function<void(float)>               onFaderChange;      // linear gain 0.0–1.5 (ch) / 0.0–1.0 (master)
+    std::function<void(float)>               onPanChange;        // -1.0 to +1.0
+    std::function<void(bool)>                onMuteChange;
+    std::function<void(bool)>                onSoloChange;
+    std::function<void(const juce::String&)> onNameChange;       // fired when user edits channel name
+    std::function<void(juce::Colour)>        onColorChange;      // fired when user picks accent colour
+    std::function<void(BridgeInstance*)>     onAddFx;            // bubbled up from placeholder FXSlotComponents
+    std::function<void(MixerParam)>          onMidiLearnRequest; // right-click → MIDI Learn
+    std::function<void(MixerParam)>          onMidiClearMapping; // right-click → Clear Mapping
 
     ~MixerStrip() override { fader.setLookAndFeel (nullptr); }
 
@@ -208,9 +213,16 @@ public:
             if (onSoloChange) onSoloChange (soloBtn.getToggleState());
         };
         addAndMakeVisible (soloBtn);
+
+        // Register as mouse listener on sub-controls for right-click MIDI menu
+        fader    .addMouseListener (this, false);
+        panSlider.addMouseListener (this, false);
+        muteBtn  .addMouseListener (this, false);
+        soloBtn  .addMouseListener (this, false);
     }
 
     void setMeterVisible (bool v) { ledMeter.setVisible (v); resized(); }
+    void setDisplayName (const juce::String& name) { nameLabel.setText (name, dontSendNotification); }
 
     // FX slot management
     FXSlotComponent* addFxSlot()
@@ -247,6 +259,25 @@ public:
         faderValueLabel.setText (juce::String (v, 2), dontSendNotification);
     }
 
+    // Set pan/mute/solo without triggering callbacks (used for MIDI remote sync)
+    void setPanNoCallback (float v)
+    {
+        panSlider.setValue (v, dontSendNotification);
+        panValueLabel.setText (v == 0.f ? "C" : (v > 0.f ? "R" + juce::String (v, 2)
+                                                           : "L" + juce::String (-v, 2)),
+                               dontSendNotification);
+    }
+    void setMuteNoCallback (bool muted)  { muteBtn.setToggleState (muted,  dontSendNotification); }
+    void setSoloNoCallback (bool soloed) { soloBtn.setToggleState (soloed, dontSendNotification); }
+
+    // Enter / exit MIDI Learn mode for a specific parameter (highlights the control)
+    void setLearnMode (MixerParam p, bool active)
+    {
+        learnParam_  = p;
+        learnActive_ = active;
+        repaint();
+    }
+
     // Change accent colour programmatically (e.g. on project load)
     void setAccentColor (juce::Colour c)
     {
@@ -268,8 +299,14 @@ public:
 
     void mouseDown (const MouseEvent& e) override
     {
-        if (e.mods.isRightButtonDown())
-            showColorMenu();
+        if (! e.mods.isRightButtonDown()) return;
+
+        auto* src = e.eventComponent;
+        if      (src == &fader)     showMidiMenu (MixerParam::Fader);
+        else if (src == &panSlider) showMidiMenu (MixerParam::Pan);
+        else if (src == &muteBtn)   showMidiMenu (MixerParam::Mute);
+        else if (src == &soloBtn)   showMidiMenu (MixerParam::Solo);
+        else                        showColorMenu();
     }
 
     void paint (Graphics& g) override
@@ -342,6 +379,24 @@ public:
         {
             g.setColour (juce::Colour (0xbbdd6666));
             g.drawHorizontalLine ((int) valueToY (1.5), (float) fb.getX(), (float) fb.getRight());
+        }
+
+        // MIDI Learn highlight — yellow border around the learning control
+        if (learnActive_)
+        {
+            Component* target = nullptr;
+            switch (learnParam_)
+            {
+                case MixerParam::Fader: target = &fader;     break;
+                case MixerParam::Pan:   target = &panSlider;  break;
+                case MixerParam::Mute:  target = &muteBtn;    break;
+                case MixerParam::Solo:  target = &soloBtn;    break;
+            }
+            if (target != nullptr)
+            {
+                g.setColour (juce::Colours::yellow.withAlpha (0.75f));
+                g.drawRect (target->getBounds().expanded (2), 2);
+            }
         }
     }
 
@@ -501,6 +556,19 @@ private:
             });
     }
 
+    void showMidiMenu (MixerParam param)
+    {
+        PopupMenu m;
+        m.addItem (1, LvhStr ("STR_MIDI_LEARN"));
+        m.addItem (2, LvhStr ("STR_MIDI_CLEAR_MAP"));
+        m.showMenuAsync (PopupMenu::Options().withTargetComponent (this),
+            [this, param] (int r)
+            {
+                if (r == 1 && onMidiLearnRequest) onMidiLearnRequest (param);
+                if (r == 2 && onMidiClearMapping) onMidiClearMapping (param);
+            });
+    }
+
     // Scrollable FX container (inner component + viewport)
     struct FxContent : public juce::Component
     {
@@ -518,7 +586,9 @@ private:
 
     FaderLookAndFeel         faderLF;      // must be declared before fader
     juce::Colour             accentColor;
-    bool                     isMasterStrip = false;
+    bool                     isMasterStrip  = false;
+    MixerParam               learnParam_    = MixerParam::Fader;
+    bool                     learnActive_   = false;
     Label                    nameLabel;
     RealLedMeter             ledMeter;
     FxContent                fxContent_;   // must be declared before fxViewport_
@@ -564,6 +634,13 @@ public:
         masterStrip->onFaderChange = [this] (float v) {
             if (onMasterGainChange) onMasterGainChange (v);
         };
+        // nullptr = master (no BridgeInstance)
+        masterStrip->onMidiLearnRequest = [this] (MixerParam p) {
+            if (onMidiLearnRequest) onMidiLearnRequest (nullptr, p);
+        };
+        masterStrip->onMidiClearMapping = [this] (MixerParam p) {
+            if (onMidiClearMapping) onMidiClearMapping (nullptr, p);
+        };
 
         startTimer (kMeterIntervalMs);  // start meter refresh timer
     }
@@ -573,9 +650,46 @@ public:
     // Called when Core volume slider changes — updates MASTER fader position without callback loop
     void setMasterGain (float v) { masterStrip->setFaderNoCallback (v); }
 
-    std::function<void(float)>           onMasterGainChange;
-    std::function<void(BridgeInstance*)> onToggleFxWindow;
-    std::function<void(BridgeInstance*)> onAddFx;            // bubbled up from any placeholder (+) slot
+    std::function<void(float)>                        onMasterGainChange;
+    std::function<void(BridgeInstance*)>              onToggleFxWindow;
+    std::function<void(BridgeInstance*)>              onAddFx;            // bubbled up from any placeholder (+) slot
+    std::function<void(BridgeInstance*, MixerParam)>  onMidiLearnRequest; // bubbled up from strip right-click
+    std::function<void(BridgeInstance*, MixerParam)>  onMidiClearMapping; // bubbled up from strip right-click
+
+    // Called by UIManager to highlight/remove learn indicator on a strip.
+    // b == nullptr targets the Master strip.
+    void setStripLearnMode (BridgeInstance* b, MixerParam p, bool active)
+    {
+        if (b == nullptr) { masterStrip->setLearnMode (p, active); return; }
+        int idx = bridges_.indexOf (b);
+        if (isPositiveAndBelow (idx, strips.size()))
+            strips[idx]->setLearnMode (p, active);
+    }
+
+    // Called by UIManager to sync a control's UI after a MIDI CC update.
+    // b == nullptr targets the Master strip (fader only).
+    void applyMidiValue (BridgeInstance* b, MixerParam p, float value)
+    {
+        if (b == nullptr)
+        {
+            if (p == MixerParam::Fader) masterStrip->setFaderNoCallback (value);
+            if (p == MixerParam::Pan)   masterStrip->setPanNoCallback   (value);
+            return;
+        }
+        int idx = bridges_.indexOf (b);
+        if (! isPositiveAndBelow (idx, strips.size())) return;
+        auto* s = strips[idx];
+        switch (p)
+        {
+            case MixerParam::Fader: s->setFaderNoCallback (value);           break;
+            case MixerParam::Pan:   s->setPanNoCallback   (value);           break;
+            case MixerParam::Mute:  s->setMuteNoCallback  (value > 0.5f);   break;
+            case MixerParam::Solo:
+                s->setSoloNoCallback (value > 0.5f);
+                updateSoloDimming();
+                break;
+        }
+    }
 
     // Rebuild channel strips and FX slots to match the supplied bridge lists.
     void updateBridges (const juce::Array<BridgeInstance*>& instrumentBridges,
@@ -629,6 +743,12 @@ public:
             };
             strip->onAddFx = [this] (BridgeInstance* parent) {
                 if (onAddFx) onAddFx (parent);
+            };
+            strip->onMidiLearnRequest = [this, b] (MixerParam p) {
+                if (onMidiLearnRequest) onMidiLearnRequest (b, p);
+            };
+            strip->onMidiClearMapping = [this, b] (MixerParam p) {
+                if (onMidiClearMapping) onMidiClearMapping (b, p);
             };
 
             // Per-channel FX slots for this instrument strip
@@ -704,7 +824,7 @@ public:
         g.fillRect (header);
         g.setColour (juce::Colours::white.withAlpha (0.7f));
         g.setFont (Font (16.0f, Font::bold));
-        g.drawText ("MIXER CONSOLE",
+        g.drawText (LvhStr ("STR_MIXER_CONSOLE"),
                     header.reduced (12, 0).removeFromLeft (300),
                     Justification::centredLeft);
 
@@ -712,10 +832,18 @@ public:
         {
             g.setColour (juce::Colours::white.withAlpha (0.18f));
             g.setFont (Font (13.0f));
-            g.drawText ("No instruments loaded.\nLaunch a Bridge to add channels.",
+            g.drawText (LvhStr ("STR_NO_INSTRUMENTS"),
                         getLocalBounds().withTrimmedTop (40).withTrimmedRight (120).reduced (20),
                         Justification::centred, true);
         }
+    }
+
+    void refresh()
+    {
+        repaint();   // redraws STR_MIXER_CONSOLE and STR_NO_INSTRUMENTS
+        meterBtn->setTooltip (LvhStr ("STR_METER_TOOLTIP"));
+        pinBtn_ ->setTooltip (LvhStr ("STR_PIN_TOOLTIP"));
+        masterStrip->setDisplayName (LvhStr ("STR_MASTER"));
     }
 
     void setPinState (bool pinned)
@@ -805,6 +933,12 @@ public:
         content->onPinToggled = [this] (bool pinned) {
             setAlwaysOnTop (pinned);
         };
+        content->onMidiLearnRequest = [this] (BridgeInstance* b, MixerParam p) {
+            if (onMidiLearnRequest) onMidiLearnRequest (b, p);
+        };
+        content->onMidiClearMapping = [this] (BridgeInstance* b, MixerParam p) {
+            if (onMidiClearMapping) onMidiClearMapping (b, p);
+        };
         setContentOwned (content, true);
         setResizable (true, false);
         centreWithSize (720, 480);
@@ -814,6 +948,11 @@ public:
     {
         setAlwaysOnTop (pinned);
         if (content != nullptr) content->setPinState (pinned);
+    }
+
+    void refresh()
+    {
+        if (content != nullptr) content->refresh();
     }
 
     void updateBridges (const juce::Array<BridgeInstance*>& instrumentBridges,
@@ -834,10 +973,22 @@ public:
         if (onClose) onClose();
     }
 
-    std::function<void()>                onClose;
-    std::function<void(float)>           onMasterGainChange;
-    std::function<void(BridgeInstance*)> onToggleFxWindow;
-    std::function<void(BridgeInstance*)> onAddFx;  // user clicked +; arg = parent instrument (nullptr = master)
+    std::function<void()>                            onClose;
+    std::function<void(float)>                       onMasterGainChange;
+    std::function<void(BridgeInstance*)>             onToggleFxWindow;
+    std::function<void(BridgeInstance*)>             onAddFx;
+    std::function<void(BridgeInstance*, MixerParam)> onMidiLearnRequest;
+    std::function<void(BridgeInstance*, MixerParam)> onMidiClearMapping;
+
+    // Called by UIManager to forward learn state / CC values to the correct strip
+    void setStripLearnMode (BridgeInstance* b, MixerParam p, bool active)
+    {
+        if (content) content->setStripLearnMode (b, p, active);
+    }
+    void applyMidiValue (BridgeInstance* b, MixerParam p, float value)
+    {
+        if (content) content->applyMidiValue (b, p, value);
+    }
 
 private:
     MixerContentComponent* content = nullptr;
