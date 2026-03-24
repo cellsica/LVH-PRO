@@ -126,6 +126,59 @@ namespace Icons
         }
     }
 
+    // Push-pin — head circle + horizontal bar + shaft + point
+    inline void pin (Graphics& g, Rectangle<float> a)
+    {
+        g.setColour (Colours::white);
+        float cx = a.getCentreX();
+
+        // Head (circle)
+        float hr = a.getWidth() * 0.20f;
+        g.fillEllipse (cx - hr, a.getY() + a.getHeight() * 0.04f, hr * 2.f, hr * 2.f);
+
+        // Horizontal bar
+        float barW = a.getWidth() * 0.68f;
+        float barH = a.getHeight() * 0.11f;
+        float barY = a.getY() + a.getHeight() * 0.32f;
+        g.fillRoundedRectangle (cx - barW * 0.5f, barY, barW, barH, 1.f);
+
+        // Shaft
+        float shW = a.getWidth() * 0.13f;
+        float shY = barY + barH;
+        float shH = a.getHeight() * 0.35f;
+        g.fillRoundedRectangle (cx - shW * 0.5f, shY, shW, shH, 1.f);
+
+        // Point (downward triangle)
+        Path p;
+        p.addTriangle (cx - shW * 0.5f, shY + shH,
+                       cx + shW * 0.5f, shY + shH,
+                       cx,              shY + shH + a.getHeight() * 0.13f);
+        g.fillPath (p);
+    }
+
+    // Stage setlist — play triangle + 3 horizontal list lines
+    inline void stage (Graphics& g, Rectangle<float> a)
+    {
+        g.setColour (Colours::white);
+
+        // Play triangle (left side)
+        float ts = a.getHeight() * 0.22f;
+        float tx = a.getX() + a.getWidth() * 0.06f;
+        float ty = a.getCentreY();
+        Path p;
+        p.addTriangle (tx, ty - ts, tx, ty + ts, tx + ts * 1.4f, ty);
+        g.fillPath (p);
+
+        // Three list lines (right side)
+        float barH  = a.getHeight() * 0.10f;
+        float gap   = (a.getHeight() - 3.f * barH) / 4.f;
+        float lineX = a.getX() + a.getWidth() * 0.38f;
+        float lineW = a.getWidth() * 0.58f;
+        for (int i = 0; i < 3; ++i)
+            g.fillRoundedRectangle (lineX, a.getY() + gap * (i + 1) + barH * i,
+                                    lineW, barH, 1.f);
+    }
+
     // Mini LED meter — two vertical bars (L/R) with green/yellow/red segments
     inline void led (Graphics& g, Rectangle<float> a)
     {
@@ -150,3 +203,36 @@ namespace Icons
         }
     }
 }
+
+// =====================================================================
+// LvhLookAndFeel
+//
+// Application-wide LookAndFeel that replaces the JUCE default fonts
+// with Japanese-capable alternatives on Windows 10/11:
+//
+//   Default sans-serif  →  "Yu Gothic UI"  (system UI font, W10/11)
+//   Default monospace   →  "MS Gothic"     (Japanese-capable fixed-width)
+//
+// Applied globally in LvhProApplication::initialise() so that ALL
+// components — Labels, Buttons, AlertWindows, custom paint() calls
+// using Font(size, style) — render Japanese (and other CJK) text
+// without relying on font-fallback mechanisms that JUCE may not invoke.
+// =====================================================================
+class LvhLookAndFeel : public LookAndFeel_V4
+{
+public:
+    Typeface::Ptr getTypefaceForFont (const Font& f) override
+    {
+        const auto& name = f.getTypefaceName();
+
+        if (name == Font::getDefaultSansSerifFontName())
+            return LookAndFeel_V4::getTypefaceForFont (
+                Font ("Yu Gothic UI", f.getHeight(), f.getStyleFlags()));
+
+        if (name == Font::getDefaultMonospacedFontName())
+            return LookAndFeel_V4::getTypefaceForFont (
+                Font ("MS Gothic", f.getHeight(), f.getStyleFlags()));
+
+        return LookAndFeel_V4::getTypefaceForFont (f);
+    }
+};

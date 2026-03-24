@@ -55,7 +55,11 @@
 - [x] **Mission 025**: リファクタリング Phase C (BridgeManager の抽出) ✅ (しずく025)
 - [x] **Mission 026**: リファクタリング Phase D (UIManager の抽出) ✅ (しずく026)
 - [x] **Mission 027**: ミキサー主導のプラグイン追加と UI の整理 ✅ (しずく027)
-- [ ] **Mission 028**: Stage Performance Mode & Stage Set (.stg) 🔜
+- [x] **Mission 028**: Stage Performance Mode & Stage Set (.stg) ✅ (しずく028)
+- [x] **Mission 029**: Stage UI の洗練と細部へのこだわり (Phase 5 Polish) 🔜
+- [x] **Mission 030**: Stage UI & Core 統合 ＆ 必須修正 (優先度：高) ✅ (しずく030)
+- [x] **Mission 031**: ウィンドウの最前面固定 (Pin) 機能 ✅ (しずく031)
+
 
 
 
@@ -88,4 +92,14 @@
 - [2026-03-23] しずく：Mission 026 (Phase D) 完了！UIManagerの抽出。God Class解体完了！
 - [2026-03-23] かえで：Mission 027 (Mixer-Driven Plugin Loading & UI Refinement) 指示書作成。
 - [2026-03-23] しずく：Mission 027 完了！ミキサーからのFX追加フロー完成。Ver 0.2.1-alphaリリース。
-- [2026-03-23] かえで：Stage Performance Mode (Mission 028) の構築準備開始。🔜
+- [2026-03-23] かえで：Mission 028 (Stage Performance Mode) の指示書を作成し、しずくちゃんにパス！🔜
+- [2026-03-23] しずく：Mission 028 (Stage Performance Mode) 完了！.stg形式、StageWindow実装。ハイコントラストUIが最高にクール。
+- [2026-03-23] かえで：Mission 028 報告書をレビュー。
+- [2026-03-23] かえで：Mission 029 (Stage UI の洗練と安全性の確保) 指示書作成し、しずくちゃんにパス！🔜
+- [2026-03-24] しずく：Mission 029 完了！Dirtyチェック、ドラッグ＆ドロップ、Selection/Active分離を実装。Ver 0.2.2-alpha。
+- [2026-03-24] かえで：Mission 031 (最前面固定 Pin 機能) 指示書作成し、しずくちゃんにパス！
+- [2026-03-24] しずく：Mission 031 完了！Stage/Mixer にピンボタン追加 ＆ 状態の永続化を実装。Ver 0.3.1-alpha。
+- [2026-03-24] かえで：仕様書を更新し、Mission 031 をクローズ。
+- [2026-03-24] かえで：Mission 030 (Stage UI & Core 統合 ＆ 必須修正) 指示書作成し、しずくちゃんにパス！
+- [2026-03-24] しずく：Mission 030 完了！日本語対応(LookAndFeel)、Coreボタン、ショートカット、エラー通知を実装。Ver 0.3.0-alpha。
+- [2026-03-24] かえで：仕様書を更新し、Mission 030 をクローズ。

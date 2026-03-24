@@ -2,6 +2,7 @@
 #include "MainComponent.h"
 #include "MixerWindow.h"
 #include "SettingsWindow.h"
+#include "StageWindow.h"
 
 UIManager::UIManager (AudioEngine&                  audioEngine,
                        BridgeManager&                bridgeManager,
@@ -9,14 +10,16 @@ UIManager::UIManager (AudioEngine&                  audioEngine,
                        MidiRoutingManager&           midiRouter,
                        juce::AudioDeviceManager&     deviceManager,
                        juce::ApplicationProperties&  appProperties,
-                       juce::KnownPluginList&        knownPlugins)
+                       juce::KnownPluginList&        knownPlugins,
+                       StageManager&                 stageManager)
     : audioEngine_      (audioEngine),
       bridgeManager_    (bridgeManager),
       projectSerializer_(projectSerializer),
       midiRouter_       (midiRouter),
       deviceManager_    (deviceManager),
       appProperties_    (appProperties),
-      knownPlugins_     (knownPlugins)
+      knownPlugins_     (knownPlugins),
+      stageManager_     (stageManager)
 {}
 
 UIManager::~UIManager() = default;
@@ -59,11 +62,32 @@ void UIManager::setMainComponent (MainComponent* mc)
 
     mc_->onLogoRightClick = [this] { showMainMenu(); };
     mc_->onMixerToggle    = [this] (bool show) { toggleMixerWindow (show); };
+    mc_->onStageToggle    = [this] (bool show) { toggleStageWindow  (show); };
     mc_->onLaunchBridgeClicked = [this] { launchBridgeFileChooser(); };
 }
 
 void UIManager::shutdown()
 {
+    // Persist StageWindow and MixerWindow state before destroying them
+    if (auto* prefs = appProperties_.getUserSettings())
+    {
+        bool stageVisible = stageWindow_ != nullptr && stageWindow_->isVisible();
+        prefs->setValue ("stageWindowVisible", stageVisible);
+        if (stageWindow_ != nullptr)
+        {
+            auto b = stageWindow_->getBounds();
+            prefs->setValue ("stageWindowX",       b.getX());
+            prefs->setValue ("stageWindowY",       b.getY());
+            prefs->setValue ("stageWindowW",       b.getWidth());
+            prefs->setValue ("stageWindowH",       b.getHeight());
+            prefs->setValue ("stageAlwaysOnTop",   stageWindow_->isAlwaysOnTop());
+        }
+
+        if (mixerWindow_ != nullptr)
+            prefs->setValue ("mixerAlwaysOnTop", mixerWindow_->isAlwaysOnTop());
+    }
+
+    stageWindow_.reset();
     settingsWindow_.reset();
     mixerWindow_.reset();
     mc_ = nullptr;
@@ -119,6 +143,13 @@ void UIManager::toggleMixerWindow (bool show)
             mixerWindow_->onAddFx = [this] (BridgeInstance* parent) {
                 showPluginPicker (BridgeInstance::Role::Effect, parent);
             };
+        }
+
+        // Restore pin state
+        if (auto* prefs = appProperties_.getUserSettings())
+        {
+            bool pinned = prefs->getBoolValue ("mixerAlwaysOnTop", false);
+            mixerWindow_->setPinState (pinned);
         }
 
         // Sync MASTER fader to current Core slider value
@@ -177,6 +208,192 @@ void UIManager::restoreMixerWindow (bool visible, juce::Rectangle<int> bounds)
     {
         if (mixerWindow_ != nullptr) mixerWindow_->setVisible (false);
         if (mc_ != nullptr) mc_->setMixerWindowVisible (false);
+    }
+}
+
+// ── Stage window ──────────────────────────────────────────────────────────
+
+void UIManager::toggleStageWindow (bool show)
+{
+    if (show)
+    {
+        if (stageWindow_ == nullptr)
+        {
+            stageWindow_ = std::make_unique<StageWindow> ("Stage Performance Mode", stageManager_);
+
+            stageWindow_->onClose = [this] {
+                stageWindow_->setVisible (false);
+                if (mc_ != nullptr) mc_->setStageWindowVisible (false);
+            };
+
+            // Load a project item
+            stageWindow_->setOnItemLoad ([this] (int idx) {
+                stageManager_.loadItem (idx);
+            });
+
+            // Add .lvh file to the set
+            stageWindow_->setOnAdd ([this] {
+                auto chooser = std::make_shared<juce::FileChooser> (
+                    "Add project to set...",
+                    juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
+                    "*.lvh");
+                chooser->launchAsync (
+                    juce::FileBrowserComponent::openMode |
+                    juce::FileBrowserComponent::canSelectFiles,
+                    [this, chooser] (const juce::FileChooser& fc) {
+                        auto f = fc.getResult();
+                        if (f.existsAsFile())
+                        {
+                            stageManager_.addItem (f.getFileNameWithoutExtension(),
+                                                   f.getFullPathName());
+                        }
+                    });
+            });
+
+            // Save .stg file
+            stageWindow_->setOnSaveSet ([this] {
+                auto curFile = stageManager_.getCurrentFile();
+                auto chooser = std::make_shared<juce::FileChooser> (
+                    "Save Stage Set...",
+                    curFile.existsAsFile()
+                        ? curFile   // pre-fill filename for easy overwrite
+                        : juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
+                    "*.stg");
+                chooser->launchAsync (
+                    juce::FileBrowserComponent::saveMode |
+                    juce::FileBrowserComponent::canSelectFiles |
+                    juce::FileBrowserComponent::warnAboutOverwriting,
+                    [this, chooser] (const juce::FileChooser& fc) {
+                        auto f = fc.getResult();
+                        if (f.getFullPathName().isNotEmpty())
+                        {
+                            auto stgFile = f.withFileExtension ("stg");
+                            stageManager_.saveSet (stgFile);
+                            if (stageWindow_ != nullptr)
+                            {
+                                stageWindow_->refresh();   // update title (* disappears)
+                                stageWindow_->setStatus ("Saved: " + stgFile.getFullPathName());
+                            }
+                        }
+                    });
+            });
+
+            // Open .stg file — dirty-check first
+            stageWindow_->setOnLoadSet ([this] {
+                executeSafeSetOperation ([this] {
+                    auto chooser = std::make_shared<juce::FileChooser> (
+                        "Open Stage Set...",
+                        juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
+                        "*.stg");
+                    chooser->launchAsync (
+                        juce::FileBrowserComponent::openMode |
+                        juce::FileBrowserComponent::canSelectFiles,
+                        [this, chooser] (const juce::FileChooser& fc) {
+                            auto f = fc.getResult();
+                            if (f.existsAsFile())
+                                stageManager_.loadSet (f);
+                        });
+                });
+            });
+
+            // New empty set — dirty-check first
+            stageWindow_->setOnNewSet ([this] {
+                executeSafeSetOperation ([this] { stageManager_.newSet(); });
+            });
+
+            // Wire onSetChanged so StageWindow stays in sync
+            stageManager_.onSetChanged = [this] {
+                if (stageWindow_ != nullptr) stageWindow_->refresh();
+            };
+
+            // Restore pin (always-on-top) state
+            if (auto* prefs = appProperties_.getUserSettings())
+            {
+                bool pinned = prefs->getBoolValue ("stageAlwaysOnTop", false);
+                stageWindow_->setPinState (pinned);
+            }
+
+            // Restore saved bounds (first-time open in this session)
+            if (auto* prefs = appProperties_.getUserSettings())
+            {
+                int w = prefs->getIntValue ("stageWindowW", 0);
+                int h = prefs->getIntValue ("stageWindowH", 0);
+                if (w > 100 && h > 50)
+                {
+                    stageWindow_->setBounds (prefs->getIntValue ("stageWindowX", 0),
+                                             prefs->getIntValue ("stageWindowY", 0),
+                                             w, h);
+                }
+            }
+        }
+
+        stageWindow_->setVisible (true);
+        stageWindow_->toFront (true);
+    }
+    else
+    {
+        if (stageWindow_ != nullptr)
+            stageWindow_->setVisible (false);
+    }
+
+    if (mc_ != nullptr) mc_->setStageWindowVisible (show);
+}
+
+// ── Stage: safe operation helper ──────────────────────────────────────────
+
+void UIManager::executeSafeSetOperation (std::function<void()> action)
+{
+    if (! stageManager_.isDirty())
+    {
+        action();
+        return;
+    }
+
+    juce::NativeMessageBox::showYesNoCancelBox (
+        juce::MessageBoxIconType::QuestionIcon,
+        "Unsaved Changes",
+        "The current set has unsaved changes.\nDo you want to save before continuing?",
+        nullptr,
+        juce::ModalCallbackFunction::create (
+            [this, action] (int result)
+            {
+                if (result == 0) return; // Cancel
+
+                if (result == 1) // Yes — save, then run action
+                {
+                    auto curFile = stageManager_.getCurrentFile();
+                    auto chooser = std::make_shared<juce::FileChooser> (
+                        "Save Stage Set...",
+                        curFile.existsAsFile()
+                            ? curFile   // pre-fill filename for easy overwrite
+                            : juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
+                        "*.stg");
+                    chooser->launchAsync (
+                        juce::FileBrowserComponent::saveMode |
+                        juce::FileBrowserComponent::canSelectFiles |
+                        juce::FileBrowserComponent::warnAboutOverwriting,
+                        [this, chooser, action] (const juce::FileChooser& fc)
+                        {
+                            auto f = fc.getResult();
+                            if (f.getFullPathName().isNotEmpty())
+                                stageManager_.saveSet (f.withFileExtension ("stg"));
+                            action();
+                        });
+                    return;
+                }
+
+                action(); // No — discard and proceed
+            }));
+}
+
+// ── Stage: window state restore ───────────────────────────────────────────
+
+void UIManager::restoreStageWindow()
+{
+    if (auto* prefs = appProperties_.getUserSettings())
+    {
+        if (prefs->getBoolValue ("stageWindowVisible", false))
+            toggleStageWindow (true);
     }
 }
 
@@ -362,6 +579,8 @@ void UIManager::showMainMenu()
     m.addSeparator();
     m.addItem (1, "Settings...");
     m.addSeparator();
+    m.addItem (6001, "Open Stage Set");
+    m.addSeparator();
     m.addItem (5001, "Save Project...");
     m.addItem (5002, "Open Project...");
 
@@ -387,6 +606,11 @@ void UIManager::showMainMenu()
             if (result == 1)
             {
                 openSettings();
+            }
+            else if (result == 6001)
+            {
+                bool nowVisible = stageWindow_ == nullptr || ! stageWindow_->isVisible();
+                toggleStageWindow (nowVisible);
             }
             else if (result == 5001)
             {

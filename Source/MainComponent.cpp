@@ -35,6 +35,14 @@ MainComponent::MainComponent (MidiKeyboardState& state)
     mixerToggleButton->setColour (TextButton::buttonOnColourId, Colour (0xff604020));
     mixerToggleButton->onClick = [this] { toggleMixer(); };
 
+    stageToggleButton = std::make_unique<IconButton> ("Open Stage Set", Icons::stage);
+    addAndMakeVisible (*stageToggleButton);
+    stageToggleButton->setClickingTogglesState (true);
+    stageToggleButton->setToggleState (false, dontSendNotification);
+    stageToggleButton->setColour (TextButton::buttonColourId,   Colour (0xff333344));
+    stageToggleButton->setColour (TextButton::buttonOnColourId, Colour (0xff3a2060));
+    stageToggleButton->onClick = [this] { toggleStage(); };
+
 
     octaveDownButton = std::make_unique<TextButton> ("-");
     addAndMakeVisible (*octaveDownButton);
@@ -145,6 +153,12 @@ void MainComponent::toggleMixer()
         onMixerToggle (mixerToggleButton->getToggleState());
 }
 
+void MainComponent::toggleStage()
+{
+    if (onStageToggle)
+        onStageToggle (stageToggleButton->getToggleState());
+}
+
 
 // ── Scan overlay ───────────────────────────────────────────────────────────
 
@@ -209,6 +223,11 @@ void MainComponent::setMixerWindowVisible (bool v)
     mixerToggleButton->setToggleState (v, dontSendNotification);
 }
 
+void MainComponent::setStageWindowVisible (bool v)
+{
+    stageToggleButton->setToggleState (v, dontSendNotification);
+}
+
 
 // ── Paint ──────────────────────────────────────────────────────────────────
 
@@ -238,6 +257,7 @@ void MainComponent::resized()
     kbdToggleButton    ->setBounds (toolbar.removeFromLeft (36).reduced (2));
     monitorToggleButton->setBounds (toolbar.removeFromLeft (36).reduced (2));
     mixerToggleButton  ->setBounds (toolbar.removeFromLeft (36).reduced (2));
+    stageToggleButton  ->setBounds (toolbar.removeFromLeft (36).reduced (2));
 
     toolbar.removeFromLeft (6); // small gap
     octaveDownButton   ->setBounds (toolbar.removeFromLeft (26).reduced (2));

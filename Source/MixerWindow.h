@@ -537,6 +537,8 @@ class MixerContentComponent : public Component,
                               private juce::Timer
 {
 public:
+    std::function<void(bool)> onPinToggled;
+
     MixerContentComponent()
     {
         meterBtn = std::make_unique<IconButton> ("Toggle LED Meters", Icons::led);
@@ -546,6 +548,16 @@ public:
         meterBtn->setColour (TextButton::buttonOnColourId, juce::Colour (0xff2a4a3a));
         meterBtn->onClick = [this] { applyMeterVisibility(); };
         addAndMakeVisible (*meterBtn);
+
+        pinBtn_ = std::make_unique<IconButton> ("Always on Top", Icons::pin);
+        pinBtn_->setClickingTogglesState (true);
+        pinBtn_->setColour (TextButton::buttonColourId,   juce::Colour (0xff252535));
+        pinBtn_->setColour (TextButton::buttonOnColourId, juce::Colour (0xffaa6600));
+        pinBtn_->setTooltip ("Pin window on top");
+        pinBtn_->onClick = [this] {
+            if (onPinToggled) onPinToggled (pinBtn_->getToggleState());
+        };
+        addAndMakeVisible (*pinBtn_);
 
         masterStrip = std::make_unique<MixerStrip> ("MASTER", juce::Colour (0xff444455), true);
         addAndMakeVisible (*masterStrip);
@@ -706,11 +718,17 @@ public:
         }
     }
 
+    void setPinState (bool pinned)
+    {
+        pinBtn_->setToggleState (pinned, juce::dontSendNotification);
+    }
+
     void resized() override
     {
         auto area   = getLocalBounds();
         auto header = area.removeFromTop (40);
         meterBtn->setBounds (header.removeFromRight (36).reduced (4));
+        pinBtn_->setBounds  (header.removeFromRight (36).reduced (4));
 
         masterStrip->setBounds (area.removeFromRight (100).reduced (4));
         area.removeFromRight (8);
@@ -756,6 +774,7 @@ private:
     }
 
     std::unique_ptr<IconButton>      meterBtn;
+    std::unique_ptr<IconButton>      pinBtn_;
     juce::OwnedArray<MixerStrip>     strips;
     std::unique_ptr<MixerStrip>      masterStrip;
     juce::Array<BridgeInstance*>     bridges_;   // parallel to strips[]
@@ -783,9 +802,18 @@ public:
         content->onAddFx = [this] (BridgeInstance* parent) {
             if (onAddFx) onAddFx (parent);
         };
+        content->onPinToggled = [this] (bool pinned) {
+            setAlwaysOnTop (pinned);
+        };
         setContentOwned (content, true);
         setResizable (true, false);
         centreWithSize (720, 480);
+    }
+
+    void setPinState (bool pinned)
+    {
+        setAlwaysOnTop (pinned);
+        if (content != nullptr) content->setPinState (pinned);
     }
 
     void updateBridges (const juce::Array<BridgeInstance*>& instrumentBridges,

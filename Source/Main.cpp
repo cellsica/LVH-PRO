@@ -8,6 +8,7 @@
 #include "ProjectSerializer.h"
 #include "BridgeManager.h"
 #include "UIManager.h"
+#include "Core/StageManager.h"
 
 // =====================================================================
 // Main Application
@@ -66,6 +67,9 @@ public:
 
     void initialise (const String&) override
     {
+        // Apply Japanese-capable fonts globally (Yu Gothic UI / MS Gothic)
+        LookAndFeel::setDefaultLookAndFeel (&lvhLookAndFeel_);
+
         // Initialize settings persistence
         PropertiesFile::Options opts;
         opts.applicationName       = "LVH-PRO";
@@ -88,9 +92,11 @@ public:
 
         uiManager_.setMainComponent (mainComp());
         wireUIManagerCallbacks();
+        wireStageManagerCallbacks();
         wireUICallbacks();
         wireBridgeManagerCallbacks();
         wireSerializerCallbacks();
+        uiManager_.restoreStageWindow();
 
         // Apply saved settings
         if (auto* prefs = appProperties.getUserSettings())
@@ -125,6 +131,7 @@ public:
 
     void shutdown() override
     {
+        LookAndFeel::setDefaultLookAndFeel (nullptr);
         uiManager_.shutdown();
         keyboardState.removeListener (this);
 
@@ -228,6 +235,25 @@ private:
     void wireUIManagerCallbacks()
     {
         uiManager_.onStartPluginScan = [this] { startPluginScan(); };
+    }
+
+    void wireStageManagerCallbacks()
+    {
+        stageManager_.onProjectLoadRequested = [this] (const juce::File& f) {
+            projectSerializer_.setCurrentProjectFile (f);
+            projectSerializer_.loadProject (f);
+        };
+
+        stageManager_.onLoadError = [] (const StageManager::Item& item) {
+            juce::NativeMessageBox::showMessageBoxAsync (
+                juce::MessageBoxIconType::WarningIcon,
+                "File Not Found",
+                "Project file not found:\n\n" + item.path + "\n\n"
+                "Please check that the file still exists at this location.",
+                nullptr);
+        };
+
+        // onSetChanged is wired by UIManager when StageWindow is first opened
     }
 
     void wireBridgeManagerCallbacks()
@@ -354,6 +380,7 @@ private:
         void closeButtonPressed() override { JUCEApplication::getInstance()->systemRequestedQuit(); }
     };
 
+    LvhLookAndFeel    lvhLookAndFeel_;
     MidiKeyboardState keyboardState;
     AudioDeviceManager deviceManager;
     KnownPluginList knownPlugins;
@@ -363,10 +390,12 @@ private:
     MidiRoutingManager midiRouter         { bridgeManager_.getBridges() };
     ProjectSerializer  projectSerializer_ { bridgeManager_.getBridges(), audioEngine, midiRouter,
                                             deviceManager, appProperties };
+    StageManager       stageManager_;
     std::unique_ptr<MainWindow> mainWindow;
     // UIManager declared after mainWindow → destroyed before mainWindow (reverse order)
     UIManager uiManager_ { audioEngine, bridgeManager_, projectSerializer_,
-                            midiRouter, deviceManager, appProperties, knownPlugins };
+                            midiRouter, deviceManager, appProperties, knownPlugins,
+                            stageManager_ };
     std::unique_ptr<PCKeyboardListener> pcKeyListener;
     std::unique_ptr<PluginScanThread> scanThread;
     std::shared_ptr<std::atomic<bool>> scanToken;
