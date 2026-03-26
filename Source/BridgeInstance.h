@@ -105,6 +105,18 @@ private:
     // so the JUCE message thread never blocks on a named-pipe write.
     class MidiSenderThread;
 
+    // Fires on the message thread every 2 s; if no heartbeat for > 5 s while
+    // Connected, calls stopPipe() to break the JUCE named-pipe reconnect loop
+    // that would otherwise block any write call forever.
+    class HeartbeatWatchdog : public juce::Timer
+    {
+    public:
+        explicit HeartbeatWatchdog (BridgeInstance& owner) : owner_ (owner) {}
+        void timerCallback() override;
+    private:
+        BridgeInstance& owner_;
+    };
+
     CoreIpcManager       ipcManager;
     SharedMemoryBuffer   sharedMem;
     SyncEvents           syncEvents;
@@ -114,7 +126,9 @@ private:
     juce::String         pluginPath_;
     juce::String         fxParentPath_;   // empty = master FX; non-empty = per-channel FX parent path
     juce::Rectangle<int> lastWindowBounds { 0, 0, 0, 0 };
-    std::unique_ptr<MidiSenderThread> midiSender_;
+    std::unique_ptr<MidiSenderThread>     midiSender_;
+    std::unique_ptr<HeartbeatWatchdog>    heartbeatWatchdog_;
+    std::atomic<int64_t>                  lastHeartbeatMs_ { 0 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BridgeInstance)
 };

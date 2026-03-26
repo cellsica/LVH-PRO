@@ -92,9 +92,19 @@ bool BridgeInstance::launch (const juce::String& pluginPath, const juce::File& b
         juce::Logger::writeToLog ("[BridgeInstance] Warning: failed to create sync events.");
 
     // Wire IPC callbacks.
+    ipcManager.onHeartbeat = [this] {
+        lastHeartbeatMs_.store (juce::Time::currentTimeMillis(), std::memory_order_relaxed);
+    };
+
     ipcManager.onConnected = [this] {
         state.store (State::Connected, std::memory_order_release);
+        // Seed heartbeat timestamp so the watchdog doesn't fire immediately.
+        lastHeartbeatMs_.store (juce::Time::currentTimeMillis(), std::memory_order_relaxed);
         juce::Logger::writeToLog ("[BridgeInstance] Connected: " + pluginPath_);
+        // Start watchdog — detects silent disconnects caused by the JUCE named-pipe
+        // reconnect loop (which prevents connectionLost() from firing automatically).
+        heartbeatWatchdog_ = std::make_unique<HeartbeatWatchdog> (*this);
+        heartbeatWatchdog_->startTimer (2000);
         if (onConnected) onConnected (this);
     };
 
@@ -134,8 +144,52 @@ bool BridgeInstance::launch (const juce::String& pluginPath, const juce::File& b
     return true;
 }
 
+void BridgeInstance::HeartbeatWatchdog::timerCallback()
+{
+    // Guard: only act when still connected.
+    if (owner_.state.load (std::memory_order_acquire) != BridgeInstance::State::Connected)
+    {
+        stopTimer();
+        return;
+    }
+
+    auto now  = juce::Time::currentTimeMillis();
+    auto last = owner_.lastHeartbeatMs_.load (std::memory_order_relaxed);
+
+    // 5 second timeout: Bridge sends heartbeats every 1500 ms, so 3+ missed beats
+    // reliably indicate a dead or disconnected Bridge process.
+    if (last > 0 && (now - last) > 5000)
+    {
+        juce::Logger::writeToLog ("[BridgeInstance] Heartbeat timeout — forcing disconnect: "
+                                  + owner_.pluginPath_);
+        stopTimer();
+
+        // IMPORTANT: JUCE's disconnect() calls safeAction->setSafe(false) after
+        // stopThread(), which kills any pending ConnectionStateMessage before it can
+        // deliver connectionLost(). Calling stopPipe() alone therefore does NOT
+        // reliably fire connectionLost() / onDisconnected.
+        //
+        // Fix: manually fire onDisconnected first (same effect as connectionLost() path),
+        // then call stopPipe() purely for resource cleanup (breaks reconnect loop, etc.).
+        owner_.state.store (State::Idle, std::memory_order_release);
+        if (owner_.onDisconnected) owner_.onDisconnected (&owner_);
+
+        // Cleanup: signal cancelEvent → unblocks reconnect loop → ConnectionThread exits.
+        // This call is now for resource teardown only; onDisconnected already fired above.
+        owner_.ipcManager.stopPipe();
+    }
+}
+
 void BridgeInstance::shutdown()
 {
+    // Stop the heartbeat watchdog before tearing down IPC so no timer fires
+    // during or after pipe teardown.
+    if (heartbeatWatchdog_ != nullptr)
+    {
+        heartbeatWatchdog_->stopTimer();
+        heartbeatWatchdog_.reset();
+    }
+
     // Stop the MIDI sender thread first so no new pipe writes are attempted
     // after the IPC manager is torn down.
     if (midiSender_ != nullptr)
@@ -160,13 +214,16 @@ void BridgeInstance::shutdown()
     sharedMem.close();
     state.store (State::Idle, std::memory_order_relaxed);
 
-    // パイプ切断を受けてBridgeが自発的に終了するのを待つ（最大3秒）。
-    // タイムアウトした場合はプロセスを強制終了してゾンビ化を防ぐ。
+    // パイプ切断を受けてBridgeが自発的に終了するのを待つ。
+    // メッセージスレッド上での呼び出し（Bridge Xボタン切断など）はUIをブロックしないよう
+    // 即座にkillする。バックグラウンドスレッド（Coreアプリ終了時など）は最大3秒待機する。
     if (childProcess_.isRunning())
     {
-        if (! childProcess_.waitForProcessToFinish (3000))
+        bool onMessageThread = juce::MessageManager::existsAndIsCurrentThread();
+        int waitMs = onMessageThread ? 0 : 3000;
+        if (! childProcess_.waitForProcessToFinish (waitMs))
         {
-            juce::Logger::writeToLog ("[BridgeInstance] Timeout; killing bridge process: " + pluginPath_);
+            juce::Logger::writeToLog ("[BridgeInstance] Killing bridge process: " + pluginPath_);
             childProcess_.kill();
         }
     }

@@ -422,7 +422,10 @@ void CoreIpcManager::messageReceived (const juce::MemoryBlock& message)
 {
     auto type = IpcProtocol::getType (message);
     if (type == IpcMessageType::Heartbeat)
-        return; // Keepalive from Bridge — silently discard
+    {
+        if (onHeartbeat) onHeartbeat();
+        return;
+    }
     if (type == IpcMessageType::WindowPos)
     {
         int x, y, w, h;

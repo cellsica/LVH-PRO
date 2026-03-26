@@ -91,6 +91,7 @@ public:
 
     std::function<void()>                        onConnected;
     std::function<void()>                        onDisconnected;
+    std::function<void()>                        onHeartbeat;
     std::function<void(int,int,int,int)>         onWindowPosReceived;
     std::function<void(const juce::MemoryBlock&)> onStateReceived;
 
