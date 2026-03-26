@@ -692,17 +692,23 @@ void UIManager::launchBridgeFileChooser (BridgeInstance::Role role)
 
 void UIManager::showPluginPicker (BridgeInstance::Role fixedRole, BridgeInstance* parentInstrument)
 {
-    auto pluginTypes = knownPlugins_.getTypes();
+    juce::Array<juce::PluginDescription> filteredTypes;
+    for (auto& t : knownPlugins_.getTypes())
+    {
+        if (fixedRole == BridgeInstance::Role::Instrument && ! t.isInstrument) continue;
+        if (fixedRole == BridgeInstance::Role::Effect && t.isInstrument) continue;
+        filteredTypes.add (t);
+    }
 
     juce::PopupMenu m;
-    if (pluginTypes.isEmpty())
+    if (filteredTypes.isEmpty())
     {
-        m.addItem (1, "(No plugins scanned yet)", false, false);
+        m.addItem (1, "(No compatible plugins found)", false, false);
     }
     else
     {
         int id = 100;
-        for (auto& t : pluginTypes)
+        for (auto& t : filteredTypes)
             m.addItem (id++, t.name);
         m.addSeparator();
     }
@@ -711,7 +717,7 @@ void UIManager::showPluginPicker (BridgeInstance::Role fixedRole, BridgeInstance
     juce::String parentPath = parentInstrument ? parentInstrument->getPluginPath() : juce::String{};
 
     m.showMenuAsync (juce::PopupMenu::Options(),
-        [this, pluginTypes, fixedRole, parentPath] (int result)
+        [this, filteredTypes, fixedRole, parentPath] (int result)
         {
             if (result == 1)
             {
@@ -719,9 +725,9 @@ void UIManager::showPluginPicker (BridgeInstance::Role fixedRole, BridgeInstance
                 return;
             }
             int idx = result - 100;
-            if (idx >= 0 && idx < pluginTypes.size())
+            if (idx >= 0 && idx < filteredTypes.size())
             {
-                auto& desc = pluginTypes[idx];
+                auto& desc = filteredTypes[idx];
                 juce::File pluginFile (desc.fileOrIdentifier);
                 if (pluginFile.exists())
                     bridgeManager_.launchBridgeWithPath (pluginFile, fixedRole, {}, std::nullopt, {}, parentPath);
@@ -739,20 +745,23 @@ void UIManager::showMainMenu()
 
     // ── Select Instruments submenu (IDs 3000-3998 = plugins, 3 = refresh) ──
     juce::PopupMenu instrSub;
-    auto pluginTypes = knownPlugins_.getTypes();
-    if (pluginTypes.isEmpty())
+    juce::Array<juce::PluginDescription> instrumentTypes;
+    for (auto& t : knownPlugins_.getTypes())
+        if (t.isInstrument) instrumentTypes.add (t);
+
+    if (instrumentTypes.isEmpty())
     {
-        instrSub.addItem (3000, "(No plugins scanned yet)", false, false);
+        instrSub.addItem (3000, "(No instruments found)", false, false);
     }
     else
     {
         int id = 3000;
-        for (auto& t : pluginTypes)
+        for (auto& t : instrumentTypes)
             instrSub.addItem (id++, t.name);
         instrSub.addSeparator();
     }
     instrSub.addItem (3, "Refresh Plugin List...");
-    m.addSubMenu ("Select Plugins", instrSub);
+    m.addSubMenu ("Select Instruments", instrSub);
     m.addSeparator();
 
     // ── MIDI Input submenu (IDs 1000-1999) ──
@@ -812,7 +821,7 @@ void UIManager::showMainMenu()
     for (auto* b : bridgeManager_.getBridges()) bridgeSnapshot.add ({ b });
 
     m.showMenuAsync (juce::PopupMenu::Options(),
-        [this, midiInputs, recents, pluginTypes, bridgeSnapshot] (int result)
+        [this, midiInputs, recents, instrumentTypes, bridgeSnapshot] (int result)
         {
             if (result == 1)
             {
@@ -893,12 +902,11 @@ void UIManager::showMainMenu()
             else if (result >= 3000 && result < 3999)
             {
                 int idx = result - 3000;
-                if (idx < pluginTypes.size())
+                if (idx < instrumentTypes.size())
                 {
-                    auto& desc = pluginTypes[idx];
+                    auto& desc = instrumentTypes[idx];
                     juce::File pluginFile (desc.fileOrIdentifier);
-                    auto role = desc.isInstrument ? BridgeInstance::Role::Instrument
-                                                  : BridgeInstance::Role::Effect;
+                    auto role = BridgeInstance::Role::Instrument;
                     if (pluginFile.exists())
                         bridgeManager_.launchBridgeWithPath (pluginFile, role);
                     else if (mc_ != nullptr)

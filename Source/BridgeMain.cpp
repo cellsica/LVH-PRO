@@ -93,8 +93,19 @@ public:
                 continue;
 
             auto* layout = shm.getLayout();
-            if (layout == nullptr || plugin == nullptr)
+            if (layout == nullptr)
             {
+                events.signalDone();
+                continue;
+            }
+            if (plugin == nullptr)
+            {
+                // プラグイン未ロード時: audioIn をそのまま audioOut にパススルー
+                // (nullのままsignalDoneするとaudioOutがゼロになりFXチェーンが無音になる)
+                const int ns = juce::jmin ((int) layout->bufferSize, 4096);
+                for (int ch = 0; ch < 2; ++ch)
+                    std::memcpy (layout->audioOut[ch], layout->audioIn[ch],
+                                 (size_t) ns * sizeof (float));
                 events.signalDone();
                 continue;
             }
