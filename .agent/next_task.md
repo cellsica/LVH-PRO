@@ -35,6 +35,13 @@
     - [x] 独立ウィンドウ `MixerWindow` の実装
     - [x] Bridge リストからのストリップ動的生成
     - [x] LED メーターの UI デザイン (Icons::led)
+- [x] **Mission 035-A**: 安定性向上 (Bridge クラッシュ現象の究明) ✅
+- [x] **Mission 036**: Settings リフレッシュ & 終了処理の安定化 ✅
+    - [x] QoL: Plugin Path に再スキャンボタン追加
+    - [x] UI: レイアウト・マージン・質案の向上
+    - [x] i18n: ハードコード文字列の排除
+    - [x] Stable: Xボタン終了時のフリーズ・プロセス残存バグ修正
+    - [x] Fix: Instrument スプリット時の FX チェーン無音バグ修正 (Ver 0.4.4-alpha)
 
 
 
@@ -62,9 +69,13 @@
 - [x] **Mission 032**: 032-A: 多言語対応 (i18n) 基盤 ✅ (しずく032)
 - [x] **Mission 033**: 032-B: MIDI リモート制御 (Stage) ✅ (しずく033)
 - [x] **Mission 034**: 032-C: MIDI マッピング基盤 (Mixer) ✅ (しずく034)
-- [x] **Mission 035-A**: 安定性向上 (Bridge クラッシュ現象の究明) ✅
-- [X] **Mission 035-B**: Settings リフレッシュ 🔜
-- [x] **Mission 035-C**: Global Layer (Stage Set 拡張) 🔜
+- [x] **Mission 035-A**: 安定性向上 (Bridge クラッシュ現象の究明)
+- [x] **Mission 036**: Settings リフレッシュ & 終了処理の安定化
+- [x] **Mission 037 / 035-C**: Global Layer (Stage Set 拡張) ✅
+    - [x] **仕様定義**: Stage Set の Slot 0 を「常駐レイヤー」として扱う設計の実装。
+    - [x] **Persistence**: Global ブリッジを曲切り替え時も生存させる `isGlobal` フラグの導入。
+    - [x] **Manager 拡張**: `BridgeManager::clearBridges(bool keepGlobal)` 等のライフサイクル管理。
+    - [x] **UI 統合**: ミキサー上での Global と Local の視覚的共存（金色ストリップ）。
 - [x] **Mission 035-D**: メトロノーム機能 🔜
 - [x] **Mission 035-E**: 究極の VU メーター 🔜
 
@@ -116,3 +127,6 @@
 - [2026-03-25] かえで：仕様書を更新し、Mission 034 をクローズ。
 - [2026-03-25] かえで：Mission 035 を A〜E の 5 段階に再分割。最優先で 035-A (安定性調査) に着手することを決定。
 - [2026-03-26] しずく：Mission 035-A 完了。MIDI 二重送信、IPC ブロッキング、リリースビルドの Atomic バグ、バス数不一致による無音、オーディオスレッドでのヒープ確保など、複数の根本的安定性問題を修正。
+- [2026-03-26] かえで：Mission 035-B を Mission 036 に昇格させ、しずくちゃんへの指示書を作成。
+- [2026-03-26] しずく：Mission 036 完了！Rescan ボタン、UI 刷新、i18n 化、終了処理安定化を実装。Ver 0.6.0-alpha。
+- [2026-03-26] しずく：Mission 037 (035-C) 完了！Global Layer 実装。Slot 0 常駐化・Switch モード・金色 UI。Ver 0.6.1-alpha。
