@@ -108,6 +108,7 @@ private:
     CoreIpcManager       ipcManager;
     SharedMemoryBuffer   sharedMem;
     SyncEvents           syncEvents;
+    juce::ChildProcess   childProcess_;   // Bridgeプロセスのハンドル (終了待機・強制終了用)
     std::atomic<State>   state           { State::Idle };
     Role                 role_           = Role::Instrument;
     juce::String         pluginPath_;

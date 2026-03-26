@@ -117,13 +117,20 @@ bool BridgeInstance::launch (const juce::String& pluginPath, const juce::File& b
     midiSender_->startThread();
 
     // Launch the Bridge child process.
-    juce::String args = "--plugin \"" + pluginPath + "\""
-                      + " --ipc-pipe " + pipeName
-                      + " --shm-name "  + shmName
-                      + " --sync-name " + syncName;
+    // ChildProcess を使うことでプロセスハンドルを保持し、shutdown()時に終了待機できる。
+    juce::StringArray cmdArgs;
+    cmdArgs.add (bridgeExe.getFullPathName());
+    cmdArgs.add ("--plugin");   cmdArgs.add (pluginPath);
+    cmdArgs.add ("--ipc-pipe"); cmdArgs.add (pipeName);
+    cmdArgs.add ("--shm-name"); cmdArgs.add (shmName);
+    cmdArgs.add ("--sync-name"); cmdArgs.add (syncName);
 
-    juce::Logger::writeToLog ("[BridgeInstance] Launching bridge: " + args);
-    bridgeExe.startAsProcess (args);
+    juce::Logger::writeToLog ("[BridgeInstance] Launching bridge: " + cmdArgs.joinIntoString (" "));
+    if (! childProcess_.start (cmdArgs))
+    {
+        juce::Logger::writeToLog ("[BridgeInstance] Error: failed to start bridge process.");
+        return false;
+    }
     return true;
 }
 
@@ -152,6 +159,17 @@ void BridgeInstance::shutdown()
     syncEvents.close();
     sharedMem.close();
     state.store (State::Idle, std::memory_order_relaxed);
+
+    // パイプ切断を受けてBridgeが自発的に終了するのを待つ（最大3秒）。
+    // タイムアウトした場合はプロセスを強制終了してゾンビ化を防ぐ。
+    if (childProcess_.isRunning())
+    {
+        if (! childProcess_.waitForProcessToFinish (3000))
+        {
+            juce::Logger::writeToLog ("[BridgeInstance] Timeout; killing bridge process: " + pluginPath_);
+            childProcess_.kill();
+        }
+    }
 }
 
 std::unique_ptr<BridgeSyncProcessor> BridgeInstance::createSyncProcessor()

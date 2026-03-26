@@ -92,23 +92,23 @@ void GeneralSettingsPage::refreshLanguage()
 
 void GeneralSettingsPage::resized()
 {
-    auto area = getLocalBounds().reduced (16, 12);
+    auto area = getLocalBounds().reduced (20, 16);
 
     // Language row
-    auto langRow = area.removeFromTop (28);
-    languageLabel_.setBounds (langRow.removeFromLeft (80));
-    languageCombo_.setBounds (langRow.removeFromLeft (140));
-    area.removeFromTop (10);
+    auto langRow = area.removeFromTop (30);
+    languageLabel_.setBounds (langRow.removeFromLeft (90));
+    languageCombo_.setBounds (langRow.removeFromLeft (150));
+    area.removeFromTop (14);
 
     for (auto* btn : { &showLevelMeter, &showMidiMonitor, &showInfoMonitor })
     {
-        btn->setBounds (area.removeFromTop (28));
-        area.removeFromTop (4);
+        btn->setBounds (area.removeFromTop (30));
+        area.removeFromTop (8);
     }
-    area.removeFromTop (14);
-    rememberLastFolder.setBounds (area.removeFromTop (28));
-    area.removeFromTop (8);
-    auto row = area.removeFromTop (28);
+    area.removeFromTop (16);
+    rememberLastFolder.setBounds (area.removeFromTop (30));
+    area.removeFromTop (12);
+    auto row = area.removeFromTop (30);
     recentCountLabel .setBounds (row.removeFromLeft (200));
     recentCountSlider.setBounds (row);
 }
@@ -145,7 +145,7 @@ PluginPathsPage::PluginPathsPage (PropertiesFile* p) : prefs (p)
     addBtn.setColour (TextButton::buttonColourId, Colour (0xff333344));
     addAndMakeVisible (addBtn);
     addBtn.onClick = [this] {
-        auto chooser = std::make_shared<FileChooser> ("Select VST3 scan folder",
+        auto chooser = std::make_shared<FileChooser> (LvhStr ("STR_SELECT_SCAN_FOLDER"),
                                                       File::getSpecialLocation (File::userHomeDirectory));
         chooser->launchAsync (
             FileBrowserComponent::openMode | FileBrowserComponent::canSelectDirectories,
@@ -174,6 +174,13 @@ PluginPathsPage::PluginPathsPage (PropertiesFile* p) : prefs (p)
             if (onPathsChanged) onPathsChanged();
         }
     };
+
+    rescanBtn.setButtonText (LvhStr ("STR_RESCAN_PLUGINS"));
+    rescanBtn.setColour (TextButton::buttonColourId, Colour (0xff2a3a5a));
+    addAndMakeVisible (rescanBtn);
+    rescanBtn.onClick = [this] {
+        if (onPathsChanged) onPathsChanged();
+    };
 }
 
 void PluginPathsPage::loadPaths()
@@ -190,8 +197,9 @@ void PluginPathsPage::savePaths()
 
 void PluginPathsPage::refreshLanguage()
 {
-    addBtn.setButtonText (LvhStr ("STR_ADD_PATH"));
-    rmBtn .setButtonText (LvhStr ("STR_REMOVE"));
+    addBtn   .setButtonText (LvhStr ("STR_ADD_PATH"));
+    rmBtn    .setButtonText (LvhStr ("STR_REMOVE"));
+    rescanBtn.setButtonText (LvhStr ("STR_RESCAN_PLUGINS"));
 }
 
 int PluginPathsPage::getNumRows() { return paths.size(); }
@@ -212,9 +220,10 @@ void PluginPathsPage::resized()
 {
     auto area = getLocalBounds().reduced (8);
     auto row  = area.removeFromBottom (32);
-    addBtn.setBounds (row.removeFromLeft (110).reduced (2));
-    rmBtn .setBounds (row.removeFromLeft (80) .reduced (2));
-    pathList.setBounds (area.reduced (0, 4));
+    addBtn   .setBounds (row.removeFromLeft (110).reduced (2));
+    rmBtn    .setBounds (row.removeFromLeft (80) .reduced (2));
+    rescanBtn.setBounds (row.removeFromRight (140).reduced (2));
+    pathList .setBounds (area.reduced (0, 4));
 }
 
 // =====================================================================
@@ -414,7 +423,7 @@ void MidiSettingsPage::resized()
 // SettingsWindow
 // =====================================================================
 SettingsWindow::SettingsWindow (AudioDeviceManager& dm, PropertiesFile* prefs, Callbacks cbs)
-    : DocumentWindow ("Settings \xe2\x80\x94 LIGHT-VST-HOST",
+    : DocumentWindow (LvhStr ("STR_SETTINGS_TITLE") + " \xe2\x80\x94 LVH-PRO",
                       Colour (0xff14141f), DocumentWindow::closeButton)
 {
     setUsingNativeTitleBar (true);

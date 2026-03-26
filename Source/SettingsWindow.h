@@ -55,7 +55,7 @@ private:
     PropertiesFile* prefs;
     StringArray     paths;
     ListBox         pathList { {}, this };
-    TextButton      addBtn, rmBtn;
+    TextButton      addBtn, rmBtn, rescanBtn;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginPathsPage)
 };

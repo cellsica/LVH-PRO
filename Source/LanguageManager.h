@@ -103,6 +103,9 @@ public:
             // ── Settings — Plugin Paths page ────────────────────────────
             { "STR_ADD_PATH",            "Add Path...",                        "パスを追加..."               },
             { "STR_REMOVE",              "Remove",                             "削除"                        },
+            { "STR_RESCAN_PLUGINS",      "Rescan Plugins",                     "プラグインを再スキャン"       },
+            { "STR_SELECT_SCAN_FOLDER",  "Select VST3 scan folder",            "VST3 スキャンフォルダを選択" },
+            { "STR_SETTINGS_TITLE",      "Settings",                           "設定"                        },
             // ── Mixer MIDI Learn ────────────────────────────────────────
             { "STR_MIDI_LEARN",      "MIDI Learn",             "MIDI ラーン"              },
             { "STR_MIDI_CLEAR_MAP",  "Clear Mapping",          "マッピングを解除"          },
