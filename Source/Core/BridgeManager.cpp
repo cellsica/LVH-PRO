@@ -143,10 +143,18 @@ void BridgeManager::clearBridges (bool keepGlobal)
         return;
     }
 
-    // Remove only non-global bridges (iterate in reverse to avoid index shifts).
+    // Keep only master-chain effects that came from the Global project (Slot 0).
+    // Instruments from Slot 0 are still cleared here (they get replaced by Slot 1+'s instruments).
+    // Per-channel FX are cleared along with their parent instruments.
     for (int i = bridges_.size() - 1; i >= 0; --i)
-        if (! bridges_[i]->isGlobal())
+    {
+        auto* b = bridges_[i];
+        bool keepThisBridge = b->isGlobal()
+                              && b->getRole() == BridgeInstance::Role::Effect
+                              && b->getFxParentPath().isEmpty();
+        if (! keepThisBridge)
             bridges_.remove (i);
+    }
 }
 
 juce::Array<juce::File> BridgeManager::getRecentBridgeFiles() const

@@ -291,9 +291,10 @@ private:
 
     void wireStageManagerCallbacks()
     {
-        stageManager_.onProjectLoadRequested = [this] (const juce::File& f, bool isGlobal) {
+        stageManager_.onProjectLoadRequested = [this] (const juce::File& f,
+                                                        bool isGlobal, bool globalLayerSwitch) {
             projectSerializer_.setCurrentProjectFile (f);
-            projectSerializer_.loadProject (f, isGlobal);
+            projectSerializer_.loadProject (f, isGlobal, globalLayerSwitch);
         };
 
         stageManager_.onLoadError = [] (const StageManager::Item& item) {

@@ -30,8 +30,9 @@ public:
     ~StageManager() = default;
 
     // ── Callbacks — wired by LvhProApplication ────────────────────────
-    // isGlobal=true when index==0 (Slot 0 = Global project for this set).
-    std::function<void(const juce::File&, bool isGlobal)> onProjectLoadRequested;
+    // Slot 0: isGlobal=true,  globalLayerSwitch=false → full load, mark bridges as Global.
+    // Slot 1+: isGlobal=false, globalLayerSwitch=true  → instrument-only switch.
+    std::function<void(const juce::File&, bool isGlobal, bool globalLayerSwitch)> onProjectLoadRequested;
     std::function<void()>                  onSetChanged;
     std::function<void(const Item&)>       onLoadError;   // fired when .lvh file is missing
 

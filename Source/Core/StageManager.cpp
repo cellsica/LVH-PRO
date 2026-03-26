@@ -148,7 +148,9 @@ void StageManager::loadItem (int index)
     activeIndex_ = index;
     if (onSetChanged) onSetChanged();
 
-    // Slot 0 is always the Global project for this set.
-    bool isGlobal = (index == 0);
-    if (onProjectLoadRequested) onProjectLoadRequested (f, isGlobal);
+    // Slot 0: full load with Global marking.
+    // Slot 1+: instrument-only switch (Global Layer mode).
+    bool isGlobal          = (index == 0);
+    bool globalLayerSwitch = (index > 0);
+    if (onProjectLoadRequested) onProjectLoadRequested (f, isGlobal, globalLayerSwitch);
 }

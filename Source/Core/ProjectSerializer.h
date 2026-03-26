@@ -73,9 +73,13 @@ public:
     // ── Public API ────────────────────────────────────────────────────────
     void saveProject (const juce::File& file);
 
-    // isGlobal=true  → Slot 0 load: full reset, bridges marked as Global.
-    // isGlobal=false → Slot 1+ or direct open: keep Global bridges, new ones are Local.
-    void loadProject (const juce::File& file, bool isGlobal = false);
+    // isGlobal=true,  globalLayerSwitch=false → Slot 0: full reset, all bridges marked Global.
+    // isGlobal=false, globalLayerSwitch=true  → Slot 1+: instrument-only switch.
+    //   - Settings (window pos/size, master volume, MIDI routing) are inherited from Slot 0 (skipped).
+    //   - Master-chain FX from Slot 0 are kept; only Instrument bridges (+ per-channel FX) are replaced.
+    //   - Master-chain FX entries in the .lvh are skipped (Slot 0's are already loaded).
+    // isGlobal=false, globalLayerSwitch=false → direct file open: full reset, no Global marking.
+    void loadProject (const juce::File& file, bool isGlobal = false, bool globalLayerSwitch = false);
 
     juce::File getCurrentProjectFile() const noexcept { return currentProjectFile_; }
     void       setCurrentProjectFile (const juce::File& f) { currentProjectFile_ = f; }

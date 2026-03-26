@@ -209,7 +209,7 @@ void ProjectSerializer::writeProjectXml (const juce::File& file,
 
 // ── Load ──────────────────────────────────────────────────────────────────
 
-void ProjectSerializer::loadProject (const juce::File& file, bool isGlobal)
+void ProjectSerializer::loadProject (const juce::File& file, bool isGlobal, bool globalLayerSwitch)
 {
     if (! file.existsAsFile()) return;
 
@@ -220,15 +220,21 @@ void ProjectSerializer::loadProject (const juce::File& file, bool isGlobal)
         return;
     }
 
-    // isGlobal=true  (Slot 0): full reset — no bridges survive.
-    // isGlobal=false (Slot 1+ / direct open): keep any Global bridges alive.
-    if (onProjectResetRequired) onProjectResetRequired (/* keepGlobal = */ ! isGlobal);
+    // globalLayerSwitch=true  → Slot 1+: keep Global master-chain FX, replace instruments.
+    // globalLayerSwitch=false → Slot 0 / direct open: full reset.
+    if (onProjectResetRequired) onProjectResetRequired (globalLayerSwitch);
 
     pendingWindowBounds_.clear();
     pendingPluginStates_.clear();
     pendingMixerSettings_.clear();
-    midiRouter_.resetForProjectLoad();
 
+    // In Global Layer switch mode, MIDI routing is inherited from Slot 0 — do not reset.
+    if (! globalLayerSwitch)
+        midiRouter_.resetForProjectLoad();
+
+    // In Global Layer switch mode, all settings (window layout, volume, MIDI routing)
+    // are inherited from the Global project (Slot 0) — skip the Settings block entirely.
+    if (! globalLayerSwitch)
     if (auto* settingsEl = xml->getChildByName ("Settings"))
     {
         int targetOctave = settingsEl->getIntAttribute ("octaveOffset", 0);
@@ -292,7 +298,8 @@ void ProjectSerializer::loadProject (const juce::File& file, bool isGlobal)
             onMixerWindowRestored (mixerWasVisible, { mixerX, mixerY, mixerW, mixerH });
     }
 
-    // Restore MIDI routing state
+    // Restore MIDI routing state (skipped in Global Layer switch mode — Slot 0's routing is kept).
+    if (! globalLayerSwitch)
     if (auto* routeEl = xml->getChildByName ("MidiRouting"))
     {
         bool allMode = routeEl->getIntAttribute ("routeToAll", 1) != 0;
@@ -344,6 +351,12 @@ void ProjectSerializer::loadProject (const juce::File& file, bool isGlobal)
 
                 juce::String fxParentPath = el->getStringAttribute ("fxParentPath");
                 juce::File pluginFile (pluginPath);
+                // In Global Layer switch mode, skip master-chain effects from this .lvh.
+                // Slot 0's master FX are already loaded and will persist.
+                bool isMasterEffect = (role == BridgeInstance::Role::Effect && fxParentPath.isEmpty());
+                if (globalLayerSwitch && isMasterEffect)
+                    continue;
+
                 if (pluginFile.exists())
                 {
                     if (onLaunchBridge) onLaunchBridge (pluginFile, role, fxParentPath, isGlobal);
