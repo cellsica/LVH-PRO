@@ -38,7 +38,7 @@ public:
     // Gracefully shut down: send Shutdown message, stop the pipe, close OS handles.
     void shutdown();
 
-    State             getState()      const noexcept { return state; }
+    State             getState()      const noexcept { return state.load (std::memory_order_relaxed); }
     Role              getRole()       const noexcept { return role_; }
     void              setRole (Role r)      noexcept { role_ = r; }
     const juce::String& getPluginPath() const noexcept { return pluginPath_; }
@@ -101,14 +101,19 @@ public:
     float exchangePeakR() noexcept { return peakR.exchange (0.f, std::memory_order_relaxed); }
 
 private:
+    // Nested thread that sends MIDI to the Bridge process asynchronously,
+    // so the JUCE message thread never blocks on a named-pipe write.
+    class MidiSenderThread;
+
     CoreIpcManager       ipcManager;
     SharedMemoryBuffer   sharedMem;
     SyncEvents           syncEvents;
-    State                state           = State::Idle;
+    std::atomic<State>   state           { State::Idle };
     Role                 role_           = Role::Instrument;
     juce::String         pluginPath_;
     juce::String         fxParentPath_;   // empty = master FX; non-empty = per-channel FX parent path
     juce::Rectangle<int> lastWindowBounds { 0, 0, 0, 0 };
+    std::unique_ptr<MidiSenderThread> midiSender_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BridgeInstance)
 };

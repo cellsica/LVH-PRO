@@ -14,10 +14,11 @@
 class MultiSourceBridgeProcessor : public juce::AudioProcessor
 {
 public:
+    // 035-A: Release timeout raised from 15ms to 30ms (same reasoning as BridgeSyncProcessor).
    #if JUCE_DEBUG
     static constexpr int kProcessTimeoutMs = 200;
    #else
-    static constexpr int kProcessTimeoutMs = 15;
+    static constexpr int kProcessTimeoutMs = 30;
    #endif
 
     struct FxEntry
@@ -209,10 +210,11 @@ private:
 class BridgeEffectProcessor : public juce::AudioProcessor
 {
 public:
+    // 035-A: Release timeout raised from 15ms to 30ms.
    #if JUCE_DEBUG
     static constexpr int kProcessTimeoutMs = 200;
    #else
-    static constexpr int kProcessTimeoutMs = 15;
+    static constexpr int kProcessTimeoutMs = 30;
    #endif
 
     BridgeEffectProcessor (SharedMemoryBuffer& shm, SyncEvents& events,

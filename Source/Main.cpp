@@ -1,4 +1,7 @@
 #include "MainComponent.h"
+#if JUCE_WINDOWS
+ #include <windows.h>
+#endif
 #include "SettingsWindow.h"
 #include "AudioEngine.h"
 #include "PluginScanThread.h"
@@ -27,11 +30,21 @@ public:
     // Hardware MIDI input
     void handleIncomingMidiMessage (MidiInput*, const MidiMessage& message) override
     {
+        // Set flag BEFORE processNextMidiEvent so handleNoteOn/Off can detect
+        // they were triggered by hardware and skip the duplicate midiRouter.sendMidi().
+        fromHardwareMidi_.store (true, std::memory_order_relaxed);
         keyboardState.processNextMidiEvent (message);
-        // Forward to selected Bridge(s) via IPC.
-        midiRouter.sendMidi (message);
+        fromHardwareMidi_.store (false, std::memory_order_relaxed);
+        // Route MIDI and update UI on the message thread.
+        // IMPORTANT: midiRouter.sendMidi must run on the message thread so that
+        // BridgeInstance::state (written by the IPC callback thread) is visible via
+        // the happens-before relationship established by JUCE's message loop.
+        // Calling it from the MIDI input thread caused a cache/visibility issue in
+        // Release builds, making state appear Idle even after the bridge connected.
         auto msg = message;
+        msg.setTimeStamp (Time::getMillisecondCounterHiRes() * 0.001);
         MessageManager::callAsync ([this, msg] {
+            midiRouter.sendMidi (msg);
             uiManager_.handleMidiRemote (msg);
             if (auto* mc = mainComp()) mc->getMonitorPanel().pushMidiMessage (msg);
         });
@@ -40,14 +53,19 @@ public:
     // MidiKeyboardState::Listener — note events from PC keyboard / on-screen keyboard
     void handleNoteOn (MidiKeyboardState*, int channel, int note, float velocity) override
     {
-        // Called on the audio thread — capture only POD values, build Strings on the message thread.
-        MessageManager::callAsync ([this, channel, note, velocity] {
+        // Capture the hardware-MIDI flag NOW (on calling thread) before callAsync.
+        // If true, handleIncomingMidiMessage already sent the note → don't duplicate.
+        const bool fromHw = fromHardwareMidi_.load (std::memory_order_relaxed);
+        MessageManager::callAsync ([this, channel, note, velocity, fromHw] {
             String name = MidiMessage::getMidiNoteName (note, true, true, 3);
             String text = "Note: " + String (note) + " (" + name + ")"
                         + " Vel: " + String (roundToInt (velocity * 127.f))
                         + " Ch: "  + String (channel);
             auto msg = MidiMessage::noteOn (channel, note, velocity);
-            midiRouter.sendMidi (msg);
+            // MidiMessageCollector needs a valid timestamp (seconds since epoch).
+            msg.setTimeStamp (Time::getMillisecondCounterHiRes() * 0.001);
+            if (! fromHw)
+                midiRouter.sendMidi (msg);
             if (auto* mc = mainComp())
             {
                 mc->setMidiMonitorText (text);
@@ -57,10 +75,12 @@ public:
     }
     void handleNoteOff (MidiKeyboardState*, int channel, int note, float velocity) override
     {
-        // Called on the audio thread — defer to message thread.
-        MessageManager::callAsync ([this, channel, note, velocity] {
+        const bool fromHw = fromHardwareMidi_.load (std::memory_order_relaxed);
+        MessageManager::callAsync ([this, channel, note, velocity, fromHw] {
             auto msg = MidiMessage::noteOff (channel, note, velocity);
-            midiRouter.sendMidi (msg);
+            msg.setTimeStamp (Time::getMillisecondCounterHiRes() * 0.001);
+            if (! fromHw)
+                midiRouter.sendMidi (msg);
             if (auto* mc = mainComp())
                 mc->getMonitorPanel().pushMidiMessage (msg);
         });
@@ -68,6 +88,33 @@ public:
 
     void initialise (const String&) override
     {
+#if JUCE_WINDOWS
+        // 035-A: Install crash handler so we get a log entry when Core crashes
+        SetUnhandledExceptionFilter ([] (EXCEPTION_POINTERS* ep) -> LONG {
+            DWORD code = ep->ExceptionRecord->ExceptionCode;
+            void* addr = ep->ExceptionRecord->ExceptionAddress;
+            juce::String msg;
+            msg << "[CORE CRASH] Unhandled exception at "
+                << juce::Time::getCurrentTime().toString (true, true, true) << "\n"
+                << "Exception code: 0x" << juce::String::toHexString (static_cast<int64> (code)) << "\n"
+                << "Address:        0x" << juce::String::toHexString (reinterpret_cast<int64> (addr)) << "\n";
+            auto crashLog = juce::File::getSpecialLocation (juce::File::currentExecutableFile)
+                                .getParentDirectory().getChildFile ("core_crash.txt");
+            crashLog.appendText (msg);
+            juce::Logger::writeToLog (msg);
+            return EXCEPTION_CONTINUE_SEARCH;
+        });
+#endif
+
+        // 035-A: Enable Core-side logging so we can diagnose crashes on hobby PC
+        {
+            auto logFile = juce::File::getSpecialLocation (juce::File::currentExecutableFile)
+                               .getParentDirectory().getChildFile ("core_log.txt");
+            coreLogger_.reset (new juce::FileLogger (logFile, "--- LVH-PRO Core Log Started ---"));
+            juce::Logger::setCurrentLogger (coreLogger_.get());
+            juce::Logger::writeToLog ("Core started. Version: " + getApplicationVersion());
+        }
+
         // Apply Japanese-capable fonts globally (Yu Gothic UI / MS Gothic)
         LookAndFeel::setDefaultLookAndFeel (&lvhLookAndFeel_);
 
@@ -132,6 +179,7 @@ public:
 
     void shutdown() override
     {
+        juce::Logger::writeToLog ("Core shutting down.");
         LookAndFeel::setDefaultLookAndFeel (nullptr);
         uiManager_.shutdown();
         keyboardState.removeListener (this);
@@ -152,6 +200,9 @@ public:
         deviceManager.removeMidiInputDeviceCallback (String(), &audioEngine.getPlayer());
         audioEngine.shutdown (deviceManager);
         mainWindow.reset();
+
+        juce::Logger::setCurrentLogger (nullptr);
+        coreLogger_.reset();
     }
 
     void systemRequestedQuit() override { quit(); }
@@ -381,6 +432,7 @@ private:
         void closeButtonPressed() override { JUCEApplication::getInstance()->systemRequestedQuit(); }
     };
 
+    std::unique_ptr<juce::FileLogger> coreLogger_;
     LvhLookAndFeel    lvhLookAndFeel_;
     MidiKeyboardState keyboardState;
     AudioDeviceManager deviceManager;
@@ -400,6 +452,9 @@ private:
     std::unique_ptr<PCKeyboardListener> pcKeyListener;
     std::unique_ptr<PluginScanThread> scanThread;
     std::shared_ptr<std::atomic<bool>> scanToken;
+    // Set to true while handleIncomingMidiMessage() is processing hardware MIDI,
+    // so handleNoteOn/Off skip the duplicate midiRouter.sendMidi() call.
+    std::atomic<bool> fromHardwareMidi_ { false };
 };
 
 START_JUCE_APPLICATION (LvhProApplication)

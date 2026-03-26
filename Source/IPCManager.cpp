@@ -444,7 +444,13 @@ void CoreIpcManager::ListenThread::run()
 {
     juce::Logger::writeToLog ("[Core IPC] Waiting for Bridge on pipe: " + pipeName);
     // createPipe blocks until a client connects or disconnect() is called
-    bool ok = owner.createPipe (pipeName, 5000 /* 5s receive timeout: prevents infinite reconnect block after Bridge disconnect */);
+    // 035-A: Timeout raised from 5000ms to -1 (infinite).
+    // Some plugins (e.g. Pneuma Pro on slower PCs) take > 5s in prepareToPlay,
+    // which blocks Bridge's message thread and prevents heartbeats from being sent.
+    // The heartbeat mechanism (every 1500ms) handles dead-connection detection —
+    // a named pipe read also returns immediately with an error if Bridge exits,
+    // so there is no risk of hanging forever on genuine Bridge crashes.
+    bool ok = owner.createPipe (pipeName, -1 /* no receive timeout; rely on heartbeats */);
     if (! ok)
         juce::Logger::writeToLog ("[Core IPC] createPipe failed or was cancelled for: " + pipeName);
 }
@@ -519,9 +525,6 @@ void BridgeIpcClient::messageReceived (const juce::MemoryBlock& message)
         case IpcMessageType::MidiData:
         {
             auto midi = IpcProtocol::parseMidi (message);
-            juce::Logger::writeToLog ("[Bridge IPC] MIDI received: "
-                                      + midi.getDescription()
-                                      + " (" + juce::String (midi.getRawDataSize()) + " bytes)");
             if (onMidiReceived)
                 onMidiReceived (midi);
             break;

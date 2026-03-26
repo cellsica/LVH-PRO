@@ -21,10 +21,13 @@ class BridgeSyncProcessor : public juce::AudioProcessor
 public:
     // In Debug builds, plugin processBlock is much slower due to debug overhead.
     // Use a generous timeout so waitForDone() doesn't falsely expire → silence.
+    // 035-A: Release timeout raised from 10ms to 30ms.
+    //   512 samples @ 44100 Hz ≈ 11.6ms per block. At 10ms the timeout fired
+    //   before the block finished on many plugins, causing spurious silence.
    #if JUCE_DEBUG
     static constexpr int kProcessTimeoutMs = 200;
    #else
-    static constexpr int kProcessTimeoutMs = 10;
+    static constexpr int kProcessTimeoutMs = 30;
    #endif
 
     BridgeSyncProcessor (SharedMemoryBuffer& shm, SyncEvents& events)

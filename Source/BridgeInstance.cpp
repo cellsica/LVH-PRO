@@ -1,5 +1,60 @@
 #include "BridgeInstance.h"
 
+// =====================================================================
+// MidiSenderThread
+//
+// Sends MIDI messages to the Bridge process on a dedicated thread so
+// that named-pipe writes never block the JUCE message thread.
+// The message thread calls enqueue() (non-blocking); this thread does
+// the actual ipcManager.sendMidi() call which may stall briefly.
+// =====================================================================
+class BridgeInstance::MidiSenderThread : public juce::Thread
+{
+public:
+    MidiSenderThread (BridgeInstance& owner)
+        : juce::Thread ("BridgeMidiSender"), owner_ (owner) {}
+
+    // Thread-safe, non-blocking enqueue from the message thread.
+    void enqueue (const juce::MidiMessage& msg)
+    {
+        {
+            juce::ScopedLock sl (lock_);
+            queue_.push_back (msg);
+        }
+        event_.signal();
+    }
+
+    void run() override
+    {
+        while (! threadShouldExit())
+        {
+            event_.wait (100);
+
+            // Swap under lock to minimise lock-hold time during pipe writes.
+            std::vector<juce::MidiMessage> toSend;
+            {
+                juce::ScopedLock sl (lock_);
+                toSend.swap (queue_);
+            }
+
+            for (auto& m : toSend)
+            {
+                if (owner_.state.load (std::memory_order_acquire) == BridgeInstance::State::Connected
+                    && owner_.ipcManager.isConnected())
+                    owner_.ipcManager.sendMidi (m);
+            }
+        }
+    }
+
+private:
+    BridgeInstance&                  owner_;
+    juce::CriticalSection            lock_;
+    std::vector<juce::MidiMessage>   queue_;
+    juce::WaitableEvent              event_ { false };
+};
+
+// =====================================================================
+
 BridgeInstance::BridgeInstance() {}
 
 BridgeInstance::~BridgeInstance()
@@ -17,7 +72,7 @@ bool BridgeInstance::launch (const juce::String& pluginPath, const juce::File& b
     }
 
     pluginPath_ = pluginPath;
-    state       = State::Connecting;
+    state.store (State::Connecting, std::memory_order_relaxed);
 
     // Generate unique names for this Bridge instance's IPC resources.
     const juce::String timestamp = juce::String (juce::Time::currentTimeMillis());
@@ -38,13 +93,13 @@ bool BridgeInstance::launch (const juce::String& pluginPath, const juce::File& b
 
     // Wire IPC callbacks.
     ipcManager.onConnected = [this] {
-        state = State::Connected;
+        state.store (State::Connected, std::memory_order_release);
         juce::Logger::writeToLog ("[BridgeInstance] Connected: " + pluginPath_);
         if (onConnected) onConnected (this);
     };
 
     ipcManager.onDisconnected = [this] {
-        state = State::Idle;
+        state.store (State::Idle, std::memory_order_release);
         juce::Logger::writeToLog ("[BridgeInstance] Disconnected: " + pluginPath_);
         if (onDisconnected) onDisconnected (this);
     };
@@ -56,6 +111,10 @@ bool BridgeInstance::launch (const juce::String& pluginPath, const juce::File& b
     ipcManager.onStateReceived = [this] (const juce::MemoryBlock& state) {
         if (onStateReceived) onStateReceived (this, state);
     };
+
+    // Start the async MIDI sender thread before spawning the child process.
+    midiSender_ = std::make_unique<MidiSenderThread> (*this);
+    midiSender_->startThread();
 
     // Launch the Bridge child process.
     juce::String args = "--plugin \"" + pluginPath + "\""
@@ -70,6 +129,15 @@ bool BridgeInstance::launch (const juce::String& pluginPath, const juce::File& b
 
 void BridgeInstance::shutdown()
 {
+    // Stop the MIDI sender thread first so no new pipe writes are attempted
+    // after the IPC manager is torn down.
+    if (midiSender_ != nullptr)
+    {
+        midiSender_->signalThreadShouldExit();
+        midiSender_->stopThread (500);
+        midiSender_.reset();
+    }
+
     // Always clean up regardless of state.
     // NOTE: We do NOT call sendShutdown() here. If Bridge has already exited
     // (X button), Core's ConnectionThread is stuck in a reconnect loop waiting
@@ -83,7 +151,7 @@ void BridgeInstance::shutdown()
     ipcManager.stopPipe();     // signals cancelEvent → unblocks reconnect loop; joins threads
     syncEvents.close();
     sharedMem.close();
-    state = State::Idle;
+    state.store (State::Idle, std::memory_order_relaxed);
 }
 
 std::unique_ptr<BridgeSyncProcessor> BridgeInstance::createSyncProcessor()
@@ -93,15 +161,16 @@ std::unique_ptr<BridgeSyncProcessor> BridgeInstance::createSyncProcessor()
 
 bool BridgeInstance::sendMidi (const juce::MidiMessage& msg)
 {
-    // Primary guard: state is set to Idle synchronously on the message thread
-    // when the IPC disconnects. This covers the common case.
-    if (state != State::Connected)
+    if (state.load (std::memory_order_acquire) != State::Connected)
         return false;
-    // Secondary guard: covers a brief race window where the JUCE ConnectionThread
-    // has already exited (threadIsRunning=false) but the connectionLost message
-    // has not yet been processed on the message thread (state still Connected).
-    // In that window, pipe->write() with pipeReceiveMessageTimeout=-1 would block
-    // the message thread permanently — this check prevents that.
+    // Enqueue for async delivery — the MidiSenderThread does the actual pipe
+    // write so the JUCE message thread is never blocked by a slow Bridge read.
+    if (midiSender_ != nullptr)
+    {
+        midiSender_->enqueue (msg);
+        return true;
+    }
+    // Fallback (thread not started yet): direct send.
     if (! ipcManager.isConnected())
         return false;
     return ipcManager.sendMidi (msg);
@@ -109,31 +178,31 @@ bool BridgeInstance::sendMidi (const juce::MidiMessage& msg)
 
 bool BridgeInstance::sendAudioConfig (float sampleRate, int32_t bufferSize)
 {
-    if (state != State::Connected)
+    if (state.load (std::memory_order_acquire) != State::Connected)
         return false;
     return ipcManager.sendAudioConfig (sampleRate, bufferSize);
 }
 
 bool BridgeInstance::sendWindowPos (int x, int y, int w, int h)
 {
-    if (state != State::Connected) return false;
+    if (state.load (std::memory_order_acquire) != State::Connected) return false;
     return ipcManager.sendWindowPos (x, y, w, h);
 }
 
 bool BridgeInstance::sendRequestState()
 {
-    if (state != State::Connected) return false;
+    if (state.load (std::memory_order_acquire) != State::Connected) return false;
     return ipcManager.sendRequestState();
 }
 
 bool BridgeInstance::sendWindowTitle (const juce::String& title)
 {
-    if (state != State::Connected) return false;
+    if (state.load (std::memory_order_acquire) != State::Connected) return false;
     return ipcManager.sendWindowTitle (title);
 }
 
 bool BridgeInstance::sendSetState (const juce::MemoryBlock& stateBytes)
 {
-    if (state != State::Connected) return false;
+    if (state.load (std::memory_order_acquire) != State::Connected) return false;
     return ipcManager.sendSetState (stateBytes);
 }

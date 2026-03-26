@@ -1,4 +1,4 @@
-# LVH-PRO (Pro Version) 仕様書 (Ver 0.2.2-alpha)
+# LVH-PRO (Pro Version) 仕様書 (Ver 0.4.3-alpha)
 
 ## 1. プロジェクト概要
 Live-ready VST Host (LVH) の設計を継承しつつ、マルチプロセス・サンドボックス構造を採用することで「絶対的な安定性」と「自由なレイアウト」を実現したプロフェッショナル向け VST ホスト。
@@ -12,10 +12,18 @@ Live-ready VST Host (LVH) の設計を継承しつつ、マルチプロセス・
 ### 2.1 マルチプロセス・サンドボックス
 - **Commander (Core Process)**: オーディオデバイス、MIDI 入力、全体の同期、プロジェクト保存を管理。
 - **Bridge (Plugin Process)**: プラグインごとに独立したプロセスとして起動。1つのプラグインのクラッシュがシステム全体に影響しない。
+    - **Robustness**: 
+        - **マルチバス対応**: ドラム音源やマルチアウト音源（VST3）のバスレイアウトを自動検知し、Bridge 側の Stereo 入出力と整合性を保つ「強制ステレオ・レイアウト」機能を搭載。
+        - **スレッド安全性**: ブリッジ状態管理に `std::atomic` を採用し、リリースビルドにおけるメモリアクセス最適化による誤作動を防止。
 - **IPC (Inter-Process Communication)**:
     - **Named Pipe**: 制御メッセージ（Midi, Config, State, WindowPos）の送受信。
     - **Shared Memory**: オーディオデータのゼロコピー転送（2ch / 最大 4096 samples）。
     - **Named Events**: Windows イベントによるオーディオループの厳密な同期。
+    - **Async MIDI Dispatch**: Core から Bridge への MIDI 送信を専用スレッドで非同期化し、UI および演奏のブロッキングを完全に排除。
+
+#### 2.1.1 リアルタイム処理の最適化
+- **No-Heap Processing**: オーディオスレッドでの動的なヒープメモリ確保（AudioBuffer の生成等）を完全に排除。バッファの再利用により、サンプラー音源等でのノイズ・音切れを最小限に抑制。
+- **MIDI Timestamping**: 全プロセス間での高精度な MIDI タイムスタンプの同期により、リズムの揺らぎ（ジッター）を低減。
 
 ### 2.2 独立ウィンドウ管理 (Window Orbit)
 - 各プラグインは個別の OS ウィンドウとして表示され、画面上のどこにでも配置可能。
