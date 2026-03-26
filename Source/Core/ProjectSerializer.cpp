@@ -209,7 +209,7 @@ void ProjectSerializer::writeProjectXml (const juce::File& file,
 
 // ── Load ──────────────────────────────────────────────────────────────────
 
-void ProjectSerializer::loadProject (const juce::File& file)
+void ProjectSerializer::loadProject (const juce::File& file, bool isGlobal)
 {
     if (! file.existsAsFile()) return;
 
@@ -220,7 +220,9 @@ void ProjectSerializer::loadProject (const juce::File& file)
         return;
     }
 
-    if (onProjectResetRequired) onProjectResetRequired();
+    // isGlobal=true  (Slot 0): full reset — no bridges survive.
+    // isGlobal=false (Slot 1+ / direct open): keep any Global bridges alive.
+    if (onProjectResetRequired) onProjectResetRequired (/* keepGlobal = */ ! isGlobal);
 
     pendingWindowBounds_.clear();
     pendingPluginStates_.clear();
@@ -344,7 +346,7 @@ void ProjectSerializer::loadProject (const juce::File& file)
                 juce::File pluginFile (pluginPath);
                 if (pluginFile.exists())
                 {
-                    if (onLaunchBridge) onLaunchBridge (pluginFile, role, fxParentPath);
+                    if (onLaunchBridge) onLaunchBridge (pluginFile, role, fxParentPath, isGlobal);
                 }
                 else if (onMessage)
                 {

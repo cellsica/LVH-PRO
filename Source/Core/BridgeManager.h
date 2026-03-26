@@ -60,10 +60,12 @@ public:
         juce::MemoryBlock                             pendingState  = {},
         std::optional<ProjectSerializer::MixerSettings> pendingMixer = std::nullopt,
         juce::Rectangle<int>                          pendingBounds = {},
-        juce::String                                  fxParentPath  = {});
+        juce::String                                  fxParentPath  = {},
+        bool                                          isGlobal      = false);
 
-    // Destroy all bridges (call audioEngine.buildGraphWithSineWave() first).
-    void clearBridges();
+    // Destroy bridges. When keepGlobal=true, bridges with isGlobal()==true are kept alive
+    // (used when switching songs within a Stage Set so the Global layer persists).
+    void clearBridges (bool keepGlobal = false);
 
     // Read-only access to the bridge array (for MidiRoutingManager / ProjectSerializer).
     const juce::OwnedArray<BridgeInstance>& getBridges() const noexcept { return bridges_; }

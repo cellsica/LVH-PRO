@@ -49,10 +49,13 @@ public:
 
     // Request LvhProApplication to launch a bridge (avoids circular dependency).
     // fxParentPath is empty for instruments and master effects; non-empty for per-channel FX.
-    std::function<void(const juce::File&, BridgeInstance::Role, const juce::String& fxParentPath)> onLaunchBridge;
+    // isGlobal=true when this bridge belongs to a Global project (Stage Set Slot 0).
+    std::function<void(const juce::File&, BridgeInstance::Role, const juce::String& fxParentPath, bool isGlobal)> onLaunchBridge;
 
-    // Called at the start of loadProject: tear down graph + clear bridges array
-    std::function<void()> onProjectResetRequired;
+    // Called at the start of loadProject: tear down graph + selectively clear bridges.
+    // keepGlobal=true when switching songs (Slot 1+): Global bridges are preserved.
+    // keepGlobal=false for a full reset (Slot 0 reload, New, direct file open).
+    std::function<void(bool keepGlobal)> onProjectResetRequired;
 
     // --- Save-time getters ---
     std::function<double()>               getMasterVolume;       // current master volume
@@ -69,7 +72,10 @@ public:
 
     // ── Public API ────────────────────────────────────────────────────────
     void saveProject (const juce::File& file);
-    void loadProject (const juce::File& file);
+
+    // isGlobal=true  → Slot 0 load: full reset, bridges marked as Global.
+    // isGlobal=false → Slot 1+ or direct open: keep Global bridges, new ones are Local.
+    void loadProject (const juce::File& file, bool isGlobal = false);
 
     juce::File getCurrentProjectFile() const noexcept { return currentProjectFile_; }
     void       setCurrentProjectFile (const juce::File& f) { currentProjectFile_ = f; }

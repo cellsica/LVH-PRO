@@ -286,6 +286,10 @@ public:
         repaint();
     }
 
+    // Mark this strip as belonging to the Global Layer (Stage Set Slot 0).
+    // Draws a thin gold bar at the top and tints the border to distinguish it visually.
+    void setIsGlobal (bool g) { isGlobal_ = g; repaint(); }
+
     // Called by the UI timer — passes post-fader peak values (0.0 – 1.0+)
     void updateMeter (float l, float r) { ledMeter.setLevels (l, r); }
 
@@ -314,11 +318,20 @@ public:
         auto bounds = getLocalBounds().reduced (2);
         g.setColour (juce::Colour (0xff20202a));
         g.fillRoundedRectangle (bounds.toFloat(), 4.0f);
-        g.setColour (juce::Colour (0xff333344));
-        g.drawRoundedRectangle (bounds.toFloat(), 4.0f, 1.0f);
+
+        // Global strips get a gold border instead of the default dark outline.
+        g.setColour (isGlobal_ ? juce::Colour (0xffb8860b) : juce::Colour (0xff333344));
+        g.drawRoundedRectangle (bounds.toFloat(), 4.0f, isGlobal_ ? 1.5f : 1.0f);
 
         g.setColour (accentColor.withAlpha (0.7f));
         g.fillRect (getLocalBounds().reduced (2).removeFromBottom (3));
+
+        // Global Layer indicator: thin gold bar at the top of the strip.
+        if (isGlobal_)
+        {
+            g.setColour (juce::Colour (0xffb8860b));
+            g.fillRect (getLocalBounds().reduced (2).removeFromTop (3));
+        }
 
         g.setColour (juce::Colours::black.withAlpha (0.2f));
         g.fillRect (fader.getBounds().reduced (8, 0));
@@ -587,6 +600,7 @@ private:
     FaderLookAndFeel         faderLF;      // must be declared before fader
     juce::Colour             accentColor;
     bool                     isMasterStrip  = false;
+    bool                     isGlobal_      = false;
     MixerParam               learnParam_    = MixerParam::Fader;
     bool                     learnActive_   = false;
     Label                    nameLabel;
@@ -711,6 +725,7 @@ public:
                                  ? b->mixerCustomColor
                                  : getMixerStripColor (i);
             auto* strip = strips.add (new MixerStrip (name, color));
+            strip->setIsGlobal (b->isGlobal());
             strip->setMeterVisible (metersOn);
             strip->setInitialValues (b->mixerGain.load(),
                                      b->mixerPan.load(),

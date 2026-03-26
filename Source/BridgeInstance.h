@@ -80,6 +80,12 @@ public:
     std::atomic<bool>  mixerSoloed  { false };
     std::atomic<bool>  mixerBypassed { false };  // Effect bypass (audio-thread safe)
 
+    // ── Global Layer flag (message-thread only) ──────────────────────
+    // Set by BridgeManager when launching bridges from a Global project (Slot 0).
+    // Global bridges survive clearBridges(keepGlobal=true) when switching songs.
+    bool isGlobal()         const noexcept { return isGlobal_; }
+    void setIsGlobal (bool g) noexcept    { isGlobal_ = g; }
+
     // ── FX parent association (message-thread only) ──────────────────
     // For Role::Effect bridges only.
     // Empty        = master chain effect.
@@ -126,6 +132,7 @@ private:
     juce::String         pluginPath_;
     juce::String         fxParentPath_;   // empty = master FX; non-empty = per-channel FX parent path
     juce::Rectangle<int> lastWindowBounds { 0, 0, 0, 0 };
+    bool                                  isGlobal_        = false;
     std::unique_ptr<MidiSenderThread>     midiSender_;
     std::unique_ptr<HeartbeatWatchdog>    heartbeatWatchdog_;
     std::atomic<int64_t>                  lastHeartbeatMs_ { 0 };

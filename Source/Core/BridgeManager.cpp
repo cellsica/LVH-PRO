@@ -17,7 +17,8 @@ void BridgeManager::launchBridgeWithPath (
     juce::MemoryBlock                              pendingState,
     std::optional<ProjectSerializer::MixerSettings> pendingMixer,
     juce::Rectangle<int>                           pendingBounds,
-    juce::String                                   fxParentPath)
+    juce::String                                   fxParentPath,
+    bool                                           isGlobal)
 {
     auto bridgeExe = juce::File::getSpecialLocation (juce::File::currentExecutableFile)
                          .getParentDirectory()
@@ -32,6 +33,7 @@ void BridgeManager::launchBridgeWithPath (
 
     auto* bridge = bridges_.add (new BridgeInstance());
     bridge->setRole (role);
+    bridge->setIsGlobal (isGlobal);
     if (fxParentPath.isNotEmpty())
         bridge->setFxParentPath (fxParentPath);
     juce::String pluginName = pluginFile.getFileNameWithoutExtension()
@@ -133,9 +135,18 @@ void BridgeManager::launchBridgeWithPath (
                              pluginFile.getParentDirectory().getFullPathName());
 }
 
-void BridgeManager::clearBridges()
+void BridgeManager::clearBridges (bool keepGlobal)
 {
-    bridges_.clear();
+    if (! keepGlobal)
+    {
+        bridges_.clear();
+        return;
+    }
+
+    // Remove only non-global bridges (iterate in reverse to avoid index shifts).
+    for (int i = bridges_.size() - 1; i >= 0; --i)
+        if (! bridges_[i]->isGlobal())
+            bridges_.remove (i);
 }
 
 juce::Array<juce::File> BridgeManager::getRecentBridgeFiles() const
@@ -167,14 +178,21 @@ void BridgeManager::addToRecentBridgeFiles (const juce::File& file)
 void BridgeManager::rebuildBridgeGraph()
 {
     juce::Array<BridgeInstance*> instruments, allEffects;
-    for (auto* b : bridges_)
+
+    // Local bridges first, global last — global instruments/effects sit
+    // downstream in the mix chain (茜's routing advice).
+    for (int pass = 0; pass < 2; ++pass)
     {
-        if (b->getState() != BridgeInstance::State::Connected)
-            continue;
-        if (b->getRole() == BridgeInstance::Role::Effect)
-            allEffects.add (b);
-        else
-            instruments.add (b);
+        bool wantGlobal = (pass == 1);
+        for (auto* b : bridges_)
+        {
+            if (b->getState() != BridgeInstance::State::Connected) continue;
+            if (b->isGlobal() != wantGlobal) continue;
+            if (b->getRole() == BridgeInstance::Role::Effect)
+                allEffects.add (b);
+            else
+                instruments.add (b);
+        }
     }
 
     // Split effects into master chain and per-instrument FX chains

@@ -30,7 +30,8 @@ public:
     ~StageManager() = default;
 
     // ── Callbacks — wired by LvhProApplication ────────────────────────
-    std::function<void(const juce::File&)> onProjectLoadRequested;
+    // isGlobal=true when index==0 (Slot 0 = Global project for this set).
+    std::function<void(const juce::File&, bool isGlobal)> onProjectLoadRequested;
     std::function<void()>                  onSetChanged;
     std::function<void(const Item&)>       onLoadError;   // fired when .lvh file is missing
 

@@ -148,5 +148,7 @@ void StageManager::loadItem (int index)
     activeIndex_ = index;
     if (onSetChanged) onSetChanged();
 
-    if (onProjectLoadRequested) onProjectLoadRequested (f);
+    // Slot 0 is always the Global project for this set.
+    bool isGlobal = (index == 0);
+    if (onProjectLoadRequested) onProjectLoadRequested (f, isGlobal);
 }

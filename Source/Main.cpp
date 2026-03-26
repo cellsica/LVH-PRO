@@ -291,9 +291,9 @@ private:
 
     void wireStageManagerCallbacks()
     {
-        stageManager_.onProjectLoadRequested = [this] (const juce::File& f) {
+        stageManager_.onProjectLoadRequested = [this] (const juce::File& f, bool isGlobal) {
             projectSerializer_.setCurrentProjectFile (f);
-            projectSerializer_.loadProject (f);
+            projectSerializer_.loadProject (f, isGlobal);
         };
 
         stageManager_.onLoadError = [] (const StageManager::Item& item) {
@@ -338,7 +338,7 @@ private:
         };
 
         projectSerializer_.onLaunchBridge = [this] (const juce::File& f, BridgeInstance::Role role,
-                                                    const juce::String& fxParentPath) {
+                                                    const juce::String& fxParentPath, bool isGlobal) {
             // Closure injection: take all pending data here and pass by value to BridgeManager.
             // BridgeManager never needs to call back into ProjectSerializer.
             auto path = f.getFullPathName();
@@ -347,12 +347,13 @@ private:
                 projectSerializer_.takePendingState  (path),
                 projectSerializer_.takePendingMixer  (path),
                 projectSerializer_.takePendingBounds (path),
-                fxParentPath);
+                fxParentPath,
+                isGlobal);
         };
 
-        projectSerializer_.onProjectResetRequired = [this] {
+        projectSerializer_.onProjectResetRequired = [this] (bool keepGlobal) {
             audioEngine.buildGraphWithSineWave();
-            bridgeManager_.clearBridges();
+            bridgeManager_.clearBridges (keepGlobal);
         };
 
         projectSerializer_.getMasterVolume = [this] () -> double {
