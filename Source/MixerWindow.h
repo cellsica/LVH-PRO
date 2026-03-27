@@ -65,6 +65,8 @@ public:
             if (onAddFx) onAddFx (parentBridge);  // pass instrument context (nullptr = master chain)
             return;
         }
+        if (bridge->getState() != BridgeInstance::State::Connected)
+            return;  // bridge disconnected — ignore click to avoid writing to dead pipe
         windowShown_ = ! windowShown_;
         if (onToggleWindow) onToggleWindow();
         repaint();
@@ -429,6 +431,7 @@ public:
             int contentW = juce::jmax (1, fxViewport_.getMaximumVisibleWidth());
             int contentH = juce::jmax (kFxAreaH, fxContent_.slots.size() * kFxSlotH);
             fxContent_.setSize (contentW, contentH);
+            fxContent_.resized();  // force slot re-layout (setSize skips resized() when size unchanged)
         }
         area.removeFromTop (4);
 
@@ -749,7 +752,7 @@ public:
                 b->mixerCustomName = newName;
                 // Reflect the new strip label in the Bridge window title
                 juce::String title = (b->getRole() == BridgeInstance::Role::Effect)
-                                     ? "LVH-Bridge [MASTER]: [" + newName + "]"
+                                     ? "LVH-Bridge [FX]: [" + newName + "]"
                                      : "LVH-Bridge [" + newName + "]";
                 b->sendWindowTitle (title);
             };
@@ -807,6 +810,7 @@ public:
                                 : juce::File (b->getPluginPath()).getFileNameWithoutExtension();
             auto* slot = masterStrip->addFxSlot();
             slot->bridge = b;
+            slot->resized();  // refresh bypass button visibility now that bridge is set
             slot->setFxName (name);
             slot->setBypassed (b->mixerBypassed.load());
             slot->onToggleWindow = [this, b] {
@@ -814,17 +818,13 @@ public:
             };
         }
 
-        // Always show kMasterFxSlots slots — pad remaining with + placeholders
-        int numMasterFx = 0;
-        for (auto* b : effectBridges)
-            if (b->getFxParentPath().isEmpty()) ++numMasterFx;
-        int numPlaceholders = jmax (0, MixerStrip::kFxVisibleRows - numMasterFx);
-        for (int i = 0; i < numPlaceholders; ++i)
+        // One + placeholder for adding the next master FX
         {
-            auto* slot = masterStrip->addFxSlot();
-            slot->setFxName ("+");
-            slot->onAddFx = [this] (BridgeInstance* parent) { if (onAddFx) onAddFx (parent); };
+            auto* placeholder = masterStrip->addFxSlot();
+            placeholder->setFxName ("+");
+            placeholder->onAddFx = [this] (BridgeInstance* parent) { if (onAddFx) onAddFx (parent); };
         }
+        masterStrip->resized();  // re-layout after bridge pointers are set (bounds may be unchanged)
 
         resized();
         repaint();

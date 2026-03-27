@@ -141,6 +141,8 @@ void UIManager::toggleMixerWindow (bool show)
             };
 
             mixerWindow_->onToggleFxWindow = [] (BridgeInstance* b) {
+                if (b->getState() != BridgeInstance::State::Connected)
+                    return;  // bridge already disconnected — do not write to dead pipe
                 auto bounds = b->getWindowBounds();
                 if (bounds.getWidth() > 0 && bounds.getHeight() > 0)
                     b->sendWindowPos (bounds.getX(), bounds.getY(),
