@@ -87,6 +87,22 @@ void UIManager::setMainComponent (MainComponent* mc)
             ct == 1 ? MetronomeProcessor::ClickType::Techno
                     : MetronomeProcessor::ClickType::Normal);
     }
+
+    updateMidiDeviceLabel();
+}
+
+void UIManager::updateMidiDeviceLabel()
+{
+    if (mc_ == nullptr) return;
+    for (auto& d : juce::MidiInput::getAvailableDevices())
+    {
+        if (deviceManager_.isMidiInputDeviceEnabled (d.identifier))
+        {
+            mc_->setMidiMonitorText ("MIDI IN: " + d.name);
+            return;
+        }
+    }
+    mc_->setMidiMonitorText ("No MIDI");
 }
 
 void UIManager::shutdown()
@@ -995,6 +1011,7 @@ void UIManager::showMainMenu()
                         deviceManager_.setMidiInputDeviceEnabled (dev.identifier, false);
                     if (! wasEnabled)
                         deviceManager_.setMidiInputDeviceEnabled (d.identifier, true);
+                    updateMidiDeviceLabel();
                 }
             }
             else if (result >= 2000 && result < 3000)

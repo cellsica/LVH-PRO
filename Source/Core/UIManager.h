@@ -157,5 +157,7 @@ private:
     LearnState                               learnState_;
     std::map<juce::String, MixerMidiMapping> mixerMappings_;
 
+    void updateMidiDeviceLabel();
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (UIManager)
 };
