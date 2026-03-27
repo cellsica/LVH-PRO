@@ -11,8 +11,10 @@ void MetronomeProcessor::prepareToPlay (double sampleRate, int)
     phaseAcc_              = 0.0;
     beatCount_             = 0;
     clickSamplesRemaining_ = 0;
+    clickLenTotal_         = 0;
     clickPhase_            = 0.f;
-    isHiBeat_              = true;
+    clickFreqCur_          = 1200.f;
+    technoBarParity_       = false;
 }
 
 void MetronomeProcessor::processBlock (juce::AudioBuffer<float>& buffer,
@@ -21,19 +23,16 @@ void MetronomeProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     if (! isPlaying_.load (std::memory_order_relaxed))
         return;
 
-    const double bpm         = bpm_.load    (std::memory_order_relaxed);
-    const float  vol         = volume_.load (std::memory_order_relaxed);
-    const int    bpb         = beatsPerBar_.load (std::memory_order_relaxed);
+    const double bpm  = bpm_.load    (std::memory_order_relaxed);
+    const float  vol  = volume_.load (std::memory_order_relaxed);
+    const int    bpb  = beatsPerBar_.load (std::memory_order_relaxed);
+    const int    ct   = clickType_.load   (std::memory_order_relaxed);
 
     const double samplesPerBeat = sampleRate_ * 60.0 / bpm;
     const double phaseInc       = 1.0 / samplesPerBeat;
 
-    // Click tone durations and frequencies
-    const int   clickLen = static_cast<int> (sampleRate_ * 0.025);   // 25 ms
-    const float hiFreq   = 1200.f;
-    const float loFreq   = 700.f;
-    const int   numCh    = juce::jmin (2, buffer.getNumChannels());
-    const int   numSamp  = buffer.getNumSamples();
+    const int numCh   = juce::jmin (2, buffer.getNumChannels());
+    const int numSamp = buffer.getNumSamples();
 
     for (int i = 0; i < numSamp; ++i)
     {
@@ -42,10 +41,40 @@ void MetronomeProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         if (phaseAcc_ >= 1.0)
         {
             phaseAcc_ -= 1.0;
-            const int beatInBar  = beatCount_ % bpb;
-            isHiBeat_            = (beatInBar == 0);
-            clickSamplesRemaining_ = clickLen;
-            clickPhase_          = 0.f;
+            const int beatInBar   = beatCount_ % bpb;
+            const bool isDownbeat = (beatInBar == 0);
+
+            if (ct == 1)  // ── Techno (YMO CLICK) ─────────────────────────
+            {
+                if (isDownbeat)
+                {
+                    // Alternate "キ" / "カ" on every downbeat
+                    if (! technoBarParity_)
+                    {
+                        clickFreqCur_  = 1480.f;                               // キ
+                        clickLenTotal_ = static_cast<int> (sampleRate_ * 0.012);
+                    }
+                    else
+                    {
+                        clickFreqCur_  = 920.f;                                // カ
+                        clickLenTotal_ = static_cast<int> (sampleRate_ * 0.016);
+                    }
+                    technoBarParity_ = ! technoBarParity_;
+                }
+                else
+                {
+                    clickFreqCur_  = 610.f;                                    // コ
+                    clickLenTotal_ = static_cast<int> (sampleRate_ * 0.014);
+                }
+            }
+            else           // ── Normal ────────────────────────────────────
+            {
+                clickFreqCur_  = isDownbeat ? 1200.f : 700.f;
+                clickLenTotal_ = static_cast<int> (sampleRate_ * 0.025);
+            }
+
+            clickSamplesRemaining_ = clickLenTotal_;
+            clickPhase_            = 0.f;
             ++beatCount_;
 
             // Notify message thread
@@ -57,14 +86,14 @@ void MetronomeProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         // Generate click sample and MIX into buffer (pass-through + add)
         if (clickSamplesRemaining_ > 0)
         {
-            const float freq   = isHiBeat_ ? hiFreq : loFreq;
-            // Linear decay envelope: 1.0 at start → 0.0 at end of click
-            const float env    = static_cast<float> (clickSamplesRemaining_)
-                               / static_cast<float> (clickLen);
+            const float t   = static_cast<float> (clickSamplesRemaining_)
+                            / static_cast<float> (juce::jmax (1, clickLenTotal_));
+            // Techno: quadratic (snappy) decay; Normal: linear decay
+            const float env    = (ct == 1) ? (t * t) : t;
             const float sample = std::sin (clickPhase_) * vol * env;
 
             clickPhase_ += juce::MathConstants<float>::twoPi
-                         * freq / static_cast<float> (sampleRate_);
+                         * clickFreqCur_ / static_cast<float> (sampleRate_);
             if (clickPhase_ > juce::MathConstants<float>::twoPi)
                 clickPhase_ -= juce::MathConstants<float>::twoPi;
 

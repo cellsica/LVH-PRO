@@ -26,16 +26,20 @@ public:
 
     ~MetronomeProcessor() override { cancelPendingUpdate(); }
 
-    // ── Thread-safe setters (message thread) ──────────────────────────────
-    void setPlaying      (bool p)   noexcept { isPlaying_.store   (p,   std::memory_order_relaxed); }
-    void setBpm          (double b) noexcept { bpm_.store         (b,   std::memory_order_relaxed); }
-    void setVolume       (float v)  noexcept { volume_.store      (v,   std::memory_order_relaxed); }
-    void setBeatsPerBar  (int n)    noexcept { beatsPerBar_.store (n,   std::memory_order_relaxed); }
+    enum class ClickType { Normal = 0, Techno = 1 };
 
-    bool   isPlaying()    const noexcept { return isPlaying_.load  (std::memory_order_relaxed); }
-    double getBpm()       const noexcept { return bpm_.load        (std::memory_order_relaxed); }
-    float  getVolume()    const noexcept { return volume_.load     (std::memory_order_relaxed); }
-    int    getBeatsPerBar() const noexcept { return beatsPerBar_.load (std::memory_order_relaxed); }
+    // ── Thread-safe setters (message thread) ──────────────────────────────
+    void setPlaying      (bool p)       noexcept { isPlaying_.store   (p,        std::memory_order_relaxed); }
+    void setBpm          (double b)     noexcept { bpm_.store         (b,        std::memory_order_relaxed); }
+    void setVolume       (float v)      noexcept { volume_.store      (v,        std::memory_order_relaxed); }
+    void setBeatsPerBar  (int n)        noexcept { beatsPerBar_.store (n,        std::memory_order_relaxed); }
+    void setClickType    (ClickType t)  noexcept { clickType_.store   ((int) t,  std::memory_order_relaxed); }
+
+    bool      isPlaying()    const noexcept { return isPlaying_.load  (std::memory_order_relaxed); }
+    double    getBpm()       const noexcept { return bpm_.load        (std::memory_order_relaxed); }
+    float     getVolume()    const noexcept { return volume_.load     (std::memory_order_relaxed); }
+    int       getBeatsPerBar() const noexcept { return beatsPerBar_.load (std::memory_order_relaxed); }
+    ClickType getClickType() const noexcept { return (ClickType) clickType_.load (std::memory_order_relaxed); }
 
     // Current beat index (0 = downbeat). Written on audio thread, read on message thread.
     int  getCurrentBeat() const noexcept { return lastBeat_.load (std::memory_order_relaxed); }
@@ -70,6 +74,7 @@ private:
     std::atomic<double> bpm_         { 120.0 };
     std::atomic<float>  volume_      { 0.7f  };
     std::atomic<int>    beatsPerBar_ { 4     };
+    std::atomic<int>    clickType_   { 0     };   // 0 = Normal, 1 = Techno
     std::atomic<int>    lastBeat_    { 0     };   // written audio thread
     std::atomic<int>    pendingBeat_ { 0     };   // payload for AsyncUpdater
 
@@ -78,8 +83,10 @@ private:
     double phaseAcc_               = 0.0;    // 0.0 → 1.0 per beat
     int    beatCount_              = 0;      // total beats since last start
     int    clickSamplesRemaining_  = 0;
+    int    clickLenTotal_          = 0;      // length of current click (for envelope)
     float  clickPhase_             = 0.f;
-    bool   isHiBeat_               = true;
+    float  clickFreqCur_           = 1200.f; // frequency set at beat trigger
+    bool   technoBarParity_        = false;  // flips every downbeat in Techno mode
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MetronomeProcessor)
 };

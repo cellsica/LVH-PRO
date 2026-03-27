@@ -43,6 +43,13 @@ MainComponent::MainComponent (MidiKeyboardState& state)
     stageToggleButton->setColour (TextButton::buttonOnColourId, Colour (0xff3a2060));
     stageToggleButton->onClick = [this] { toggleStage(); };
 
+    metronomeToggleButton = std::make_unique<IconButton> ("Open Metronome", Icons::metronome);
+    addAndMakeVisible (*metronomeToggleButton);
+    metronomeToggleButton->setClickingTogglesState (true);
+    metronomeToggleButton->setToggleState (false, dontSendNotification);
+    metronomeToggleButton->setColour (TextButton::buttonColourId,   Colour (0xff333344));
+    metronomeToggleButton->setColour (TextButton::buttonOnColourId, Colour (0xff205040));
+    metronomeToggleButton->onClick = [this] { toggleMetronome(); };
 
     octaveDownButton = std::make_unique<TextButton> ("-");
     addAndMakeVisible (*octaveDownButton);
@@ -159,6 +166,12 @@ void MainComponent::toggleStage()
         onStageToggle (stageToggleButton->getToggleState());
 }
 
+void MainComponent::toggleMetronome()
+{
+    if (onMetronomeToggle)
+        onMetronomeToggle (metronomeToggleButton->getToggleState());
+}
+
 
 // ── Scan overlay ───────────────────────────────────────────────────────────
 
@@ -228,6 +241,11 @@ void MainComponent::setStageWindowVisible (bool v)
     stageToggleButton->setToggleState (v, dontSendNotification);
 }
 
+void MainComponent::setMetronomeWindowVisible (bool v)
+{
+    metronomeToggleButton->setToggleState (v, dontSendNotification);
+}
+
 
 // ── Paint ──────────────────────────────────────────────────────────────────
 
@@ -256,8 +274,9 @@ void MainComponent::resized()
     panicButton        ->setBounds (toolbar.removeFromLeft (36).reduced (2));
     kbdToggleButton    ->setBounds (toolbar.removeFromLeft (36).reduced (2));
     monitorToggleButton->setBounds (toolbar.removeFromLeft (36).reduced (2));
-    mixerToggleButton  ->setBounds (toolbar.removeFromLeft (36).reduced (2));
-    stageToggleButton  ->setBounds (toolbar.removeFromLeft (36).reduced (2));
+    mixerToggleButton     ->setBounds (toolbar.removeFromLeft (36).reduced (2));
+    stageToggleButton     ->setBounds (toolbar.removeFromLeft (36).reduced (2));
+    metronomeToggleButton ->setBounds (toolbar.removeFromLeft (36).reduced (2));
 
     toolbar.removeFromLeft (6); // small gap
     octaveDownButton   ->setBounds (toolbar.removeFromLeft (26).reduced (2));

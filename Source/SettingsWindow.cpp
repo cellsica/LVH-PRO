@@ -74,6 +74,34 @@ GeneralSettingsPage::GeneralSettingsPage (PropertiesFile* prefs)
     recentCountSlider.onValueChange = [this, prefs] {
         if (prefs) prefs->setValue ("recentBridgeCount", (int) recentCountSlider.getValue());
     };
+
+    // ── Metronome click type ──────────────────────────────────────────
+    metroClickLabel_.setText ("Metronome Click", dontSendNotification);
+    metroClickLabel_.setFont (Font (12.f));
+    metroClickLabel_.setColour (Label::textColourId, Colour (0xffcccccc));
+    addAndMakeVisible (metroClickLabel_);
+
+    const int savedClickType = prefs ? prefs->getIntValue ("metronomeClickType", 0) : 0;
+
+    metroNormalBtn_.setButtonText ("Normal");
+    metroNormalBtn_.setRadioGroupId (1001);
+    metroNormalBtn_.setClickingTogglesState (true);
+    metroNormalBtn_.setToggleState (savedClickType == 0, dontSendNotification);
+    addAndMakeVisible (metroNormalBtn_);
+
+    metroTechnoBtn_.setButtonText ("Techno");
+    metroTechnoBtn_.setRadioGroupId (1001);
+    metroTechnoBtn_.setClickingTogglesState (true);
+    metroTechnoBtn_.setToggleState (savedClickType == 1, dontSendNotification);
+    addAndMakeVisible (metroTechnoBtn_);
+
+    auto metroClickChanged = [this, prefs] {
+        int v = metroTechnoBtn_.getToggleState() ? 1 : 0;
+        if (prefs) prefs->setValue ("metronomeClickType", v);
+        if (onMetronomeClickTypeChanged) onMetronomeClickTypeChanged (v);
+    };
+    metroNormalBtn_.onClick = metroClickChanged;
+    metroTechnoBtn_.onClick = metroClickChanged;
 }
 
 void GeneralSettingsPage::refreshLanguage()
@@ -111,6 +139,13 @@ void GeneralSettingsPage::resized()
     auto row = area.removeFromTop (30);
     recentCountLabel .setBounds (row.removeFromLeft (200));
     recentCountSlider.setBounds (row);
+    area.removeFromTop (16);
+
+    // Metronome click type row: label | [Normal] [Techno]
+    auto metroRow = area.removeFromTop (26);
+    metroClickLabel_.setBounds (metroRow.removeFromLeft (120));
+    metroNormalBtn_ .setBounds (metroRow.removeFromLeft (72).reduced (2));
+    metroTechnoBtn_ .setBounds (metroRow.removeFromLeft (72).reduced (2));
 }
 
 // =====================================================================
@@ -451,10 +486,11 @@ void SettingsWindow::closeButtonPressed()
 SettingsWindow::Content::Content (AudioDeviceManager& dm, PropertiesFile* prefs, Callbacks& cbs)
 {
     genPage_ = new GeneralSettingsPage (prefs);
-    genPage_->onShowLevelMeter  = cbs.onShowLevelMeter;
-    genPage_->onShowMidiMonitor = cbs.onShowMidiMonitor;
-    genPage_->onShowInfoMonitor = cbs.onShowInfoMonitor;
-    genPage_->onLanguageChanged = cbs.onLanguageChanged;
+    genPage_->onShowLevelMeter             = cbs.onShowLevelMeter;
+    genPage_->onShowMidiMonitor            = cbs.onShowMidiMonitor;
+    genPage_->onShowInfoMonitor            = cbs.onShowInfoMonitor;
+    genPage_->onLanguageChanged            = cbs.onLanguageChanged;
+    genPage_->onMetronomeClickTypeChanged  = cbs.onMetronomeClickTypeChanged;
     addPage (LvhStr ("STR_NAV_GENERAL"), genPage_);
 
     addPage (LvhStr ("STR_NAV_AUDIO_MIDI"), new AudioMidiSettingsPage (dm));

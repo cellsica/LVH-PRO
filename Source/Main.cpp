@@ -130,11 +130,6 @@ public:
         deviceManager.initialiseWithDefaultDevices (0, 2);
         audioEngine.initialise (deviceManager);
 
-        // Wire metronome beat callback (fires on message thread via AsyncUpdater)
-        audioEngine.setMetronomeOnBeat ([this] (int beat) {
-            juce::Logger::writeToLog ("Metro beat: " + juce::String (beat));
-        });
-
         audioEngine.buildGraphWithSineWave();
 
         mainWindow.reset (new MainWindow (getApplicationName(), keyboardState));
@@ -390,6 +385,14 @@ private:
 
         projectSerializer_.onMixerWindowRestored = [this] (bool visible, juce::Rectangle<int> bounds) {
             uiManager_.restoreMixerWindow (visible, bounds);
+        };
+
+        projectSerializer_.onMetronomeSettingsRestored = [this] (double bpm, float vol, int bpb, int ct) {
+            // AudioEngine is already updated by ProjectSerializer — just sync the open window (if any)
+            uiManager_.syncMetronomeWindowFromEngine();
+            // Also persist click type to prefs so Settings page stays consistent
+            if (auto* prefs = appProperties.getUserSettings())
+                prefs->setValue ("metronomeClickType", ct);
         };
     }
 

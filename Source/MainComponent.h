@@ -28,6 +28,7 @@ private:
     std::unique_ptr<IconButton>       monitorToggleButton;
     std::unique_ptr<IconButton>       mixerToggleButton;
     std::unique_ptr<IconButton>       stageToggleButton;
+    std::unique_ptr<IconButton>       metronomeToggleButton;
 
     std::unique_ptr<TextButton>       octaveDownButton;
     std::unique_ptr<Label>            octaveLabel;
@@ -103,6 +104,7 @@ public:
     void toggleKeyboard();
     void toggleMixer();
     void toggleStage();
+    void toggleMetronome();
 
 
     void showScanOverlay();
@@ -121,8 +123,9 @@ public:
     void setLevelMeterVisible   (bool v);
     void setMidiMonitorVisible  (bool v);
     void setMonitorPanelVisible (bool v);
-    void setMixerWindowVisible (bool v);
-    void setStageWindowVisible (bool v);
+    void setMixerWindowVisible      (bool v);
+    void setStageWindowVisible      (bool v);
+    void setMetronomeWindowVisible  (bool v);
     void setOctaveDisplay       (int octaveNumber);
 
 
@@ -133,6 +136,7 @@ public:
     std::function<void()>  onLaunchBridgeClicked;
     std::function<void(bool)> onMixerToggle;
     std::function<void(bool)> onStageToggle;
+    std::function<void(bool)> onMetronomeToggle;
     std::function<void(int)> onOctaveShift;  // called with +1 or -1
     std::function<void(double)> onVolumeChanged;
 
