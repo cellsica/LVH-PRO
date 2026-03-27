@@ -66,7 +66,10 @@
       "Bash(find C:/Projects/LVH-PRO -name AudioEngine.* -type f)",
       "Bash(cmd /c \"taskkill /F /IM LVH.exe /IM LVH-Bridge.exe 2>nul; exit 0\")",
       "Bash(find /c/Projects/LVH-PRO/Source -type f \\\\\\(-name *.cpp -o -name *.h \\\\\\))",
-      "Bash(grep -E \"\\\\.\\(md|json|xml|cmake|txt\\)$\")"
+      "Bash(grep -E \"\\\\.\\(md|json|xml|cmake|txt\\)$\")",
+      "Bash(git push:*)",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)"
     ]
   }
 }
