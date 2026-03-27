@@ -403,6 +403,20 @@ public:
             metronomeProcessor_->onBeat = metroOnBeat_;
     }
 
+    // Tap tempo: call on every tap; updates BPM from average interval.
+    void tapMetronomeTempo()
+    {
+        const juce::int64 now = juce::Time::currentTimeMillis();
+        tapTimes_.push_back (now);
+        while (tapTimes_.size() > 8
+               || (tapTimes_.size() > 1 && now - tapTimes_.front() > 3000LL))
+            tapTimes_.pop_front();
+        if (tapTimes_.size() < 2) return;
+        double totalMs = static_cast<double> (tapTimes_.back() - tapTimes_.front());
+        double avgMs   = totalMs / static_cast<double> (tapTimes_.size() - 1);
+        setMetronomeBpm (juce::jlimit (40.0, 240.0, 60000.0 / avgMs));
+    }
+
 private:
     PluginSlot& getOrCreateSlot (int index = 0)
     {
@@ -457,7 +471,8 @@ private:
     double pendingMetroBpm_         = 120.0;
     float  pendingMetroVolume_      = 0.7f;
     int    pendingMetroBeatsPerBar_ = 4;
-    std::function<void(int)> metroOnBeat_;
+    std::function<void(int)>    metroOnBeat_;
+    std::deque<juce::int64>     tapTimes_;     // tap tempo history
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioEngine)
 };

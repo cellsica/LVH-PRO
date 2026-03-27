@@ -203,6 +203,29 @@ namespace Icons
             g.fillRect (x, a.getY() + h * 0.50f, barW, h * 0.50f);
         }
     }
+
+    // Simple metronome icon — trapezoid body + diagonal pendulum arm
+    inline void metronome (Graphics& g, Rectangle<float> a)
+    {
+        const float cx = a.getCentreX();
+        const float cy = a.getCentreY() + a.getHeight() * 0.06f;
+        const float hw = a.getWidth()  * 0.26f;
+        const float hh = a.getHeight() * 0.38f;
+
+        juce::Path body;
+        body.startNewSubPath (cx - hw * 1.0f, cy + hh);
+        body.lineTo          (cx + hw * 1.0f, cy + hh);
+        body.lineTo          (cx + hw * 0.6f, cy - hh);
+        body.lineTo          (cx - hw * 0.6f, cy - hh);
+        body.closeSubPath();
+        g.strokePath (body, juce::PathStrokeType (1.4f));
+
+        // Pendulum arm (tilted right)
+        const float px = cx + hw * 0.45f;
+        const float py = cy - hh * 0.55f;
+        g.drawLine (cx, cy + hh * 0.55f, px, py, 1.4f);
+        g.fillEllipse (px - 2.f, py - 2.f, 4.f, 4.f);
+    }
 }
 
 // =====================================================================

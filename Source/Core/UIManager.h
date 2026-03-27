@@ -5,7 +5,8 @@
 #include "ProjectSerializer.h"
 #include "MidiRoutingManager.h"
 #include "StageManager.h"
-#include "MixerWindow.h"   // full definition needed for MixerParam + learn/apply methods
+#include "MixerWindow.h"      // full definition needed for MixerParam + learn/apply methods
+#include "../MetronomeWindow.h"
 
 // Forward declarations — full definitions only needed in UIManager.cpp
 class MainComponent;
@@ -61,8 +62,9 @@ public:
     void shutdown();
 
     // ── Window management ─────────────────────────────────────────────────
-    void toggleMixerWindow  (bool show);
-    void toggleStageWindow  (bool show);
+    void toggleMixerWindow      (bool show);
+    void toggleStageWindow      (bool show);
+    void toggleMetronomeWindow  (bool show);
     void openSettings();
 
     // Restore StageWindow state (visibility + bounds) from ApplicationProperties.
@@ -141,11 +143,12 @@ private:
     StageManager&                stageManager_;
 
     // ── State ─────────────────────────────────────────────────────────────
-    MainComponent*                   mc_           = nullptr;
-    double                           masterVolume_ = 1.0;
-    std::unique_ptr<MixerWindow>     mixerWindow_;
-    std::unique_ptr<SettingsWindow>  settingsWindow_;
-    std::unique_ptr<StageWindow>     stageWindow_;
+    MainComponent*                   mc_               = nullptr;
+    double                           masterVolume_     = 1.0;
+    std::unique_ptr<MixerWindow>         mixerWindow_;
+    std::unique_ptr<MetronomeWindow>     metronomeWindow_;
+    std::unique_ptr<SettingsWindow>      settingsWindow_;
+    std::unique_ptr<StageWindow>         stageWindow_;
 
     // Mixer MIDI mapping state
     LearnState                               learnState_;

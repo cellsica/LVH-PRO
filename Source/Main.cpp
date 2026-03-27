@@ -130,11 +130,6 @@ public:
         deviceManager.initialiseWithDefaultDevices (0, 2);
         audioEngine.initialise (deviceManager);
 
-        // Wire metronome beat callback (fires on message thread via AsyncUpdater)
-        audioEngine.setMetronomeOnBeat ([this] (int beat) {
-            juce::Logger::writeToLog ("Metro beat: " + juce::String (beat));
-        });
-
         audioEngine.buildGraphWithSineWave();
 
         mainWindow.reset (new MainWindow (getApplicationName(), keyboardState));

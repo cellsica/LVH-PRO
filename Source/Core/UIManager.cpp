@@ -67,10 +67,17 @@ void UIManager::setMainComponent (MainComponent* mc)
         }
     };
 
-    mc_->onLogoRightClick = [this] { showMainMenu(); };
-    mc_->onMixerToggle    = [this] (bool show) { toggleMixerWindow (show); };
-    mc_->onStageToggle    = [this] (bool show) { toggleStageWindow  (show); };
+    mc_->onLogoRightClick      = [this] { showMainMenu(); };
+    mc_->onMixerToggle         = [this] (bool show) { toggleMixerWindow     (show); };
+    mc_->onStageToggle         = [this] (bool show) { toggleStageWindow     (show); };
+    mc_->onMetronomeToggle     = [this] (bool show) { toggleMetronomeWindow (show); };
     mc_->onLaunchBridgeClicked = [this] { launchBridgeFileChooser(); };
+
+    // Beat callback: fires on message thread (via AsyncUpdater in MetronomeProcessor)
+    audioEngine_.setMetronomeOnBeat ([this] (int beat) {
+        if (metronomeWindow_ != nullptr && metronomeWindow_->isVisible())
+            metronomeWindow_->updateBeat (beat);
+    });
 }
 
 void UIManager::shutdown()
@@ -92,11 +99,14 @@ void UIManager::shutdown()
 
         if (mixerWindow_ != nullptr)
             prefs->setValue ("mixerAlwaysOnTop", mixerWindow_->isAlwaysOnTop());
+        if (metronomeWindow_ != nullptr)
+            prefs->setValue ("metronomeAlwaysOnTop", metronomeWindow_->isAlwaysOnTop());
     }
 
     stageWindow_.reset();
     settingsWindow_.reset();
     mixerWindow_.reset();
+    metronomeWindow_.reset();
     mc_ = nullptr;
 }
 
@@ -191,6 +201,61 @@ void UIManager::toggleMixerWindow (bool show)
     {
         if (mixerWindow_ != nullptr)
             mixerWindow_->setVisible (false);
+    }
+}
+
+// ── Metronome window ──────────────────────────────────────────────────────
+
+void UIManager::toggleMetronomeWindow (bool show)
+{
+    if (show)
+    {
+        if (metronomeWindow_ == nullptr)
+        {
+            metronomeWindow_ = std::make_unique<MetronomeWindow>();
+
+            metronomeWindow_->onClose = [this] {
+                if (mc_ != nullptr) mc_->setMetronomeWindowVisible (false);
+                metronomeWindow_->setVisible (false);
+            };
+            metronomeWindow_->onPlayStopChanged = [this] (bool playing) {
+                audioEngine_.setMetronomePlaying (playing);
+            };
+            metronomeWindow_->onBpmChanged = [this] (double bpm) {
+                audioEngine_.setMetronomeBpm (bpm);
+            };
+            metronomeWindow_->onVolumeChanged = [this] (float v) {
+                audioEngine_.setMetronomeVolume (v);
+            };
+            metronomeWindow_->onTapTempo = [this] {
+                audioEngine_.tapMetronomeTempo();
+                // Sync the new BPM back to the window
+                if (metronomeWindow_ != nullptr)
+                    metronomeWindow_->setBpm (audioEngine_.getMetronomeBpm());
+            };
+            metronomeWindow_->onBeatsPerBarChanged = [this] (int b) {
+                audioEngine_.setMetronomeBeatsPerBar (b);
+            };
+            metronomeWindow_->wireCallbacks();
+        }
+
+        // Restore pin state
+        if (auto* prefs = appProperties_.getUserSettings())
+            metronomeWindow_->setPinState (prefs->getBoolValue ("metronomeAlwaysOnTop", false));
+
+        // Sync current engine state to window
+        metronomeWindow_->setPlayState   (audioEngine_.isMetronomePlaying());
+        metronomeWindow_->setBpm         (audioEngine_.getMetronomeBpm());
+        metronomeWindow_->setVolume      (audioEngine_.getMetronomeVolume());
+        metronomeWindow_->setBeatsPerBar (audioEngine_.getMetronomeBeatsPerBar());
+
+        metronomeWindow_->setVisible (true);
+        metronomeWindow_->toFront (true);
+    }
+    else
+    {
+        if (metronomeWindow_ != nullptr)
+            metronomeWindow_->setVisible (false);
     }
 }
 
