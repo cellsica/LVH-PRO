@@ -25,7 +25,7 @@ public:
     LvhProApplication() {}
 
     const String getApplicationName() override    { return "LVH"; }
-    const String getApplicationVersion() override { return "0.1.0"; }
+    const String getApplicationVersion() override { return "0.6.5-alpha"; }
     bool moreThanOneInstanceAllowed() override    { return true; }
 
     // Hardware MIDI input
@@ -147,6 +147,17 @@ public:
         wireBridgeManagerCallbacks();
         wireSerializerCallbacks();
         uiManager_.restoreStageWindow();
+
+        // Startup info → System Log
+        if (auto* mc = mainComp())
+        {
+            mc->pushSystemMessage ("=== LVH-PRO v" + getApplicationVersion() + " ===");
+            mc->pushSystemMessage ("OS:  " + juce::SystemStats::getOperatingSystemName());
+            mc->pushSystemMessage ("CPU: " + juce::SystemStats::getCpuModel()
+                                  + " (" + juce::String (juce::SystemStats::getNumCpus()) + " cores, "
+                                  + juce::String (juce::SystemStats::getCpuSpeedInMegahertz()) + " MHz)");
+            mc->pushSystemMessage ("RAM: " + juce::String (juce::SystemStats::getMemorySizeInMegabytes()) + " MB");
+        }
 
         // Apply saved settings
         if (auto* prefs = appProperties.getUserSettings())
