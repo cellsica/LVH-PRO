@@ -4,6 +4,7 @@
 #endif
 #include "SettingsWindow.h"
 #include "AudioEngine.h"
+#include "MetronomeManager.h"
 #include "PluginScanThread.h"
 #include "PluginSlot.h"
 #include "BridgeInstance.h"
@@ -128,6 +129,12 @@ public:
 
         deviceManager.initialiseWithDefaultDevices (0, 2);
         audioEngine.initialise (deviceManager);
+
+        // Wire metronome beat callback (fires on message thread via AsyncUpdater)
+        audioEngine.setMetronomeOnBeat ([this] (int beat) {
+            juce::Logger::writeToLog ("Metro beat: " + juce::String (beat));
+        });
+
         audioEngine.buildGraphWithSineWave();
 
         mainWindow.reset (new MainWindow (getApplicationName(), keyboardState));
@@ -440,6 +447,7 @@ private:
     AudioDeviceManager deviceManager;
     KnownPluginList knownPlugins;
     AudioEngine audioEngine { keyboardState };
+    MetronomeManager metronomeManager_ { audioEngine };
     ApplicationProperties appProperties;
     BridgeManager      bridgeManager_     { audioEngine, deviceManager, appProperties };
     MidiRoutingManager midiRouter         { bridgeManager_.getBridges() };

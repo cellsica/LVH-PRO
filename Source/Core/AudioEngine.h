@@ -8,6 +8,7 @@
 #include "PluginSlot.h"
 #include "MidiInjectionsProcessor.h"
 #include "../BridgeProcessors.h"
+#include "../MetronomeManager.h"
 
 using namespace juce;
 
@@ -132,8 +133,9 @@ public:
         Call this when the Bridge process connects and is ready. */
     void buildGraphWithBridgeSync (std::unique_ptr<AudioProcessor> bridgeProc)
     {
-        kbProcessor        = nullptr;
-        meterGainProcessor = nullptr;
+        kbProcessor         = nullptr;
+        meterGainProcessor  = nullptr;
+        metronomeProcessor_ = nullptr;
         getOrCreateSlot().detach();
         audioGraph.clear();
 
@@ -143,13 +145,13 @@ public:
         auto* mgProc = new GainAndMeterProcessor();
         mgProc->setGain (pendingGain);
         meterGainProcessor = mgProc;
-        auto mgNode = audioGraph.addNode (std::unique_ptr<GainAndMeterProcessor> (mgProc));
+        auto mgNode    = audioGraph.addNode (std::unique_ptr<GainAndMeterProcessor> (mgProc));
+        auto metroNode = addMetronomeNode();
 
         for (int ch = 0; ch < 2; ++ch)
-        {
-            audioGraph.addConnection ({{bridgeNode->nodeID, ch}, {mgNode->nodeID,  ch}});
-            audioGraph.addConnection ({{mgNode->nodeID,     ch}, {outNode->nodeID, ch}});
-        }
+            audioGraph.addConnection ({{bridgeNode->nodeID, ch}, {mgNode->nodeID, ch}});
+
+        connectToOutput (mgNode, outNode, metroNode);
 
         if (lastSampleRate > 0.0 && lastBufferSize > 0)
             audioGraph.prepareToPlay (lastSampleRate, lastBufferSize);
@@ -172,8 +174,9 @@ public:
             return;
         }
 
-        kbProcessor        = nullptr;
-        meterGainProcessor = nullptr;
+        kbProcessor         = nullptr;
+        meterGainProcessor  = nullptr;
+        metronomeProcessor_ = nullptr;
         getOrCreateSlot().detach();
         audioGraph.clear();
 
@@ -184,10 +187,8 @@ public:
         auto* mgProc = new GainAndMeterProcessor();
         mgProc->setGain (pendingGain);
         meterGainProcessor = mgProc;
-        auto mgNode = audioGraph.addNode (std::unique_ptr<GainAndMeterProcessor> (mgProc));
-
-        for (int ch = 0; ch < 2; ++ch)
-            audioGraph.addConnection ({{mgNode->nodeID, ch}, {outNode->nodeID, ch}});
+        auto mgNode    = audioGraph.addNode (std::unique_ptr<GainAndMeterProcessor> (mgProc));
+        auto metroNode = addMetronomeNode();
 
         // Build signal chain: instruments (parallel mix + per-chan FX) → master effects (serial) → gain/meter
         AudioProcessorGraph::Node::Ptr lastNode;
@@ -223,14 +224,17 @@ public:
             for (int ch = 0; ch < 2; ++ch)
                 audioGraph.addConnection ({{lastNode->nodeID, ch}, {mgNode->nodeID, ch}});
 
+        connectToOutput (mgNode, outNode, metroNode);
+
         if (lastSampleRate > 0.0 && lastBufferSize > 0)
             audioGraph.prepareToPlay (lastSampleRate, lastBufferSize);
     }
 
     void buildGraphWithSineWave()
     {
-        kbProcessor       = nullptr;
-        meterGainProcessor = nullptr;
+        kbProcessor         = nullptr;
+        meterGainProcessor  = nullptr;
+        metronomeProcessor_ = nullptr;
         getOrCreateSlot().detach();
         audioGraph.clear();
 
@@ -238,21 +242,19 @@ public:
         auto midiNode = audioGraph.addNode (std::make_unique<AudioProcessorGraph::AudioGraphIOProcessor> (AudioProcessorGraph::AudioGraphIOProcessor::midiInputNode));
         auto sineNode = audioGraph.addNode (std::make_unique<SineWaveProcessor> (keyboardState));
 
-        // Gain + meter node between sine and output
         auto* mgProc  = new GainAndMeterProcessor();
         mgProc->setGain (pendingGain);
         meterGainProcessor = mgProc;
         auto mgNode   = audioGraph.addNode (std::unique_ptr<GainAndMeterProcessor> (mgProc));
+        auto metroNode = addMetronomeNode();
 
         for (int ch = 0; ch < 2; ++ch)
-        {
             audioGraph.addConnection ({{sineNode->nodeID, ch}, {mgNode->nodeID, ch}});
-            audioGraph.addConnection ({{mgNode->nodeID,   ch}, {outNode->nodeID, ch}});
-        }
         audioGraph.addConnection ({{midiNode->nodeID, AudioProcessorGraph::midiChannelIndex},
                                    {sineNode->nodeID, AudioProcessorGraph::midiChannelIndex}});
 
-        // Prepare all new nodes so they have a valid sample rate from the start.
+        connectToOutput (mgNode, outNode, metroNode);
+
         if (lastSampleRate > 0.0 && lastBufferSize > 0)
             audioGraph.prepareToPlay (lastSampleRate, lastBufferSize);
     }
@@ -275,8 +277,9 @@ public:
                     return;
                 }
 
-                kbProcessor        = nullptr;
-                meterGainProcessor = nullptr;
+                kbProcessor         = nullptr;
+                meterGainProcessor  = nullptr;
+                metronomeProcessor_ = nullptr;
                 auto* rawPtr = instance.get();
                 audioGraph.clear();
 
@@ -290,22 +293,21 @@ public:
                 auto kbNode   = audioGraph.addNode (std::unique_ptr<MidiInjectionsProcessor> (kbProc));
                 auto plugNode = audioGraph.addNode (std::move (instance));
 
-                // Gain + meter node between plugin and output
                 auto* mgProc  = new GainAndMeterProcessor();
                 mgProc->setGain (pendingGain);
                 meterGainProcessor = mgProc;
-                auto mgNode   = audioGraph.addNode (std::unique_ptr<GainAndMeterProcessor> (mgProc));
+                auto mgNode    = audioGraph.addNode (std::unique_ptr<GainAndMeterProcessor> (mgProc));
+                auto metroNode = addMetronomeNode();
 
                 for (int ch = 0; ch < 2; ++ch)
-                {
                     audioGraph.addConnection ({{plugNode->nodeID, ch}, {mgNode->nodeID, ch}});
-                    audioGraph.addConnection ({{mgNode->nodeID,   ch}, {outNode->nodeID, ch}});
-                }
 
                 audioGraph.addConnection ({{midiNode->nodeID, AudioProcessorGraph::midiChannelIndex},
                                            {plugNode->nodeID, AudioProcessorGraph::midiChannelIndex}});
                 audioGraph.addConnection ({{kbNode->nodeID,   AudioProcessorGraph::midiChannelIndex},
                                            {plugNode->nodeID, AudioProcessorGraph::midiChannelIndex}});
+
+                connectToOutput (mgNode, outNode, metroNode);
 
                 audioGraph.prepareToPlay (sampleRate, bufferSize);
                 getOrCreateSlot().attach (rawPtr, plugNode->nodeID);
@@ -358,6 +360,49 @@ public:
         if (kbProcessor != nullptr) kbProcessor->setChannelFilter (channel);
     }
 
+    // ── Metronome API (message thread) ────────────────────────────────────
+
+    void setMetronomePlaying (bool p)
+    {
+        pendingMetroPlaying_ = p;
+        if (metronomeProcessor_ != nullptr)
+            metronomeProcessor_->setPlaying (p);
+    }
+
+    void setMetronomeBpm (double bpm)
+    {
+        pendingMetroBpm_ = bpm;
+        if (metronomeProcessor_ != nullptr)
+            metronomeProcessor_->setBpm (bpm);
+    }
+
+    void setMetronomeVolume (float v)
+    {
+        pendingMetroVolume_ = v;
+        if (metronomeProcessor_ != nullptr)
+            metronomeProcessor_->setVolume (v);
+    }
+
+    void setMetronomeBeatsPerBar (int b)
+    {
+        pendingMetroBeatsPerBar_ = b;
+        if (metronomeProcessor_ != nullptr)
+            metronomeProcessor_->setBeatsPerBar (b);
+    }
+
+    bool   isMetronomePlaying()   const noexcept { return pendingMetroPlaying_; }
+    double getMetronomeBpm()      const noexcept { return pendingMetroBpm_; }
+    float  getMetronomeVolume()   const noexcept { return pendingMetroVolume_; }
+    int    getMetronomeBeatsPerBar() const noexcept { return pendingMetroBeatsPerBar_; }
+
+    // Wire the beat callback. Called by MetronomeManager after construction.
+    void setMetronomeOnBeat (std::function<void(int)> cb)
+    {
+        metroOnBeat_ = std::move (cb);
+        if (metronomeProcessor_ != nullptr)
+            metronomeProcessor_->onBeat = metroOnBeat_;
+    }
+
 private:
     PluginSlot& getOrCreateSlot (int index = 0)
     {
@@ -366,18 +411,53 @@ private:
         return *slots[index];
     }
 
+    // Create a MetronomeProcessor node, apply pending state, and return it.
+    // Also stores the raw ptr in metronomeProcessor_.
+    AudioProcessorGraph::Node::Ptr addMetronomeNode()
+    {
+        auto* mp = new MetronomeProcessor();
+        mp->setPlaying    (pendingMetroPlaying_);
+        mp->setBpm        (pendingMetroBpm_);
+        mp->setVolume     (pendingMetroVolume_);
+        mp->setBeatsPerBar(pendingMetroBeatsPerBar_);
+        mp->onBeat        = metroOnBeat_;
+        metronomeProcessor_ = mp;
+        return audioGraph.addNode (std::unique_ptr<MetronomeProcessor> (mp));
+    }
+
+    // Connect fromNode → [metroNode] → outNode for both stereo channels.
+    void connectToOutput (AudioProcessorGraph::Node::Ptr fromNode,
+                          AudioProcessorGraph::Node::Ptr outNode,
+                          AudioProcessorGraph::Node::Ptr metroNode)
+    {
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            audioGraph.addConnection ({{fromNode->nodeID,  ch}, {metroNode->nodeID, ch}});
+            audioGraph.addConnection ({{metroNode->nodeID, ch}, {outNode->nodeID,   ch}});
+        }
+    }
+
     MidiKeyboardState& keyboardState;
     AudioProcessorGraph audioGraph;
     AudioProcessorPlayer audioProcessorPlayer;
     AudioPluginFormatManager formatManager;
     OwnedArray<PluginSlot> slots;
-    MidiInjectionsProcessor*  kbProcessor        = nullptr; // raw ptr; owned by audioGraph
-    GainAndMeterProcessor*    meterGainProcessor  = nullptr; // raw ptr; owned by audioGraph
-    float  pendingGain    = 1.0f; // gain to apply when graph is next rebuilt
+    MidiInjectionsProcessor*  kbProcessor         = nullptr; // raw ptr; owned by audioGraph
+    GainAndMeterProcessor*    meterGainProcessor   = nullptr; // raw ptr; owned by audioGraph
+    MetronomeProcessor*       metronomeProcessor_  = nullptr; // raw ptr; owned by audioGraph
+
+    float  pendingGain    = 1.0f;
     int    pendingTranspose = 0;
     int    pendingChannel   = 0;
-    double lastSampleRate   = 0.0; // cached from last initialise() / loadPlugin() call
+    double lastSampleRate   = 0.0;
     int    lastBufferSize   = 0;
+
+    // Metronome pending state (survives graph rebuilds)
+    bool   pendingMetroPlaying_     = false;
+    double pendingMetroBpm_         = 120.0;
+    float  pendingMetroVolume_      = 0.7f;
+    int    pendingMetroBeatsPerBar_ = 4;
+    std::function<void(int)> metroOnBeat_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioEngine)
 };
