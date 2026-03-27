@@ -204,27 +204,39 @@ namespace Icons
         }
     }
 
-    // Simple metronome icon — trapezoid body + diagonal pendulum arm
+    // Metronome icon — trapezoid body + tick mark + diagonal pendulum arm + bob
     inline void metronome (Graphics& g, Rectangle<float> a)
     {
-        const float cx = a.getCentreX();
-        const float cy = a.getCentreY() + a.getHeight() * 0.06f;
-        const float hw = a.getWidth()  * 0.26f;
-        const float hh = a.getHeight() * 0.38f;
+        g.setColour (Colours::white);
 
+        const float cx = a.getCentreX();
+        const float top    = a.getY()      + a.getHeight() * 0.05f;
+        const float bottom = a.getBottom() - a.getHeight() * 0.05f;
+        const float hh = (bottom - top) * 0.5f;
+        const float cy = top + hh;
+        const float hwB = a.getWidth() * 0.38f;   // half-width at base
+        const float hwT = a.getWidth() * 0.22f;   // half-width at top
+
+        // Trapezoid body (outline)
         juce::Path body;
-        body.startNewSubPath (cx - hw * 1.0f, cy + hh);
-        body.lineTo          (cx + hw * 1.0f, cy + hh);
-        body.lineTo          (cx + hw * 0.6f, cy - hh);
-        body.lineTo          (cx - hw * 0.6f, cy - hh);
+        body.startNewSubPath (cx - hwB, bottom);
+        body.lineTo          (cx + hwB, bottom);
+        body.lineTo          (cx + hwT, top);
+        body.lineTo          (cx - hwT, top);
         body.closeSubPath();
         g.strokePath (body, juce::PathStrokeType (1.4f));
 
-        // Pendulum arm (tilted right)
-        const float px = cx + hw * 0.45f;
-        const float py = cy - hh * 0.55f;
-        g.drawLine (cx, cy + hh * 0.55f, px, py, 1.4f);
-        g.fillEllipse (px - 2.f, py - 2.f, 4.f, 4.f);
+        // Small tick mark at top centre
+        g.drawLine (cx, top, cx, top + a.getHeight() * 0.12f, 1.4f);
+
+        // Pendulum arm — pivot at base-centre, bob tilted right
+        const float pivotY = bottom - a.getHeight() * 0.10f;
+        const float bobX   = cx + hwT * 0.80f;
+        const float bobY   = cy - hh * 0.20f;
+        g.drawLine (cx, pivotY, bobX, bobY, 1.6f);
+
+        // Bob (small filled circle at end of arm)
+        g.fillEllipse (bobX - 2.2f, bobY - 2.2f, 4.4f, 4.4f);
     }
 }
 

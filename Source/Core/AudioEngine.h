@@ -390,10 +390,18 @@ public:
             metronomeProcessor_->setBeatsPerBar (b);
     }
 
+    void setMetronomeClickType (MetronomeProcessor::ClickType t)
+    {
+        pendingMetroClickType_ = t;
+        if (metronomeProcessor_ != nullptr)
+            metronomeProcessor_->setClickType (t);
+    }
+
     bool   isMetronomePlaying()   const noexcept { return pendingMetroPlaying_; }
     double getMetronomeBpm()      const noexcept { return pendingMetroBpm_; }
     float  getMetronomeVolume()   const noexcept { return pendingMetroVolume_; }
-    int    getMetronomeBeatsPerBar() const noexcept { return pendingMetroBeatsPerBar_; }
+    int    getMetronomeBeatsPerBar()    const noexcept { return pendingMetroBeatsPerBar_; }
+    MetronomeProcessor::ClickType getMetronomeClickType() const noexcept { return pendingMetroClickType_; }
 
     // Wire the beat callback. Called by MetronomeManager after construction.
     void setMetronomeOnBeat (std::function<void(int)> cb)
@@ -434,6 +442,7 @@ private:
         mp->setBpm        (pendingMetroBpm_);
         mp->setVolume     (pendingMetroVolume_);
         mp->setBeatsPerBar(pendingMetroBeatsPerBar_);
+        mp->setClickType  (pendingMetroClickType_);
         mp->onBeat        = metroOnBeat_;
         metronomeProcessor_ = mp;
         return audioGraph.addNode (std::unique_ptr<MetronomeProcessor> (mp));
@@ -471,6 +480,7 @@ private:
     double pendingMetroBpm_         = 120.0;
     float  pendingMetroVolume_      = 0.7f;
     int    pendingMetroBeatsPerBar_ = 4;
+    MetronomeProcessor::ClickType pendingMetroClickType_ = MetronomeProcessor::ClickType::Normal;
     std::function<void(int)>    metroOnBeat_;
     std::deque<juce::int64>     tapTimes_;     // tap tempo history
 

@@ -189,6 +189,12 @@ void ProjectSerializer::writeProjectXml (const juce::File& file,
         settingsEl->setAttribute ("mixerWindowH", b.getHeight());
     }
 
+    // Metronome settings
+    settingsEl->setAttribute ("metronomeBpm",         audioEngine_.getMetronomeBpm());
+    settingsEl->setAttribute ("metronomeVolume",      (double) audioEngine_.getMetronomeVolume());
+    settingsEl->setAttribute ("metronomeBeatsPerBar", audioEngine_.getMetronomeBeatsPerBar());
+    settingsEl->setAttribute ("metronomeClickType",   (int) audioEngine_.getMetronomeClickType());
+
     xml->writeTo (file);
 
     if (onMessage)
@@ -296,6 +302,23 @@ void ProjectSerializer::loadProject (const juce::File& file, bool isGlobal, bool
         int mixerY = settingsEl->getIntAttribute ("mixerWindowY", 0);
         if (onMixerWindowRestored)
             onMixerWindowRestored (mixerWasVisible, { mixerX, mixerY, mixerW, mixerH });
+
+        // Restore metronome settings
+        double metBpm = juce::jlimit (40.0, 240.0,
+                            settingsEl->getDoubleAttribute ("metronomeBpm", 120.0));
+        float  metVol = juce::jlimit (0.f, 1.f,
+                            (float) settingsEl->getDoubleAttribute ("metronomeVolume", 0.7));
+        int    metBpb = juce::jlimit (1, 8,
+                            settingsEl->getIntAttribute ("metronomeBeatsPerBar", 4));
+        int    metCt  = settingsEl->getIntAttribute ("metronomeClickType", 0);
+
+        audioEngine_.setMetronomeBpm         (metBpm);
+        audioEngine_.setMetronomeVolume      (metVol);
+        audioEngine_.setMetronomeBeatsPerBar (metBpb);
+        audioEngine_.setMetronomeClickType   (metCt == 1 ? MetronomeProcessor::ClickType::Techno
+                                                         : MetronomeProcessor::ClickType::Normal);
+        if (onMetronomeSettingsRestored)
+            onMetronomeSettingsRestored (metBpm, metVol, metBpb, metCt);
     }
 
     // Restore MIDI routing state (skipped in Global Layer switch mode — Slot 0's routing is kept).

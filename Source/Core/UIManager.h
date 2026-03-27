@@ -86,6 +86,9 @@ public:
     // Restore mixer window visibility + position from project load
     void restoreMixerWindow (bool visible, juce::Rectangle<int> bounds);
 
+    // Sync MetronomeWindow UI from current AudioEngine state (call after project load)
+    void syncMetronomeWindowFromEngine();
+
     // Refresh all open windows after a language change
     void refreshAllWindows();
 

@@ -9,6 +9,7 @@ class GeneralSettingsPage : public Component
 public:
     std::function<void(bool)>          onShowLevelMeter, onShowMidiMonitor, onShowInfoMonitor;
     std::function<void(juce::String)>  onLanguageChanged;
+    std::function<void(int)>           onMetronomeClickTypeChanged;  // 0=Normal, 1=Techno
 
     explicit GeneralSettingsPage (PropertiesFile* prefs);
     void resized() override;
@@ -21,6 +22,8 @@ private:
     Slider       recentCountSlider;
     Label        languageLabel_;
     ComboBox     languageCombo_;
+    Label        metroClickLabel_;
+    ToggleButton metroNormalBtn_, metroTechnoBtn_;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GeneralSettingsPage)
 };
 
@@ -100,6 +103,7 @@ public:
         std::function<void(int)>          onTransposeChange, onChannelFilterChange;
         std::function<void()>             onPluginPathsChanged;
         std::function<void(juce::String)> onLanguageChanged;
+        std::function<void(int)>          onMetronomeClickTypeChanged;
     };
 
     SettingsWindow (AudioDeviceManager& dm, PropertiesFile* prefs, Callbacks cbs);

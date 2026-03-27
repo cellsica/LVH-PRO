@@ -69,6 +69,8 @@ public:
     // visible=true  → show + position mixer window
     // visible=false → hide mixer window
     std::function<void(bool, juce::Rectangle<int>)>      onMixerWindowRestored;
+    // bpm, volume, beatsPerBar, clickType (0=Normal 1=Techno)
+    std::function<void(double, float, int, int)>         onMetronomeSettingsRestored;
 
     // ── Public API ────────────────────────────────────────────────────────
     void saveProject (const juce::File& file);

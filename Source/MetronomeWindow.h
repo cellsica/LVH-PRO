@@ -15,6 +15,16 @@ public:
     std::function<void(int)>    onBeatsPerBarChanged;
     std::function<void(bool)>   onPinToggled;
 
+    ~MetronomeContentComponent() override
+    {
+        bpbDown_   .setLookAndFeel (nullptr);
+        bpbUp_     .setLookAndFeel (nullptr);
+        bpmMinus10_.setLookAndFeel (nullptr);
+        bpmMinus1_ .setLookAndFeel (nullptr);
+        bpmPlus1_  .setLookAndFeel (nullptr);
+        bpmPlus10_ .setLookAndFeel (nullptr);
+    }
+
     MetronomeContentComponent()
     {
         // Pin button
@@ -53,7 +63,7 @@ public:
         addAndMakeVisible (bpmLabel_);
 
         // BPM value (editable)
-        bpmValue_.setText ("120.0", juce::dontSendNotification);
+        bpmValue_.setText ("120", juce::dontSendNotification);
         bpmValue_.setFont (juce::Font (13.f, juce::Font::bold));
         bpmValue_.setJustificationType (juce::Justification::centred);
         bpmValue_.setEditable (false, true, false);
@@ -61,7 +71,7 @@ public:
         bpmValue_.setColour (juce::Label::backgroundColourId, juce::Colour (0xff1a1a2a));
         bpmValue_.onEditorHide = [this] {
             double v = juce::jlimit (40.0, 240.0, bpmValue_.getText().getDoubleValue());
-            bpmValue_.setText (juce::String (v, 1), juce::dontSendNotification);
+            bpmValue_.setText (juce::String (juce::roundToInt (v)), juce::dontSendNotification);
             bpmSlider_.setValue (v, juce::dontSendNotification);
             if (onBpmChanged) onBpmChanged (v);
         };
@@ -70,14 +80,28 @@ public:
         // BPM slider
         bpmSlider_.setSliderStyle (juce::Slider::LinearHorizontal);
         bpmSlider_.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
-        bpmSlider_.setRange (40.0, 240.0);
+        bpmSlider_.setRange (40.0, 240.0, 1.0);
         bpmSlider_.setValue (120.0, juce::dontSendNotification);
         bpmSlider_.onValueChange = [this] {
             double v = bpmSlider_.getValue();
-            bpmValue_.setText (juce::String (v, 1), juce::dontSendNotification);
+            bpmValue_.setText (juce::String (juce::roundToInt (v)), juce::dontSendNotification);
             if (onBpmChanged) onBpmChanged (v);
         };
         addAndMakeVisible (bpmSlider_);
+
+        // BPM adjustment buttons: [-10] [-1] [+1] [+10]
+        auto setupAdjBtn = [this] (juce::TextButton& btn, const juce::String& text, double delta)
+        {
+            btn.setButtonText (text);
+            btn.setColour (TextButton::buttonColourId, juce::Colour (0xff2a2a3e));
+            btn.setLookAndFeel (&bpmAdjLF_);
+            btn.onClick = [this, delta] { adjustBpm (delta); };
+            addAndMakeVisible (btn);
+        };
+        setupAdjBtn (bpmMinus10_, "-10", -10.0);
+        setupAdjBtn (bpmMinus1_,  "-1",   -1.0);
+        setupAdjBtn (bpmPlus1_,   "+1",   +1.0);
+        setupAdjBtn (bpmPlus10_,  "+10", +10.0);
 
         // Volume label
         volLabel_.setText ("VOL", juce::dontSendNotification);
@@ -99,11 +123,13 @@ public:
         bpbDown_.setButtonText ("-");
         bpbDown_.setColour (TextButton::buttonColourId, juce::Colour (0xff333344));
         bpbDown_.onClick = [this] { setBeatsPerBarUI (beatsPerBar_ - 1); };
+        bpbDown_.setLookAndFeel (&bpbLF_);
         addAndMakeVisible (bpbDown_);
 
         bpbUp_.setButtonText ("+");
         bpbUp_.setColour (TextButton::buttonColourId, juce::Colour (0xff333344));
         bpbUp_.onClick = [this] { setBeatsPerBarUI (beatsPerBar_ + 1); };
+        bpbUp_.setLookAndFeel (&bpbLF_);
         addAndMakeVisible (bpbUp_);
 
         bpbLabel_.setText ("4", juce::dontSendNotification);
@@ -113,9 +139,9 @@ public:
         addAndMakeVisible (bpbLabel_);
 
         bpbCaption_.setText ("BEATS/BAR", juce::dontSendNotification);
-        bpbCaption_.setFont (juce::Font (9.f));
-        bpbCaption_.setJustificationType (juce::Justification::centred);
-        bpbCaption_.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.5f));
+        bpbCaption_.setFont (juce::Font (10.f, juce::Font::bold));
+        bpbCaption_.setJustificationType (juce::Justification::centredLeft);
+        bpbCaption_.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.6f));
         addAndMakeVisible (bpbCaption_);
     }
 
@@ -136,7 +162,7 @@ public:
     void setBpm (double bpm)
     {
         bpmSlider_.setValue (bpm, juce::dontSendNotification);
-        bpmValue_.setText (juce::String (bpm, 1), juce::dontSendNotification);
+        bpmValue_.setText (juce::String (juce::roundToInt (bpm)), juce::dontSendNotification);
     }
 
     void setVolume (float v)
@@ -189,12 +215,19 @@ public:
         tapBtn_.setBounds  (row.removeFromLeft (88).reduced (2));
         area.removeFromTop (6);
 
-        // BPM row: label | value | slider
+        // BPM row: label | value | (space)
         auto bpmRow = area.removeFromTop (18);
         bpmLabel_.setBounds (bpmRow.removeFromLeft (32));
         bpmValue_.setBounds (bpmRow.removeFromLeft (54).reduced (1, 0));
         area.removeFromTop (2);
-        bpmSlider_.setBounds (area.removeFromTop (18));
+
+        // BPM adj+slider row: [-10][-1][slider][+1][+10]
+        auto sliderRow = area.removeFromTop (18);
+        bpmMinus10_.setBounds (sliderRow.removeFromLeft (28).reduced (1));
+        bpmMinus1_ .setBounds (sliderRow.removeFromLeft (22).reduced (1));
+        bpmPlus10_ .setBounds (sliderRow.removeFromRight (28).reduced (1));
+        bpmPlus1_  .setBounds (sliderRow.removeFromRight (22).reduced (1));
+        bpmSlider_ .setBounds (sliderRow);
         area.removeFromTop (8);
 
         // VOL row: label | slider
@@ -204,12 +237,13 @@ public:
         volSlider_.setBounds (area.removeFromTop (18));
         area.removeFromTop (8);
 
-        // Beats-per-bar row
+        // Beats-per-bar row: [BEATS/BAR] [–] [N] [+]
         auto bpbRow = area.removeFromTop (20);
-        bpbCaption_.setBounds (bpbRow.removeFromTop (11));
-        bpbDown_.setBounds (bpbRow.removeFromLeft  (22).reduced (1));
-        bpbUp_  .setBounds (bpbRow.removeFromRight (22).reduced (1));
-        bpbLabel_.setBounds (bpbRow);
+        bpbCaption_.setBounds (bpbRow.removeFromLeft (64));
+        bpbRow.removeFromLeft (6);
+        bpbDown_ .setBounds (bpbRow.removeFromLeft (20).reduced (1));
+        bpbLabel_.setBounds (bpbRow.removeFromLeft (26));
+        bpbUp_   .setBounds (bpbRow.removeFromLeft (20).reduced (1));
     }
 
 private:
@@ -218,6 +252,14 @@ private:
     static constexpr int kMaxBeats = 8;
     static constexpr const char* kLabelPlay = "PLAY";
     static constexpr const char* kLabelStop = "STOP";
+
+    void adjustBpm (double delta)
+    {
+        double v = juce::jlimit (40.0, 240.0, bpmSlider_.getValue() + delta);
+        bpmSlider_.setValue (v, juce::dontSendNotification);
+        bpmValue_.setText (juce::String (juce::roundToInt (v)), juce::dontSendNotification);
+        if (onBpmChanged) onBpmChanged (v);
+    }
 
     void setBeatsPerBarUI (int b)
     {
@@ -259,12 +301,31 @@ private:
         }
     }
 
+    // LookAndFeel for BEATS/BAR [-][+] buttons — bumps the font up to 15pt bold
+    struct BpbButtonLF : public juce::LookAndFeel_V4
+    {
+        juce::Font getTextButtonFont (juce::TextButton&, int) override
+        {
+            return juce::Font (15.f, juce::Font::bold);
+        }
+    } bpbLF_;
+
+    // LookAndFeel for BPM adjustment buttons — small bold font
+    struct BpmAdjLF : public juce::LookAndFeel_V4
+    {
+        juce::Font getTextButtonFont (juce::TextButton&, int) override
+        {
+            return juce::Font (9.f, juce::Font::bold);
+        }
+    } bpmAdjLF_;
+
     int beatsPerBar_ = 4;
     int currentBeat_ = -1;
 
     std::unique_ptr<IconButton> pinBtn_;
     juce::TextButton  playBtn_, tapBtn_;
     juce::TextButton  bpbDown_, bpbUp_;
+    juce::TextButton  bpmMinus10_, bpmMinus1_, bpmPlus1_, bpmPlus10_;
     juce::Label       bpmLabel_, bpmValue_, volLabel_;
     juce::Label       bpbLabel_, bpbCaption_;
     juce::Slider      bpmSlider_, volSlider_;

@@ -78,6 +78,15 @@ void UIManager::setMainComponent (MainComponent* mc)
         if (metronomeWindow_ != nullptr && metronomeWindow_->isVisible())
             metronomeWindow_->updateBeat (beat);
     });
+
+    // Restore persisted metronome click type
+    if (auto* prefs = appProperties_.getUserSettings())
+    {
+        int ct = prefs->getIntValue ("metronomeClickType", 0);
+        audioEngine_.setMetronomeClickType (
+            ct == 1 ? MetronomeProcessor::ClickType::Techno
+                    : MetronomeProcessor::ClickType::Normal);
+    }
 }
 
 void UIManager::shutdown()
@@ -208,6 +217,15 @@ void UIManager::toggleMixerWindow (bool show)
 
 void UIManager::toggleMetronomeWindow (bool show)
 {
+    // Icon clicked while metronome is playing in background (window hidden):
+    // toggle went OFF → treat as re-open request instead
+    if (!show && audioEngine_.isMetronomePlaying()
+        && metronomeWindow_ != nullptr && !metronomeWindow_->isVisible())
+    {
+        show = true;
+        if (mc_ != nullptr) mc_->setMetronomeWindowVisible (true);  // restore button ON
+    }
+
     if (show)
     {
         if (metronomeWindow_ == nullptr)
@@ -215,11 +233,17 @@ void UIManager::toggleMetronomeWindow (bool show)
             metronomeWindow_ = std::make_unique<MetronomeWindow>();
 
             metronomeWindow_->onClose = [this] {
-                if (mc_ != nullptr) mc_->setMetronomeWindowVisible (false);
                 metronomeWindow_->setVisible (false);
+                // Keep toolbar button lit if metronome is still playing
+                if (mc_ != nullptr)
+                    mc_->setMetronomeWindowVisible (audioEngine_.isMetronomePlaying());
             };
             metronomeWindow_->onPlayStopChanged = [this] (bool playing) {
                 audioEngine_.setMetronomePlaying (playing);
+                // If window is hidden and playback stopped, turn off toolbar button
+                if (!playing && mc_ != nullptr
+                    && (metronomeWindow_ == nullptr || !metronomeWindow_->isVisible()))
+                    mc_->setMetronomeWindowVisible (false);
             };
             metronomeWindow_->onBpmChanged = [this] (double bpm) {
                 audioEngine_.setMetronomeBpm (bpm);
@@ -290,6 +314,14 @@ void UIManager::restoreMixerWindow (bool visible, juce::Rectangle<int> bounds)
         if (mixerWindow_ != nullptr) mixerWindow_->setVisible (false);
         if (mc_ != nullptr) mc_->setMixerWindowVisible (false);
     }
+}
+
+void UIManager::syncMetronomeWindowFromEngine()
+{
+    if (metronomeWindow_ == nullptr || !metronomeWindow_->isVisible()) return;
+    metronomeWindow_->setBpm         (audioEngine_.getMetronomeBpm());
+    metronomeWindow_->setVolume      (audioEngine_.getMetronomeVolume());
+    metronomeWindow_->setBeatsPerBar (audioEngine_.getMetronomeBeatsPerBar());
 }
 
 // ── Stage window ──────────────────────────────────────────────────────────
@@ -506,6 +538,11 @@ void UIManager::openSettings()
         };
         cbs.onLanguageChanged = [this] (juce::String /*lang*/) {
             refreshAllWindows();
+        };
+        cbs.onMetronomeClickTypeChanged = [this] (int v) {
+            audioEngine_.setMetronomeClickType (
+                v == 1 ? MetronomeProcessor::ClickType::Techno
+                       : MetronomeProcessor::ClickType::Normal);
         };
         settingsWindow_ = std::make_unique<SettingsWindow> (
             deviceManager_, appProperties_.getUserSettings(), cbs);
