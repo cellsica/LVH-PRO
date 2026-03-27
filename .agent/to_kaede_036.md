@@ -59,7 +59,7 @@ FXチェーン下流の `tmpBuffer_` がゼロで上書きされ無音になる�
 
 - FileChooser タイトル → `STR_SELECT_SCAN_FOLDER`（日本語: 「VST3 スキャンフォルダを選択」）
 - SettingsWindow タイトル → `STR_SETTINGS_TITLE` に変更
-- 旧アプリ名 `"LIGHT-VST-HOST"` → `"LVH-PRO"` に修正
+- 旧アプリ名 `"LIGHT-VST-HOST"` → `"LVH"` に修正
 - 追加した文字列キー: `STR_RESCAN_PLUGINS`, `STR_SELECT_SCAN_FOLDER`, `STR_SETTINGS_TITLE`
 
 ### Task 2: General ページ レイアウト改善

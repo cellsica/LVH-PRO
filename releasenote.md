@@ -1,4 +1,4 @@
-# LVH-PRO Release Notes
+# LVH Release Notes
 
 ## [0.6.1-alpha] - 2026-03-26
 ### プロ・ステージ機能の進化: Global Layer と終了処理の安定化

@@ -1,4 +1,4 @@
-# LVH-PRO (Pro Version) 仕様書 (Ver 0.6.1-alpha)
+# LVH (Everybody's Version) 仕様書 (Ver 0.6.1-alpha)
 
 ## 1. プロジェクト概要
 Live-ready VST Host (LVH) の設計を継承しつつ、マルチプロセス・サンドボックス構造を採用することで「絶対的な安定性」と「自由なレイアウト」を実現したプロフェッショナル向け VST ホスト。

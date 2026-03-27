@@ -1,4 +1,4 @@
-# LVH-PRO (Pro Version) Ver.2 拡張仕様案 (Draft)
+# LVH (Everybody's Version) Ver.2 拡張仕様案 (Draft)
 
 ## 1. コンセプト：Ultimate Stability & Creative Routing
 「絶対に落ちない」マルチプロセス構造を堅持しつつ、ライブ演奏やスタジオ練習における「直感的な接続体験」と「日常的なオーディオソースとの共存」を実現する。

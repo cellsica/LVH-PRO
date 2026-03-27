@@ -423,7 +423,7 @@ void MidiSettingsPage::resized()
 // SettingsWindow
 // =====================================================================
 SettingsWindow::SettingsWindow (AudioDeviceManager& dm, PropertiesFile* prefs, Callbacks cbs)
-    : DocumentWindow (LvhStr ("STR_SETTINGS_TITLE") + " \xe2\x80\x94 LVH-PRO",
+    : DocumentWindow (LvhStr ("STR_SETTINGS_TITLE") + " \xe2\x80\x94 LVH",
                       Colour (0xff14141f), DocumentWindow::closeButton)
 {
     setUsingNativeTitleBar (true);

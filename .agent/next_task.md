@@ -1,8 +1,8 @@
-# プロジェクト：LVH-PRO (Pro Version)
+# プロジェクト：LVH (Everybody's Version)
 
 ## 完了したタスク ✅
 - [x] Pro版プロジェクトのリポジトリ作成・基本ファイルのコピー
-- [x] プロジェクト名の変更（LIGHT-VST-HOST → LVH-PRO）
+- [x] プロジェクト名の変更（LIGHT-VST-HOST → LVH）
 - [x] アプリケーション名・バージョンの初期化 (0.1.0)
 - [x] 設計・移行計画書（PRO_VERSION_PLAN.md）の策定
 - [x] **Bridge プロトタイプ基盤の実装**:

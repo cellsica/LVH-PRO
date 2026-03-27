@@ -23,7 +23,7 @@ class LvhProApplication : public JUCEApplication,
 public:
     LvhProApplication() {}
 
-    const String getApplicationName() override    { return "LVH-PRO"; }
+    const String getApplicationName() override    { return "LVH"; }
     const String getApplicationVersion() override { return "0.1.0"; }
     bool moreThanOneInstanceAllowed() override    { return true; }
 
@@ -110,7 +110,7 @@ public:
         {
             auto logFile = juce::File::getSpecialLocation (juce::File::currentExecutableFile)
                                .getParentDirectory().getChildFile ("core_log.txt");
-            coreLogger_.reset (new juce::FileLogger (logFile, "--- LVH-PRO Core Log Started ---"));
+            coreLogger_.reset (new juce::FileLogger (logFile, "--- LVH Core Log Started ---"));
             juce::Logger::setCurrentLogger (coreLogger_.get());
             juce::Logger::writeToLog ("Core started. Version: " + getApplicationVersion());
         }
@@ -120,7 +120,7 @@ public:
 
         // Initialize settings persistence
         PropertiesFile::Options opts;
-        opts.applicationName       = "LVH-PRO";
+        opts.applicationName       = "LVH";
         opts.filenameSuffix        = "settings";
         opts.folderName            = "cellsica";
         opts.osxLibrarySubFolder   = "Application Support";
@@ -212,7 +212,7 @@ private:
     File getCacheFile() const
     {
         return File::getSpecialLocation (File::userApplicationDataDirectory)
-                   .getChildFile ("cellsica/LVH-PRO/KnownPlugins.xml");
+                   .getChildFile ("cellsica/LVH/KnownPlugins.xml");
     }
 
     File getDeadMansPedalFile() const

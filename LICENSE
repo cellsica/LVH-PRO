@@ -1,29 +1,40 @@
-MIT License
+Copyright (c) 2026 Cellsica (岩塩 / nabe1114@gmail.com)
+All rights reserved.
 
-<<<<<<< HEAD
-Copyright (c) 2026 cellsica
-=======
-Copyright (c) 2026 nabe1
->>>>>>> 54c3f71 (Initial commit via AG-Genesis)
+本ソフトウェア「LVH」（以下「本ソフトウェア」）に関する著作権は、
+Cellsica（岩塩 / nabe1114@gmail.com）に帰属します。
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+【許可される事項】
+- 個人の非商用目的での本ソフトウェアの使用
+- 個人の非商用目的での本ソフトウェアの再配布（原著作権表示を保持すること）
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+【禁止される事項】
+- 商用目的での使用（販売、業務利用、収益化を伴う利用を含む）
+- 本ソフトウェアのソースコードの改変および改変物の配布
+- 著作権表示の削除または改変
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-<<<<<<< HEAD
-SOFTWARE.
-=======
-SOFTWARE.
->>>>>>> 54c3f71 (Initial commit via AG-Genesis)
+【免責事項】
+本ソフトウェアは「現状のまま（AS IS）」提供されます。
+著作権者は、本ソフトウェアの使用によって生じたいかなる損害についても責任を負いません。
+
+---
+
+Copyright (c) 2026 Cellsica (Iwashio / nabe1114@gmail.com)
+All rights reserved.
+
+The copyright of this software "LVH" (hereinafter "the Software") belongs to
+Cellsica (Iwashio / nabe1114@gmail.com).
+
+[Permitted]
+- Personal, non-commercial use of the Software
+- Redistribution of the Software for personal, non-commercial purposes
+  (provided that the original copyright notice is retained)
+
+[Prohibited]
+- Commercial use (including sale, business use, or monetization)
+- Modification of the source code and distribution of modified versions
+- Removal or alteration of copyright notices
+
+[Disclaimer]
+The Software is provided "AS IS" without warranty of any kind.
+The copyright holder shall not be liable for any damages arising from the use of this Software.

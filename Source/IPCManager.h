@@ -64,7 +64,7 @@ namespace IpcProtocol
 }
 
 // =====================================================================
-// CoreIpcManager  (runs inside LVH-PRO / Core process)
+// CoreIpcManager  (runs inside LVH / Core process)
 //
 // Acts as the named-pipe server. One instance per Bridge child process.
 // Call startPipe() before launching Bridge, then use sendMidi() etc.
