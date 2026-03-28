@@ -68,14 +68,24 @@ void VUMeterWindow::applyWin32Styles()
     ex |= WS_EX_LAYERED;
     SetWindowLongPtr (hwnd, GWL_EXSTYLE, ex);
 
-    // 90% opacity
-    SetLayeredWindowAttributes (hwnd, 0, 230, LWA_ALPHA);
+    // Apply stored opacity
+    SetLayeredWindowAttributes (hwnd, 0, (BYTE) (opacity_ * 255.f), LWA_ALPHA);
 
     // Subclass WndProc for NCHITTEST click-through;
     // store original proc as a window property (avoids class member access).
     LONG_PTR original = SetWindowLongPtr (hwnd, GWLP_WNDPROC,
                                            (LONG_PTR) vuMeterSubclassProc);
     SetProp (hwnd, "VUMeterOriginalProc", (HANDLE) original);
+#endif
+}
+
+void VUMeterWindow::setOpacity (float opacity)
+{
+    opacity_ = juce::jlimit (0.0f, 1.0f, opacity);
+#if JUCE_WINDOWS
+    if (nativeHwnd_ != nullptr)
+        SetLayeredWindowAttributes ((HWND) nativeHwnd_, 0,
+                                    (BYTE) (opacity_ * 255.f), LWA_ALPHA);
 #endif
 }
 

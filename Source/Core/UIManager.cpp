@@ -316,13 +316,16 @@ void UIManager::toggleVuMeterWindow (bool show)
                 if (mc_ != nullptr) mc_->setVuMeterWindowVisible (false);
             };
 
-            // Restore saved backlight theme
+            // Restore saved backlight theme and opacity
             if (auto* prefs = appProperties_.getUserSettings())
             {
                 int savedTheme = prefs->getIntValue ("vuMeterTheme", 0);
                 vuMeterWindow_->getComponent().setTheme (
                     savedTheme == 1 ? VUMeterComponent::Theme::OxygenNeon
                                     : VUMeterComponent::Theme::VintageWarm);
+
+                int savedOpacity = prefs->getIntValue ("vuMeterOpacity", 90);
+                vuMeterWindow_->setOpacity (savedOpacity / 100.f);
             }
         }
         vuMeterWindow_->show();
@@ -602,6 +605,10 @@ void UIManager::openSettings()
                 vuMeterWindow_->getComponent().setTheme (
                     v == 1 ? VUMeterComponent::Theme::OxygenNeon
                            : VUMeterComponent::Theme::VintageWarm);
+        };
+        cbs.onVuOpacityChanged = [this] (int v) {
+            if (vuMeterWindow_ != nullptr)
+                vuMeterWindow_->setOpacity (v / 100.f);
         };
         settingsWindow_ = std::make_unique<SettingsWindow> (
             deviceManager_, appProperties_.getUserSettings(), cbs);

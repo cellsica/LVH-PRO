@@ -94,6 +94,7 @@ public:
             { "STR_VIS_VU_THEME",        "Backlight Theme:",                   "バックライトテーマ："        },
             { "STR_VIS_WARM",            "Vintage Warm",                       "ヴィンテージウォーム"        },
             { "STR_VIS_NEON",            "Oxygen Neon",                        "オキシジェンネオン"          },
+            { "STR_VIS_OPACITY",         "Opacity:",                            "透明度："                    },
             // ── Settings — General page ─────────────────────────────────
             { "STR_LANGUAGE",            "Language",                           "言語"                        },
             { "STR_SHOW_LEVEL_METER",    "Level Meter (toolbar)",              "レベルメーター（ツールバー）" },

@@ -98,7 +98,9 @@ class VisualizerSettingsPage : public Component
 {
 public:
     // Fired when the VU meter backlight theme changes (0 = VintageWarm, 1 = OxygenNeon).
-    std::function<void(int)> onVuThemeChanged;
+    std::function<void(int)>   onVuThemeChanged;
+    // Fired when the VU meter opacity changes (20–100).
+    std::function<void(int)>   onVuOpacityChanged;
 
     explicit VisualizerSettingsPage (PropertiesFile* prefs);
     void resized() override;
@@ -108,6 +110,8 @@ private:
     Label        vuHeader_;
     Label        themeLabel_;
     ToggleButton warmBtn_, neonBtn_;
+    Label        opacityLabel_;
+    Slider       opacitySlider_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VisualizerSettingsPage)
 };
@@ -126,6 +130,7 @@ public:
         std::function<void(juce::String)> onLanguageChanged;
         std::function<void(int)>          onMetronomeClickTypeChanged;
         std::function<void(int)>          onVuThemeChanged;
+        std::function<void(int)>          onVuOpacityChanged;
     };
 
     SettingsWindow (AudioDeviceManager& dm, PropertiesFile* prefs, Callbacks cbs);

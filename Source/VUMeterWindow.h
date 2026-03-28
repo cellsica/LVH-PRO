@@ -312,6 +312,9 @@ public:
 
     void hide() { setVisible (false); }
 
+    // opacity in [0.0, 1.0]. Applied immediately if the Win32 handle is live.
+    void setOpacity (float opacity);
+
     VUMeterComponent& getComponent() noexcept { return *component_; }
 
 private:
@@ -320,6 +323,7 @@ private:
 
     VUMeterComponent* component_  = nullptr;
     void*             nativeHwnd_ = nullptr;   // non-null after first applyWin32Styles()
+    float             opacity_    = 0.9f;      // [0.0, 1.0], applied via WS_EX_LAYERED
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VUMeterWindow)
 };

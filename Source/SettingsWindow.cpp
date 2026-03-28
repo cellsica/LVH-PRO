@@ -493,12 +493,31 @@ VisualizerSettingsPage::VisualizerSettingsPage (PropertiesFile* prefs)
     };
     warmBtn_.onClick = themeChanged;
     neonBtn_.onClick = themeChanged;
+
+    // ── Opacity slider ────────────────────────────────────────────────
+    opacityLabel_.setText (LvhStr ("STR_VIS_OPACITY"), dontSendNotification);
+    opacityLabel_.setFont (Font (12.f));
+    opacityLabel_.setColour (Label::textColourId, Colour (0xffcccccc));
+    addAndMakeVisible (opacityLabel_);
+
+    opacitySlider_.setRange (20, 100, 1);
+    opacitySlider_.setValue (prefs ? prefs->getIntValue ("vuMeterOpacity", 90) : 90,
+                             dontSendNotification);
+    opacitySlider_.setTextBoxStyle (Slider::TextBoxRight, false, 44, 22);
+    opacitySlider_.setTextValueSuffix ("%");
+    addAndMakeVisible (opacitySlider_);
+    opacitySlider_.onValueChange = [this, prefs] {
+        int v = (int) opacitySlider_.getValue();
+        if (prefs) prefs->setValue ("vuMeterOpacity", v);
+        if (onVuOpacityChanged) onVuOpacityChanged (v);
+    };
 }
 
 void VisualizerSettingsPage::refreshLanguage()
 {
-    vuHeader_   .setText (LvhStr ("STR_VIS_VU_HEADER"), dontSendNotification);
-    themeLabel_ .setText (LvhStr ("STR_VIS_VU_THEME"),  dontSendNotification);
+    vuHeader_    .setText (LvhStr ("STR_VIS_VU_HEADER"),  dontSendNotification);
+    themeLabel_  .setText (LvhStr ("STR_VIS_VU_THEME"),   dontSendNotification);
+    opacityLabel_.setText (LvhStr ("STR_VIS_OPACITY"),    dontSendNotification);
     warmBtn_.setButtonText (LvhStr ("STR_VIS_WARM"));
     neonBtn_.setButtonText (LvhStr ("STR_VIS_NEON"));
 }
@@ -514,6 +533,11 @@ void VisualizerSettingsPage::resized()
     themeLabel_.setBounds (row.removeFromLeft (120));
     warmBtn_   .setBounds (row.removeFromLeft (120).reduced (2));
     neonBtn_   .setBounds (row.removeFromLeft (120).reduced (2));
+    area.removeFromTop (8);
+
+    row = area.removeFromTop (26);
+    opacityLabel_.setBounds (row.removeFromLeft (120));
+    opacitySlider_.setBounds (row.removeFromLeft (260));
 }
 
 // =====================================================================
