@@ -7,6 +7,7 @@
 #include "StageManager.h"
 #include "MixerWindow.h"      // full definition needed for MixerParam + learn/apply methods
 #include "../MetronomeWindow.h"
+#include "../VUMeterWindow.h"
 
 // Forward declarations — full definitions only needed in UIManager.cpp
 class MainComponent;
@@ -65,6 +66,7 @@ public:
     void toggleMixerWindow      (bool show);
     void toggleStageWindow      (bool show);
     void toggleMetronomeWindow  (bool show);
+    void toggleVuMeterWindow    (bool show);
     void openSettings();
 
     // Restore StageWindow state (visibility + bounds) from ApplicationProperties.
@@ -152,6 +154,8 @@ private:
     std::unique_ptr<MetronomeWindow>     metronomeWindow_;
     std::unique_ptr<SettingsWindow>      settingsWindow_;
     std::unique_ptr<StageWindow>         stageWindow_;
+    std::unique_ptr<VUPhysicsEngine>     vuPhysicsEngine_;
+    std::unique_ptr<VUMeterWindow>       vuMeterWindow_;
 
     // Mixer MIDI mapping state
     LearnState                               learnState_;

@@ -21,7 +21,10 @@ UIManager::UIManager (AudioEngine&                  audioEngine,
       appProperties_    (appProperties),
       knownPlugins_     (knownPlugins),
       stageManager_     (stageManager)
-{}
+{
+    vuPhysicsEngine_ = std::make_unique<VUPhysicsEngine> (
+        [this] (int ch) { return audioEngine_.exchangeRms (ch); });
+}
 
 UIManager::~UIManager() = default;
 
@@ -71,6 +74,7 @@ void UIManager::setMainComponent (MainComponent* mc)
     mc_->onMixerToggle         = [this] (bool show) { toggleMixerWindow     (show); };
     mc_->onStageToggle         = [this] (bool show) { toggleStageWindow     (show); };
     mc_->onMetronomeToggle     = [this] (bool show) { toggleMetronomeWindow (show); };
+    mc_->onVuMeterToggle       = [this] (bool show) { toggleVuMeterWindow   (show); };
     mc_->onLaunchBridgeClicked = [this] { launchBridgeFileChooser(); };
 
     // Beat callback: fires on message thread (via AsyncUpdater in MetronomeProcessor)
@@ -132,6 +136,7 @@ void UIManager::shutdown()
     settingsWindow_.reset();
     mixerWindow_.reset();
     metronomeWindow_.reset();
+    vuMeterWindow_.reset();
     mc_ = nullptr;
 }
 
@@ -296,6 +301,26 @@ void UIManager::toggleMetronomeWindow (bool show)
     {
         if (metronomeWindow_ != nullptr)
             metronomeWindow_->setVisible (false);
+    }
+}
+
+void UIManager::toggleVuMeterWindow (bool show)
+{
+    if (show)
+    {
+        if (vuMeterWindow_ == nullptr)
+        {
+            vuMeterWindow_ = std::make_unique<VUMeterWindow> (*vuPhysicsEngine_);
+            vuPhysicsEngine_->start();
+        }
+        vuMeterWindow_->show();
+        if (mc_ != nullptr) mc_->setVuMeterWindowVisible (true);
+    }
+    else
+    {
+        if (vuMeterWindow_ != nullptr)
+            vuMeterWindow_->hide();
+        if (mc_ != nullptr) mc_->setVuMeterWindowVisible (false);
     }
 }
 

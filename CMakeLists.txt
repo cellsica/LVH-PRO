@@ -63,6 +63,7 @@ target_sources(LVH
         Source/Core/UIManager.cpp
         Source/Core/StageManager.cpp
         Source/MetronomeManager.cpp
+        Source/VUMeterWindow.cpp
 )
 
 # コンパイル定義

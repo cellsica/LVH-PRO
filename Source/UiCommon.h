@@ -238,6 +238,33 @@ namespace Icons
         // Bob (small filled circle at end of arm)
         g.fillEllipse (bobX - 2.2f, bobY - 2.2f, 4.4f, 4.4f);
     }
+
+    // VU meter icon — semi-circular scale arc + needle + pivot dot
+    inline void vuMeter (Graphics& g, Rectangle<float> a)
+    {
+        g.setColour (Colours::white);
+
+        const float cx      = a.getCentreX();
+        const float py      = a.getBottom() - a.getHeight() * 0.15f;  // pivot y
+        const float r       = a.getWidth()  * 0.38f;                  // arc radius
+        const float arcFrom = juce::MathConstants<float>::pi * 1.15f; // ~207°
+        const float arcTo   = juce::MathConstants<float>::pi * 1.85f; // ~333°
+
+        // Scale arc
+        juce::Path arc;
+        arc.addCentredArc (cx, py, r, r, 0.f, arcFrom, arcTo, true);
+        g.strokePath (arc, juce::PathStrokeType (1.5f));
+
+        // Needle at ~70% deflection (pointing upper-right)
+        const float angle  = arcFrom + (arcTo - arcFrom) * 0.70f;
+        const float needleLen = r * 0.88f;
+        const float nx     = cx + needleLen * std::cos (angle);
+        const float ny     = py + needleLen * std::sin (angle);
+        g.drawLine (cx, py, nx, ny, 1.5f);
+
+        // Pivot dot
+        g.fillEllipse (cx - 2.f, py - 2.f, 4.f, 4.f);
+    }
 }
 
 // =====================================================================
