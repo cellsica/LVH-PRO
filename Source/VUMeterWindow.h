@@ -265,43 +265,60 @@ private:
 
 // =========================================================================
 // VUMeterWindow
-// Manages the VUMeterComponent as a frameless, always-on-top, semi-transparent
-// overlay window.  Win32 only: click-through via WM_NCHITTEST subclassing —
-// the bottom kHandleH px strip is interactive (HTCLIENT), the rest is
-// transparent to mouse input (HTTRANSPARENT).
+// DocumentWindow that hosts VUMeterComponent.
+// Extends the proven DocumentWindow pattern used by MixerWindow /
+// MetronomeWindow in this project, then applies Win32 overlay styles:
+//   - Always-on-top (via JUCE setAlwaysOnTop)
+//   - 90% opacity (WS_EX_LAYERED / SetLayeredWindowAttributes)
+//   - Click-through (WM_NCHITTEST subclass):
+//       non-client area (title bar) → handled by original proc as-is
+//       client area, bottom kHandleH px → HTCLIENT (drag + right-click)
+//       client area, rest → HTTRANSPARENT (click-through)
 // =========================================================================
-class VUMeterWindow
+class VUMeterWindow : public juce::DocumentWindow
 {
 public:
+    // Fired when the user clicks the window's close button.
+    // Wire this to update the toolbar toggle button state.
+    std::function<void()> onClose;
+
     explicit VUMeterWindow (VUPhysicsEngine& physics)
+        : juce::DocumentWindow ("VU Meter",
+                                juce::Colour (0xFF2E2416),
+                                juce::DocumentWindow::closeButton)
     {
-        component_ = std::make_unique<VUMeterComponent> (physics);
+        auto* comp = new VUMeterComponent (physics);
+        component_ = comp;
+        setUsingNativeTitleBar (true);
+        setResizable (false, false);
+        setContentOwned (comp, true);
+        centreWithSize (VUMeterComponent::kW, VUMeterComponent::kH);
+        setAlwaysOnTop (true);
     }
 
-    ~VUMeterWindow()
+    void closeButtonPressed() override
     {
-        uninstallWndProc();
-        if (component_->isOnDesktop())
-            component_->removeFromDesktop();
+        setVisible (false);
+        if (onClose) onClose();
     }
 
-    void show();   // implemented in VUMeterWindow.cpp
-    void hide() { component_->setVisible (false); }
+    void show()
+    {
+        setVisible (true);
+        toFront (false);
+        applyWin32Styles();   // idempotent — installs once
+    }
 
-    bool isVisible() const { return component_->isVisible(); }
+    void hide() { setVisible (false); }
 
     VUMeterComponent& getComponent() noexcept { return *component_; }
 
-    // Persist window position across sessions.
-    juce::Point<int> getPosition() const { return component_->getPosition(); }
-    void             setPosition (juce::Point<int> p) { component_->setTopLeftPosition (p); }
-
 private:
-    void applyWin32Styles();   // Win32 implementation in VUMeterWindow.cpp
+    void applyWin32Styles();   // implemented in VUMeterWindow.cpp
     void uninstallWndProc();
 
-    std::unique_ptr<VUMeterComponent> component_;
-    void* nativeHwnd_ = nullptr;   // opaque HWND — valid only after applyWin32Styles()
+    VUMeterComponent* component_  = nullptr;
+    void*             nativeHwnd_ = nullptr;   // non-null after first applyWin32Styles()
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VUMeterWindow)
 };

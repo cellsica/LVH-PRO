@@ -312,6 +312,9 @@ void UIManager::toggleVuMeterWindow (bool show)
         {
             vuMeterWindow_ = std::make_unique<VUMeterWindow> (*vuPhysicsEngine_);
             vuPhysicsEngine_->start();
+            vuMeterWindow_->onClose = [this] {
+                if (mc_ != nullptr) mc_->setVuMeterWindowVisible (false);
+            };
         }
         vuMeterWindow_->show();
         if (mc_ != nullptr) mc_->setVuMeterWindowVisible (true);

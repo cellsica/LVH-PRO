@@ -9,16 +9,29 @@
 
 // =========================================================================
 // Win32 WndProc subclass (file-scope, not a class member)
+// Strategy: call the original JUCE proc first to get the baseline hit-test
+// result, then override only HTCLIENT responses for the face area.
+// This ensures the native title bar (HTCAPTION / HTCLOSE / HTSYSMENU)
+// continues to work normally — only the client area becomes click-through.
 // =========================================================================
 #if JUCE_WINDOWS
 
 static LRESULT CALLBACK vuMeterSubclassProc (HWND hwnd, UINT msg,
                                               WPARAM wp, LPARAM lp)
 {
+    auto* original = (WNDPROC) GetProp (hwnd, "VUMeterOriginalProc");
+
     if (msg == WM_NCHITTEST)
     {
-        // Screen-space coordinates — signed cast handles negative multi-monitor coords
-        const int cursorY = (short) HIWORD (lp);
+        // Ask the original JUCE WndProc for its opinion first.
+        LRESULT base = original ? CallWindowProc (original, hwnd, msg, wp, lp)
+                                : DefWindowProc  (hwnd, msg, wp, lp);
+
+        // Leave non-client hits (title bar, close button, border, …) untouched.
+        if (base != HTCLIENT) return base;
+
+        // For the client area, apply click-through except the handle strip.
+        const int cursorY = (short) HIWORD (lp);   // screen Y, signed
         RECT rc;
         GetWindowRect (hwnd, &rc);
 
@@ -26,11 +39,9 @@ static LRESULT CALLBACK vuMeterSubclassProc (HWND hwnd, UINT msg,
         if (cursorY >= rc.bottom - VUMeterComponent::kHandleH)
             return HTCLIENT;
 
-        return HTTRANSPARENT;   // rest of window: click-through
+        return HTTRANSPARENT;   // face area → click-through
     }
 
-    // Dispatch to original JUCE WndProc stored as a window property
-    auto* original = (WNDPROC) GetProp (hwnd, "VUMeterOriginalProc");
     return original ? CallWindowProc (original, hwnd, msg, wp, lp)
                     : DefWindowProc  (hwnd, msg, wp, lp);
 }
@@ -38,42 +49,30 @@ static LRESULT CALLBACK vuMeterSubclassProc (HWND hwnd, UINT msg,
 #endif   // JUCE_WINDOWS
 
 // =========================================================================
-// VUMeterWindow — public + private method implementations
+// VUMeterWindow — Win32 style application (idempotent)
 // =========================================================================
-
-void VUMeterWindow::show()
-{
-    if (! component_->isOnDesktop())
-    {
-        component_->addToDesktop (juce::ComponentPeer::windowIsTemporary);
-        applyWin32Styles();
-    }
-    component_->setVisible (true);
-    component_->toFront (false);
-}
 
 void VUMeterWindow::applyWin32Styles()
 {
 #if JUCE_WINDOWS
-    auto* peer = component_->getPeer();
+    if (nativeHwnd_ != nullptr) return;   // already installed
+
+    auto* peer = getPeer();
     if (peer == nullptr) return;
 
     auto* hwnd = (HWND) peer->getNativeHandle();
     nativeHwnd_ = hwnd;
 
-    // Add layered (alpha), tool window (no taskbar entry), topmost
+    // Add layered window for alpha-based transparency
     LONG_PTR ex = GetWindowLongPtr (hwnd, GWL_EXSTYLE);
-    ex |= WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST;
+    ex |= WS_EX_LAYERED;
     SetWindowLongPtr (hwnd, GWL_EXSTYLE, ex);
 
     // 90% opacity
     SetLayeredWindowAttributes (hwnd, 0, 230, LWA_ALPHA);
 
-    // Force topmost placement
-    SetWindowPos (hwnd, HWND_TOPMOST, 0, 0, 0, 0,
-                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-
-    // Subclass WndProc — store original proc as a window property
+    // Subclass WndProc for NCHITTEST click-through;
+    // store original proc as a window property (avoids class member access).
     LONG_PTR original = SetWindowLongPtr (hwnd, GWLP_WNDPROC,
                                            (LONG_PTR) vuMeterSubclassProc);
     SetProp (hwnd, "VUMeterOriginalProc", (HANDLE) original);
