@@ -63,13 +63,8 @@ void VUMeterWindow::applyWin32Styles()
     auto* hwnd = (HWND) peer->getNativeHandle();
     nativeHwnd_ = hwnd;
 
-    // Add layered window for alpha-based transparency
-    LONG_PTR ex = GetWindowLongPtr (hwnd, GWL_EXSTYLE);
-    ex |= WS_EX_LAYERED;
-    SetWindowLongPtr (hwnd, GWL_EXSTYLE, ex);
-
-    // Apply stored opacity
-    SetLayeredWindowAttributes (hwnd, 0, (BYTE) (opacity_ * 255.f), LWA_ALPHA);
+    // Apply opacity via JUCE peer API (handles WS_EX_LAYERED internally).
+    peer->setAlpha (opacity_);
 
     // Subclass WndProc for NCHITTEST click-through;
     // store original proc as a window property (avoids class member access).
@@ -82,11 +77,9 @@ void VUMeterWindow::applyWin32Styles()
 void VUMeterWindow::setOpacity (float opacity)
 {
     opacity_ = juce::jlimit (0.0f, 1.0f, opacity);
-#if JUCE_WINDOWS
-    if (nativeHwnd_ != nullptr)
-        SetLayeredWindowAttributes ((HWND) nativeHwnd_, 0,
-                                    (BYTE) (opacity_ * 255.f), LWA_ALPHA);
-#endif
+    // Always use the live peer — avoids stale HWND issues.
+    if (auto* peer = getPeer())
+        peer->setAlpha (opacity_);
 }
 
 void VUMeterWindow::uninstallWndProc()
