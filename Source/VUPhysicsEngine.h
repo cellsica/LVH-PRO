@@ -23,7 +23,7 @@ class VUPhysicsEngine : private juce::Timer
 {
 public:
     // dB range mapped to needle angle [0, 1]
-    static constexpr float kMinDb   = -20.0f;   // angle = 0.0 (full left)
+    static constexpr float kMinDb   = -40.0f;   // angle = 0.0 (full left)
     static constexpr float kMaxDb   =   3.0f;   // angle = 1.0 (full right)
     static constexpr int   kTimerHz =  60;
 

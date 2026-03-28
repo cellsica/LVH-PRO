@@ -193,10 +193,11 @@ private:
     {
         struct Mark { float db; bool major; };
         static const Mark kMarks[] = {
-            { -20.f, true  }, { -10.f, true  }, {  -7.f, false },
-            {  -5.f, false }, {  -3.f, true  }, {  -2.f, false },
-            {  -1.f, false }, {   0.f, true  }, {  +1.f, false },
-            {  +2.f, false }, {  +3.f, true  }
+            { -40.f, true  }, { -30.f, true  }, { -20.f, true  },
+            { -10.f, true  }, {  -7.f, false }, {  -5.f, false },
+            {  -3.f, true  }, {  -2.f, false }, {  -1.f, false },
+            {   0.f, true  }, {  +1.f, false }, {  +2.f, false },
+            {  +3.f, true  }
         };
 
         for (const auto& m : kMarks)
