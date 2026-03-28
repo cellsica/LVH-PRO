@@ -29,24 +29,47 @@ public:
         gain.store    (1.f);
         peaks[0].store (0.f);
         peaks[1].store (0.f);
+        rms[0].store (0.f);
+        rms[1].store (0.f);
     }
 
-    void prepareToPlay (double, int) override
+    void prepareToPlay (double sampleRate, int samplesPerBlock) override
     {
         peaks[0].store (0.f);
         peaks[1].store (0.f);
+        rms[0].store (0.f);
+        rms[1].store (0.f);
+        rmsSmoothed[0] = 0.f;
+        rmsSmoothed[1] = 0.f;
+
+        // IIR smoothing coefficient — 50ms time constant.
+        // Physics engine handles VU ballistics, so we just need a stable short-window RMS.
+        const double tau = 0.05;
+        rmsAlpha = (float)(1.0 - std::exp (-(double)samplesPerBlock / (tau * sampleRate)));
     }
     void releaseResources() override {}
 
     void processBlock (AudioBuffer<float>& buffer, MidiBuffer&) override
     {
         float g = gain.load (std::memory_order_relaxed);
+        const int numSamples = buffer.getNumSamples();
         for (int ch = 0; ch < jmin (2, buffer.getNumChannels()); ++ch)
         {
-            buffer.applyGain (ch, 0, buffer.getNumSamples(), g);
-            float p = buffer.getMagnitude (ch, 0, buffer.getNumSamples());
+            buffer.applyGain (ch, 0, numSamples, g);
+
+            // Peak
+            float p = buffer.getMagnitude (ch, 0, numSamples);
             float cur = peaks[ch].load (std::memory_order_relaxed);
             if (p > cur) peaks[ch].store (p, std::memory_order_relaxed);
+
+            // RMS — block-level then IIR-smoothed
+            const float* data = buffer.getReadPointer (ch);
+            float sumSq = 0.f;
+            for (int i = 0; i < numSamples; ++i)
+                sumSq += data[i] * data[i];
+            float blockRms = std::sqrt (sumSq / (float)numSamples);
+            rmsSmoothed[ch] += rmsAlpha * (blockRms - rmsSmoothed[ch]);
+            rms[ch].store (rmsSmoothed[ch], std::memory_order_relaxed);
         }
     }
 
@@ -55,6 +78,13 @@ public:
     {
         if (ch < 0 || ch > 1) return 0.f;
         return peaks[ch].exchange (0.f, std::memory_order_relaxed);
+    }
+
+    // Call from the message thread only — returns latest smoothed RMS and resets.
+    float exchangeRms (int ch)
+    {
+        if (ch < 0 || ch > 1) return 0.f;
+        return rms[ch].exchange (0.f, std::memory_order_relaxed);
     }
 
     void setGain (float g) noexcept { gain.store (g, std::memory_order_relaxed); }
@@ -77,6 +107,11 @@ public:
 private:
     std::atomic<float> gain;
     std::atomic<float> peaks[2];
+
+    // RMS (VU meter)
+    std::atomic<float> rms[2];
+    float rmsSmoothed[2] = {};  // IIR state — audio thread only
+    float rmsAlpha       = 0.1f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GainAndMeterProcessor)
 };
@@ -119,6 +154,12 @@ public:
     float exchangePeak (int ch)
     {
         return meterGainProcessor ? meterGainProcessor->exchangePeak (ch) : 0.f;
+    }
+
+    // RMS levels for VU meter — call from message thread only.
+    float exchangeRms (int ch)
+    {
+        return meterGainProcessor ? meterGainProcessor->exchangeRms (ch) : 0.f;
     }
 
     // Master output gain — thread-safe.
