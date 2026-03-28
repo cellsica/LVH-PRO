@@ -295,10 +295,15 @@ public:
         setContentOwned (comp, true);
         centreWithSize (VUMeterComponent::kW, VUMeterComponent::kH);
         setAlwaysOnTop (true);
-        // Must be opaque so JUCE uses WM_PAINT (GDI) instead of UpdateLayeredWindow.
-        // UpdateLayeredWindow and SetLayeredWindowAttributes are mutually exclusive;
-        // without this, peer->setAlpha() has no effect.
-        setOpaque (true);
+    }
+
+    // Adds windowIsSemiTransparent so JUCE sets WS_EX_LAYERED at creation.
+    // This enables the UpdateLayeredWindow path, where peer->setAlpha() works
+    // by storing the alpha in updateLayeredWindowAlpha and triggering a repaint.
+    int getDesktopWindowStyleFlags() const override
+    {
+        return DocumentWindow::getDesktopWindowStyleFlags()
+               | juce::ComponentPeer::windowIsSemiTransparent;
     }
 
     void closeButtonPressed() override
