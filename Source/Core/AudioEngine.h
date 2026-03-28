@@ -80,11 +80,13 @@ public:
         return peaks[ch].exchange (0.f, std::memory_order_relaxed);
     }
 
-    // Call from the message thread only — returns latest smoothed RMS and resets.
+    // Call from the message thread only — returns latest smoothed RMS.
+    // Uses load (not exchange) so the physics engine always sees the current
+    // IIR-smoothed value regardless of timer/audio-block timing.
     float exchangeRms (int ch)
     {
         if (ch < 0 || ch > 1) return 0.f;
-        return rms[ch].exchange (0.f, std::memory_order_relaxed);
+        return rms[ch].load (std::memory_order_relaxed);
     }
 
     void setGain (float g) noexcept { gain.store (g, std::memory_order_relaxed); }
