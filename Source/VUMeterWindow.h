@@ -2,10 +2,6 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "VUPhysicsEngine.h"
 
-#if JUCE_WINDOWS
- #include <windows.h>
-#endif
-
 // =========================================================================
 // VUMeterComponent
 // Draws a dual-channel (L + R) analogue VU meter face at 60 fps.
@@ -289,17 +285,7 @@ public:
             component_->removeFromDesktop();
     }
 
-    void show()
-    {
-        if (! component_->isOnDesktop())
-        {
-            component_->addToDesktop (juce::ComponentPeer::windowIsTemporary);
-            applyWin32Styles();
-        }
-        component_->setVisible (true);
-        component_->toFront (false);
-    }
-
+    void show();   // implemented in VUMeterWindow.cpp
     void hide() { component_->setVisible (false); }
 
     bool isVisible() const { return component_->isVisible(); }
@@ -311,79 +297,11 @@ public:
     void             setPosition (juce::Point<int> p) { component_->setTopLeftPosition (p); }
 
 private:
-    // ---- Win32 styles ---------------------------------------------------
-    void applyWin32Styles()
-    {
-#if JUCE_WINDOWS
-        if (auto* peer = component_->getPeer())
-        {
-            nativeHwnd_ = (HWND) peer->getNativeHandle();
-
-            // Layered (for alpha), tool (no taskbar), topmost
-            LONG_PTR ex = GetWindowLongPtr (nativeHwnd_, GWL_EXSTYLE);
-            ex |= WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST;
-            SetWindowLongPtr (nativeHwnd_, GWL_EXSTYLE, ex);
-
-            // 90% opacity
-            SetLayeredWindowAttributes (nativeHwnd_, 0, 230, LWA_ALPHA);
-
-            // Force topmost position
-            SetWindowPos (nativeHwnd_, HWND_TOPMOST, 0, 0, 0, 0,
-                          SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-
-            // Subclass WndProc for NCHITTEST click-through
-            SetProp (nativeHwnd_, L"VUMeterWindowPtr", (HANDLE) this);
-            originalWndProc_ = (WNDPROC) SetWindowLongPtr (
-                nativeHwnd_, GWLP_WNDPROC, (LONG_PTR) vuMeterWndProc);
-        }
-#endif
-    }
-
-    void uninstallWndProc()
-    {
-#if JUCE_WINDOWS
-        if (nativeHwnd_ && originalWndProc_)
-        {
-            SetWindowLongPtr (nativeHwnd_, GWLP_WNDPROC,
-                              (LONG_PTR) originalWndProc_);
-            RemoveProp (nativeHwnd_, L"VUMeterWindowPtr");
-            originalWndProc_ = nullptr;
-            nativeHwnd_      = nullptr;
-        }
-#endif
-    }
-
-#if JUCE_WINDOWS
-    // Custom WndProc: bottom kHandleH px → HTCLIENT (interactive),
-    // everything else → HTTRANSPARENT (click-through).
-    static LRESULT CALLBACK vuMeterWndProc (HWND hwnd, UINT msg,
-                                            WPARAM wp, LPARAM lp)
-    {
-        if (msg == WM_NCHITTEST)
-        {
-            // Screen-space cursor position (use signed cast for multi-monitor)
-            const int cursorY = (short) HIWORD (lp);
-            RECT rc;
-            GetWindowRect (hwnd, &rc);
-
-            if (cursorY >= rc.bottom - VUMeterComponent::kHandleH)
-                return HTCLIENT;       // interactive strip
-
-            return HTTRANSPARENT;      // click-through
-        }
-
-        auto* self = (VUMeterWindow*) GetProp (hwnd, L"VUMeterWindowPtr");
-        if (self && self->originalWndProc_)
-            return CallWindowProc (self->originalWndProc_, hwnd, msg, wp, lp);
-
-        return DefWindowProc (hwnd, msg, wp, lp);
-    }
-
-    HWND    nativeHwnd_      = nullptr;
-    WNDPROC originalWndProc_ = nullptr;
-#endif
+    void applyWin32Styles();   // Win32 implementation in VUMeterWindow.cpp
+    void uninstallWndProc();
 
     std::unique_ptr<VUMeterComponent> component_;
+    void* nativeHwnd_ = nullptr;   // opaque HWND — valid only after applyWin32Styles()
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VUMeterWindow)
 };

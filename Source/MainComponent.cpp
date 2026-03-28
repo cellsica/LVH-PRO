@@ -51,6 +51,14 @@ MainComponent::MainComponent (MidiKeyboardState& state)
     metronomeToggleButton->setColour (TextButton::buttonOnColourId, Colour (0xff205040));
     metronomeToggleButton->onClick = [this] { toggleMetronome(); };
 
+    vuMeterToggleButton = std::make_unique<IconButton> ("Open VU Meter", Icons::vuMeter);
+    addAndMakeVisible (*vuMeterToggleButton);
+    vuMeterToggleButton->setClickingTogglesState (true);
+    vuMeterToggleButton->setToggleState (false, dontSendNotification);
+    vuMeterToggleButton->setColour (TextButton::buttonColourId,   Colour (0xff333344));
+    vuMeterToggleButton->setColour (TextButton::buttonOnColourId, Colour (0xff3a2850));
+    vuMeterToggleButton->onClick = [this] { toggleVuMeter(); };
+
     octaveDownButton = std::make_unique<TextButton> ("-");
     addAndMakeVisible (*octaveDownButton);
     octaveDownButton->setTooltip ("Octave Down (shortcut: [)");
@@ -172,6 +180,11 @@ void MainComponent::toggleMetronome()
         onMetronomeToggle (metronomeToggleButton->getToggleState());
 }
 
+void MainComponent::toggleVuMeter()
+{
+    if (onVuMeterToggle)
+        onVuMeterToggle (vuMeterToggleButton->getToggleState());
+}
 
 // ── Scan overlay ───────────────────────────────────────────────────────────
 
@@ -246,6 +259,11 @@ void MainComponent::setMetronomeWindowVisible (bool v)
     metronomeToggleButton->setToggleState (v, dontSendNotification);
 }
 
+void MainComponent::setVuMeterWindowVisible (bool v)
+{
+    vuMeterToggleButton->setToggleState (v, dontSendNotification);
+}
+
 
 // ── Paint ──────────────────────────────────────────────────────────────────
 
@@ -277,6 +295,7 @@ void MainComponent::resized()
     mixerToggleButton     ->setBounds (toolbar.removeFromLeft (36).reduced (2));
     stageToggleButton     ->setBounds (toolbar.removeFromLeft (36).reduced (2));
     metronomeToggleButton ->setBounds (toolbar.removeFromLeft (36).reduced (2));
+    vuMeterToggleButton   ->setBounds (toolbar.removeFromLeft (36).reduced (2));
 
     toolbar.removeFromLeft (6); // small gap
     octaveDownButton   ->setBounds (toolbar.removeFromLeft (26).reduced (2));
