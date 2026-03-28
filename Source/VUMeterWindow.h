@@ -295,6 +295,10 @@ public:
         setContentOwned (comp, true);
         centreWithSize (VUMeterComponent::kW, VUMeterComponent::kH);
         setAlwaysOnTop (true);
+        // Must be opaque so JUCE uses WM_PAINT (GDI) instead of UpdateLayeredWindow.
+        // UpdateLayeredWindow and SetLayeredWindowAttributes are mutually exclusive;
+        // without this, peer->setAlpha() has no effect.
+        setOpaque (true);
     }
 
     void closeButtonPressed() override
