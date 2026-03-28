@@ -591,7 +591,8 @@ SettingsWindow::Content::Content (AudioDeviceManager& dm, PropertiesFile* prefs,
     addPage (LvhStr ("STR_NAV_MIDI_SETTINGS"), midiPage_);
 
     visualPage_ = new VisualizerSettingsPage (prefs);
-    visualPage_->onVuThemeChanged = cbs.onVuThemeChanged;
+    visualPage_->onVuThemeChanged   = cbs.onVuThemeChanged;
+    visualPage_->onVuOpacityChanged = cbs.onVuOpacityChanged;
     addPage (LvhStr ("STR_NAV_VISUALIZER"), visualPage_);
 
     selectPage (0);
