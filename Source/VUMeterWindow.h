@@ -2,10 +2,19 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "VUPhysicsEngine.h"
 
+#if JUCE_WINDOWS
+ #include <windows.h>
+#endif
+
 // =========================================================================
 // VUMeterComponent
 // Draws a dual-channel (L + R) analogue VU meter face at 60 fps.
 // Geometry: two 190×132 px faces side by side, pivot 30 px below each face.
+//
+// Interaction (Phase D):
+//   Bottom kHandleH px strip is the only interactive area (left-drag to move,
+//   right-click for backlight menu).  The rest of the window is click-through
+//   via Win32 NCHITTEST.
 // =========================================================================
 class VUMeterComponent : public juce::Component,
                          private juce::Timer
@@ -13,8 +22,9 @@ class VUMeterComponent : public juce::Component,
 public:
     enum class Theme { VintageWarm, OxygenNeon };
 
-    static constexpr int kW = 390;
-    static constexpr int kH = 152;
+    static constexpr int kW       = 390;
+    static constexpr int kH       = 152;
+    static constexpr int kHandleH =  16;   // interactive strip at bottom
 
     explicit VUMeterComponent (VUPhysicsEngine& physics)
         : physics_ (physics)
@@ -30,17 +40,17 @@ private:
     // ---- geometry -------------------------------------------------------
     static constexpr float kMeterW    = 190.f;
     static constexpr float kMeterH    = 132.f;
-    static constexpr float kGap       =   4.f;   // gap between L and R face
-    static constexpr float kPad       =   3.f;   // outer padding
-    static constexpr float kLabelH    =  14.f;   // "L" / "R" label area
-    static constexpr float kPivotOffY =  30.f;   // pivot below face bottom
-    static constexpr float kTickRad   = 108.f;   // radius to outer tick edge
-    static constexpr float kLabelRad  =  92.f;   // radius to label centre
-    static constexpr float kNeedleLen = 102.f;   // pivot → tip
-    static constexpr float kSwingDeg  =  50.f;   // half-angle of full swing
+    static constexpr float kGap       =   4.f;
+    static constexpr float kPad       =   3.f;
+    static constexpr float kLabelH    =  14.f;
+    static constexpr float kPivotOffY =  30.f;
+    static constexpr float kTickRad   = 108.f;
+    static constexpr float kLabelRad  =  92.f;
+    static constexpr float kNeedleLen = 102.f;
+    static constexpr float kSwingDeg  =  50.f;
 
-    static constexpr float kMinDb = VUPhysicsEngine::kMinDb;  // -20
-    static constexpr float kMaxDb = VUPhysicsEngine::kMaxDb;  //  +3
+    static constexpr float kMinDb = VUPhysicsEngine::kMinDb;
+    static constexpr float kMaxDb = VUPhysicsEngine::kMaxDb;
 
     // ---- colour palette -------------------------------------------------
     struct Palette { juce::Colour frame, face, needle, redZone, text, zeroDB; };
@@ -48,13 +58,13 @@ private:
     Palette palette() const noexcept
     {
         if (theme_ == Theme::VintageWarm)
-            return { juce::Colour (0xFF2E2416),   // frame (dark walnut)
-                     juce::Colour (0xFFFDF5E6),   // face (cream)
-                     juce::Colour (0xFF333333),   // needle
-                     juce::Colour (0xFFE63946),   // red zone
-                     juce::Colour (0xFF777766),   // scale text
-                     juce::Colour (0xFF222222) }; // 0 dB marker
-        else // OxygenNeon
+            return { juce::Colour (0xFF2E2416),
+                     juce::Colour (0xFFFDF5E6),
+                     juce::Colour (0xFF333333),
+                     juce::Colour (0xFFE63946),
+                     juce::Colour (0xFF777766),
+                     juce::Colour (0xFF222222) };
+        else
             return { juce::Colour (0xFF0A0A14),
                      juce::Colour (0xFF1A1A2A),
                      juce::Colour (0xFFFF8C00),
@@ -69,7 +79,6 @@ private:
         return (db - kMinDb) / (kMaxDb - kMinDb);
     }
 
-    // Maps physics angle [0,1] to a screen point at the given radius.
     static juce::Point<float> toPoint (float physAngle, float radius,
                                        float px, float py) noexcept
     {
@@ -91,10 +100,9 @@ private:
         for (int ch = 0; ch < 2; ++ch)
         {
             const float fx = kPad + ch * (kMeterW + kGap);
-            const float fy = kPad;
-            drawMeter (g, ch, fx, fy, pal);
+            drawMeter (g, ch, fx, kPad, pal);
 
-            // Channel label (L / R)
+            // Channel label
             g.setFont (juce::Font (10.f, juce::Font::bold));
             g.setColour (pal.text);
             g.drawText (ch == 0 ? "L" : "R",
@@ -102,6 +110,18 @@ private:
                         (int)kMeterW, (int)kLabelH,
                         juce::Justification::centred);
         }
+
+        // Drag handle indicator — three dots centred at the bottom strip
+        drawDragHandle (g, pal);
+    }
+
+    void drawDragHandle (juce::Graphics& g, const Palette& pal)
+    {
+        const int cy   = kH - kHandleH / 2;
+        const int cx   = kW / 2;
+        g.setColour (pal.text.withAlpha (0.55f));
+        for (int i = -1; i <= 1; ++i)
+            g.fillEllipse ((float)(cx + i * 6 - 1), (float)(cy - 1), 3.f, 3.f);
     }
 
     void drawMeter (juce::Graphics& g, int ch,
@@ -111,29 +131,28 @@ private:
         const float pivotX = fx + kMeterW * 0.5f;
         const float pivotY = fy + kMeterH + kPivotOffY;
 
-        // 1. Face background
+        // Face
         g.setColour (pal.face);
         g.fillRoundedRectangle (face, 5.f);
 
-        // 2. Red zone arc band (0 dB → +3 dB)
+        // Red zone arc
         drawRedArc (g, pivotX, pivotY, pal.redZone);
 
-        // 3. Scale ticks + dB labels
+        // Scale
         drawScale (g, pivotX, pivotY, pal);
 
-        // 4. Needle
+        // Needle
         const float physAngle = juce::jlimit (0.f, 1.15f,
                                               physics_.getNeedleAngle (ch));
         const auto tip = toPoint (physAngle, kNeedleLen, pivotX, pivotY);
 
-        g.setColour (juce::Colours::black.withAlpha (0.20f));  // shadow
-        g.drawLine (pivotX + 1.f, pivotY + 1.f,
-                    tip.x  + 1.f, tip.y  + 1.f, 1.8f);
+        g.setColour (juce::Colours::black.withAlpha (0.20f));
+        g.drawLine (pivotX + 1.f, pivotY + 1.f, tip.x + 1.f, tip.y + 1.f, 1.8f);
         g.setColour (pal.needle);
         g.drawLine (pivotX, pivotY, tip.x, tip.y, 1.8f);
-        g.fillEllipse (pivotX - 3.5f, pivotY - 3.5f, 7.f, 7.f); // pivot dot
+        g.fillEllipse (pivotX - 3.5f, pivotY - 3.5f, 7.f, 7.f);
 
-        // 5. Glass sheen — top 45% of face, white gradient
+        // Glass sheen
         {
             juce::ColourGradient sheen (
                 juce::Colours::white.withAlpha (0.22f), fx, fy,
@@ -145,39 +164,34 @@ private:
             g.fillRoundedRectangle (face, 5.f);
         }
 
-        // 6. Border
+        // Border
         g.setColour (pal.frame.brighter (0.25f));
         g.drawRoundedRectangle (face, 5.f, 1.5f);
     }
 
-    // Filled arc band marking the red zone (0 dB to +3 dB).
     void drawRedArc (juce::Graphics& g, float px, float py,
                      juce::Colour col) const
     {
-        const float zeroA = dbToPhysAngle (0.f);   // 0 dB physAngle ≈ 0.87
-        const float maxA  = 1.f;                   // +3 dB physAngle
-
-        const float r1 = kTickRad - 14.f;
-        const float r2 = kTickRad - 1.f;
+        const float zeroA = dbToPhysAngle (0.f);
+        const float r1    = kTickRad - 14.f;
+        const float r2    = kTickRad -  1.f;
 
         g.setColour (col.withAlpha (0.30f));
         const int steps = 16;
         for (int i = 0; i < steps; ++i)
         {
-            const float t1 = juce::jmap ((float)i,       0.f, (float)steps, zeroA, maxA);
-            const float t2 = juce::jmap ((float)(i + 1), 0.f, (float)steps, zeroA, maxA);
+            const float t1 = juce::jmap ((float)i,       0.f, (float)steps, zeroA, 1.f);
+            const float t2 = juce::jmap ((float)(i + 1), 0.f, (float)steps, zeroA, 1.f);
             const auto  a  = toPoint (t1, r1, px, py);
             const auto  b  = toPoint (t1, r2, px, py);
             const auto  c  = toPoint (t2, r2, px, py);
             const auto  d  = toPoint (t2, r1, px, py);
-
             juce::Path seg;
             seg.addQuadrilateral (a.x, a.y, b.x, b.y, c.x, c.y, d.x, d.y);
             g.fillPath (seg);
         }
     }
 
-    // Tick marks and dB labels along the scale arc.
     void drawScale (juce::Graphics& g, float px, float py,
                     const Palette& pal) const
     {
@@ -199,33 +213,38 @@ private:
             const bool isRed  = m.db >  0.f;
             const bool isZero = m.db == 0.f;
 
-            g.setColour (isRed ? pal.redZone
-                               : (isZero ? pal.zeroDB : pal.text));
+            g.setColour (isRed  ? pal.redZone
+                       : isZero ? pal.zeroDB : pal.text);
             g.drawLine (p1.x, p1.y, p2.x, p2.y,
                         isZero ? 2.2f : (m.major ? 1.5f : 1.0f));
 
-            // dB number (major ticks only)
             if (m.major)
             {
-                const auto lp = toPoint (pa, kLabelRad, px, py);
+                const auto lp  = toPoint (pa, kLabelRad, px, py);
                 const juce::String lbl = (m.db > 0.f)
                     ? ("+" + juce::String ((int)m.db))
                     : juce::String ((int)m.db);
                 g.setFont (juce::Font (8.5f));
                 g.setColour (isRed ? pal.redZone : pal.text);
-                g.drawText (lbl,
-                            (int)(lp.x - 13), (int)(lp.y - 7),
-                            26, 14,
-                            juce::Justification::centred);
+                g.drawText (lbl, (int)(lp.x - 13), (int)(lp.y - 7),
+                            26, 14, juce::Justification::centred);
             }
         }
     }
 
-    // ---- right-click context menu ---------------------------------------
+    // ---- mouse: drag (left) + menu (right) — only fired from kHandleH strip
     void mouseDown (const juce::MouseEvent& e) override
     {
-        if (e.mods.isRightButtonDown())
+        if (e.mods.isLeftButtonDown())
+            dragger_.startDraggingComponent (getTopLevelComponent(), e);
+        else if (e.mods.isRightButtonDown())
             showContextMenu();
+    }
+
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        if (e.mods.isLeftButtonDown())
+            dragger_.dragComponent (getTopLevelComponent(), e, nullptr);
     }
 
     void showContextMenu()
@@ -240,8 +259,9 @@ private:
         });
     }
 
-    VUPhysicsEngine& physics_;
-    Theme            theme_ = Theme::VintageWarm;
+    VUPhysicsEngine&     physics_;
+    Theme                theme_ = Theme::VintageWarm;
+    juce::ComponentDragger dragger_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VUMeterComponent)
 };
@@ -249,30 +269,121 @@ private:
 
 // =========================================================================
 // VUMeterWindow
-// Hosts VUMeterComponent in a native window.
-// Phase D will convert this to a frameless / click-through Win32 window.
+// Manages the VUMeterComponent as a frameless, always-on-top, semi-transparent
+// overlay window.  Win32 only: click-through via WM_NCHITTEST subclassing —
+// the bottom kHandleH px strip is interactive (HTCLIENT), the rest is
+// transparent to mouse input (HTTRANSPARENT).
 // =========================================================================
-class VUMeterWindow : public juce::DocumentWindow
+class VUMeterWindow
 {
 public:
     explicit VUMeterWindow (VUPhysicsEngine& physics)
-        : juce::DocumentWindow ("VU Meter",
-                                juce::Colour (0xFF2E2416),
-                                juce::DocumentWindow::closeButton)
     {
-        auto* comp = new VUMeterComponent (physics);
-        component_ = comp;
-        setUsingNativeTitleBar (true);
-        setResizable (false, false);
-        setContentOwned (comp, true);
-        setVisible (false);
+        component_ = std::make_unique<VUMeterComponent> (physics);
     }
 
-    void closeButtonPressed() override { setVisible (false); }
+    ~VUMeterWindow()
+    {
+        uninstallWndProc();
+        if (component_->isOnDesktop())
+            component_->removeFromDesktop();
+    }
+
+    void show()
+    {
+        if (! component_->isOnDesktop())
+        {
+            component_->addToDesktop (juce::ComponentPeer::windowIsTemporary);
+            applyWin32Styles();
+        }
+        component_->setVisible (true);
+        component_->toFront (false);
+    }
+
+    void hide() { component_->setVisible (false); }
+
+    bool isVisible() const { return component_->isVisible(); }
 
     VUMeterComponent& getComponent() noexcept { return *component_; }
 
+    // Persist window position across sessions.
+    juce::Point<int> getPosition() const { return component_->getPosition(); }
+    void             setPosition (juce::Point<int> p) { component_->setTopLeftPosition (p); }
+
 private:
-    VUMeterComponent* component_ = nullptr;
+    // ---- Win32 styles ---------------------------------------------------
+    void applyWin32Styles()
+    {
+#if JUCE_WINDOWS
+        if (auto* peer = component_->getPeer())
+        {
+            nativeHwnd_ = (HWND) peer->getNativeHandle();
+
+            // Layered (for alpha), tool (no taskbar), topmost
+            LONG_PTR ex = GetWindowLongPtr (nativeHwnd_, GWL_EXSTYLE);
+            ex |= WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST;
+            SetWindowLongPtr (nativeHwnd_, GWL_EXSTYLE, ex);
+
+            // 90% opacity
+            SetLayeredWindowAttributes (nativeHwnd_, 0, 230, LWA_ALPHA);
+
+            // Force topmost position
+            SetWindowPos (nativeHwnd_, HWND_TOPMOST, 0, 0, 0, 0,
+                          SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+
+            // Subclass WndProc for NCHITTEST click-through
+            SetProp (nativeHwnd_, L"VUMeterWindowPtr", (HANDLE) this);
+            originalWndProc_ = (WNDPROC) SetWindowLongPtr (
+                nativeHwnd_, GWLP_WNDPROC, (LONG_PTR) vuMeterWndProc);
+        }
+#endif
+    }
+
+    void uninstallWndProc()
+    {
+#if JUCE_WINDOWS
+        if (nativeHwnd_ && originalWndProc_)
+        {
+            SetWindowLongPtr (nativeHwnd_, GWLP_WNDPROC,
+                              (LONG_PTR) originalWndProc_);
+            RemoveProp (nativeHwnd_, L"VUMeterWindowPtr");
+            originalWndProc_ = nullptr;
+            nativeHwnd_      = nullptr;
+        }
+#endif
+    }
+
+#if JUCE_WINDOWS
+    // Custom WndProc: bottom kHandleH px → HTCLIENT (interactive),
+    // everything else → HTTRANSPARENT (click-through).
+    static LRESULT CALLBACK vuMeterWndProc (HWND hwnd, UINT msg,
+                                            WPARAM wp, LPARAM lp)
+    {
+        if (msg == WM_NCHITTEST)
+        {
+            // Screen-space cursor position (use signed cast for multi-monitor)
+            const int cursorY = (short) HIWORD (lp);
+            RECT rc;
+            GetWindowRect (hwnd, &rc);
+
+            if (cursorY >= rc.bottom - VUMeterComponent::kHandleH)
+                return HTCLIENT;       // interactive strip
+
+            return HTTRANSPARENT;      // click-through
+        }
+
+        auto* self = (VUMeterWindow*) GetProp (hwnd, L"VUMeterWindowPtr");
+        if (self && self->originalWndProc_)
+            return CallWindowProc (self->originalWndProc_, hwnd, msg, wp, lp);
+
+        return DefWindowProc (hwnd, msg, wp, lp);
+    }
+
+    HWND    nativeHwnd_      = nullptr;
+    WNDPROC originalWndProc_ = nullptr;
+#endif
+
+    std::unique_ptr<VUMeterComponent> component_;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VUMeterWindow)
 };
