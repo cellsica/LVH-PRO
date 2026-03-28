@@ -25,7 +25,7 @@ public:
     LvhProApplication() {}
 
     const String getApplicationName() override    { return "LVH"; }
-    const String getApplicationVersion() override { return "0.6.5-alpha"; }
+    const String getApplicationVersion() override { return "0.7.0"; }
     bool moreThanOneInstanceAllowed() override    { return true; }
 
     // Hardware MIDI input

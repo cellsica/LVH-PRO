@@ -19,7 +19,7 @@ public:
     enum class Theme { VintageWarm, OxygenNeon };
 
     static constexpr int kW       = 390;
-    static constexpr int kH       = 152;
+    static constexpr int kH       = 118;
     static constexpr int kHandleH =  16;   // interactive strip at bottom
 
     explicit VUMeterComponent (VUPhysicsEngine& physics)
@@ -35,14 +35,14 @@ public:
 private:
     // ---- geometry -------------------------------------------------------
     static constexpr float kMeterW    = 190.f;
-    static constexpr float kMeterH    = 132.f;
+    static constexpr float kMeterH    =  92.f;  // face height — trimmed to match needle sweep
     static constexpr float kGap       =   4.f;
     static constexpr float kPad       =   3.f;
     static constexpr float kLabelH    =  14.f;
-    static constexpr float kPivotOffY =  30.f;
-    static constexpr float kTickRad   = 108.f;
-    static constexpr float kLabelRad  =  92.f;
-    static constexpr float kNeedleLen = 102.f;
+    static constexpr float kPivotOffY =   5.f;  // pivot just below face bottom, inside window
+    static constexpr float kTickRad   =  84.f;
+    static constexpr float kLabelRad  =  68.f;
+    static constexpr float kNeedleLen =  88.f;
     static constexpr float kSwingDeg  =  50.f;
 
     static constexpr float kMinDb = VUPhysicsEngine::kMinDb;
@@ -98,11 +98,11 @@ private:
             const float fx = kPad + ch * (kMeterW + kGap);
             drawMeter (g, ch, fx, kPad, pal);
 
-            // Channel label
+            // Channel label — drawn inside the face near the bottom
             g.setFont (juce::Font (10.f, juce::Font::bold));
             g.setColour (pal.text);
             g.drawText (ch == 0 ? "L" : "R",
-                        (int)fx, kH - (int)kLabelH - 1,
+                        (int)fx, (int)(kPad + kMeterH - kLabelH - 2),
                         (int)kMeterW, (int)kLabelH,
                         juce::Justification::centred);
         }
