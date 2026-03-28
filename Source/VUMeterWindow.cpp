@@ -63,20 +63,30 @@ void VUMeterWindow::applyWin32Styles()
     auto* hwnd = (HWND) peer->getNativeHandle();
     nativeHwnd_ = hwnd;
 
-    // Add layered window for alpha-based transparency
-    LONG_PTR ex = GetWindowLongPtr (hwnd, GWL_EXSTYLE);
-    ex |= WS_EX_LAYERED;
-    SetWindowLongPtr (hwnd, GWL_EXSTYLE, ex);
-
-    // 90% opacity
-    SetLayeredWindowAttributes (hwnd, 0, 230, LWA_ALPHA);
-
     // Subclass WndProc for NCHITTEST click-through;
+    // Opacity is managed by setOpacity() / Component::setAlpha() — no manual call needed.
     // store original proc as a window property (avoids class member access).
     LONG_PTR original = SetWindowLongPtr (hwnd, GWLP_WNDPROC,
                                            (LONG_PTR) vuMeterSubclassProc);
     SetProp (hwnd, "VUMeterOriginalProc", (HANDLE) original);
 #endif
+}
+
+void VUMeterWindow::setOpacity (float opacity)
+{
+    opacity_ = juce::jlimit (0.0f, 1.0f, opacity);
+
+    // setAlpha() updates componentTransparency (used by JUCE when creating the peer).
+    // For alpha < 1.0 it also calls peer->setAlpha() which sets updateLayeredWindowAlpha
+    // and triggers a repaint → UpdateLayeredWindow applies the new alpha.
+    setAlpha (opacity_);
+
+    // For alpha == 1.0, Component::setAlpha() skips peer->setAlpha() because the
+    // component is no longer "transparent". We call it explicitly to reset
+    // updateLayeredWindowAlpha to 255 (fully opaque).
+    if (opacity_ >= 1.0f)
+        if (auto* peer = getPeer())
+            peer->setAlpha (1.0f);
 }
 
 void VUMeterWindow::uninstallWndProc()

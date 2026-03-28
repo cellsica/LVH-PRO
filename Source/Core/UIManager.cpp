@@ -315,6 +315,18 @@ void UIManager::toggleVuMeterWindow (bool show)
             vuMeterWindow_->onClose = [this] {
                 if (mc_ != nullptr) mc_->setVuMeterWindowVisible (false);
             };
+
+            // Restore saved backlight theme and opacity
+            if (auto* prefs = appProperties_.getUserSettings())
+            {
+                int savedTheme = prefs->getIntValue ("vuMeterTheme", 0);
+                vuMeterWindow_->getComponent().setTheme (
+                    savedTheme == 1 ? VUMeterComponent::Theme::OxygenNeon
+                                    : VUMeterComponent::Theme::VintageWarm);
+
+                int savedOpacity = prefs->getIntValue ("vuMeterOpacity", 90);
+                vuMeterWindow_->setOpacity (savedOpacity / 100.f);
+            }
         }
         vuMeterWindow_->show();
         if (mc_ != nullptr) mc_->setVuMeterWindowVisible (true);
@@ -587,6 +599,16 @@ void UIManager::openSettings()
             audioEngine_.setMetronomeClickType (
                 v == 1 ? MetronomeProcessor::ClickType::Techno
                        : MetronomeProcessor::ClickType::Normal);
+        };
+        cbs.onVuThemeChanged = [this] (int v) {
+            if (vuMeterWindow_ != nullptr)
+                vuMeterWindow_->getComponent().setTheme (
+                    v == 1 ? VUMeterComponent::Theme::OxygenNeon
+                           : VUMeterComponent::Theme::VintageWarm);
+        };
+        cbs.onVuOpacityChanged = [this] (int v) {
+            if (vuMeterWindow_ != nullptr)
+                vuMeterWindow_->setOpacity (v / 100.f);
         };
         settingsWindow_ = std::make_unique<SettingsWindow> (
             deviceManager_, appProperties_.getUserSettings(), cbs);

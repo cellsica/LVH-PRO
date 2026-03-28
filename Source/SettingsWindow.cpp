@@ -455,6 +455,92 @@ void MidiSettingsPage::resized()
 }
 
 // =====================================================================
+// VisualizerSettingsPage
+// =====================================================================
+VisualizerSettingsPage::VisualizerSettingsPage (PropertiesFile* prefs)
+{
+    // ── VU Meter section header ───────────────────────────────────────
+    vuHeader_.setText (LvhStr ("STR_VIS_VU_HEADER"), dontSendNotification);
+    vuHeader_.setFont (Font (12.f, Font::bold));
+    vuHeader_.setColour (Label::textColourId, Colour (0xffffaa44));
+    addAndMakeVisible (vuHeader_);
+
+    // ── Theme label ───────────────────────────────────────────────────
+    themeLabel_.setText (LvhStr ("STR_VIS_VU_THEME"), dontSendNotification);
+    themeLabel_.setFont (Font (12.f));
+    themeLabel_.setColour (Label::textColourId, Colour (0xffcccccc));
+    addAndMakeVisible (themeLabel_);
+
+    // ── Theme radio buttons ───────────────────────────────────────────
+    const int savedTheme = prefs ? prefs->getIntValue ("vuMeterTheme", 0) : 0;
+
+    warmBtn_.setButtonText (LvhStr ("STR_VIS_WARM"));
+    warmBtn_.setRadioGroupId (2001);
+    warmBtn_.setClickingTogglesState (true);
+    warmBtn_.setToggleState (savedTheme == 0, dontSendNotification);
+    addAndMakeVisible (warmBtn_);
+
+    neonBtn_.setButtonText (LvhStr ("STR_VIS_NEON"));
+    neonBtn_.setRadioGroupId (2001);
+    neonBtn_.setClickingTogglesState (true);
+    neonBtn_.setToggleState (savedTheme == 1, dontSendNotification);
+    addAndMakeVisible (neonBtn_);
+
+    auto themeChanged = [this, prefs] {
+        int v = neonBtn_.getToggleState() ? 1 : 0;
+        if (prefs) prefs->setValue ("vuMeterTheme", v);
+        if (onVuThemeChanged) onVuThemeChanged (v);
+    };
+    warmBtn_.onClick = themeChanged;
+    neonBtn_.onClick = themeChanged;
+
+    // ── Opacity slider ────────────────────────────────────────────────
+    opacityLabel_.setText (LvhStr ("STR_VIS_OPACITY"), dontSendNotification);
+    opacityLabel_.setFont (Font (12.f));
+    opacityLabel_.setColour (Label::textColourId, Colour (0xffcccccc));
+    addAndMakeVisible (opacityLabel_);
+
+    opacitySlider_.setRange (20, 100, 1);
+    opacitySlider_.setValue (prefs ? prefs->getIntValue ("vuMeterOpacity", 90) : 90,
+                             dontSendNotification);
+    opacitySlider_.setTextBoxStyle (Slider::TextBoxRight, false, 44, 22);
+    opacitySlider_.setTextValueSuffix ("%");
+    addAndMakeVisible (opacitySlider_);
+    opacitySlider_.onValueChange = [this, prefs] {
+        int v = (int) opacitySlider_.getValue();
+        if (prefs) prefs->setValue ("vuMeterOpacity", v);
+        if (onVuOpacityChanged) onVuOpacityChanged (v);
+    };
+}
+
+void VisualizerSettingsPage::refreshLanguage()
+{
+    vuHeader_    .setText (LvhStr ("STR_VIS_VU_HEADER"),  dontSendNotification);
+    themeLabel_  .setText (LvhStr ("STR_VIS_VU_THEME"),   dontSendNotification);
+    opacityLabel_.setText (LvhStr ("STR_VIS_OPACITY"),    dontSendNotification);
+    warmBtn_.setButtonText (LvhStr ("STR_VIS_WARM"));
+    neonBtn_.setButtonText (LvhStr ("STR_VIS_NEON"));
+}
+
+void VisualizerSettingsPage::resized()
+{
+    auto area = getLocalBounds().reduced (20, 16);
+
+    vuHeader_.setBounds (area.removeFromTop (22));
+    area.removeFromTop (8);
+
+    auto row = area.removeFromTop (26);
+    themeLabel_.setBounds (row.removeFromLeft (120));
+    warmBtn_   .setBounds (row.removeFromLeft (120).reduced (2));
+    neonBtn_   .setBounds (row.removeFromLeft (120).reduced (2));
+    area.removeFromTop (8);
+
+    row = area.removeFromTop (26);
+    opacityLabel_.setBounds (row.removeFromLeft (120));
+    opacitySlider_.setBounds (row.removeFromLeft (260));
+}
+
+// =====================================================================
 // SettingsWindow
 // =====================================================================
 SettingsWindow::SettingsWindow (AudioDeviceManager& dm, PropertiesFile* prefs, Callbacks cbs)
@@ -504,6 +590,11 @@ SettingsWindow::Content::Content (AudioDeviceManager& dm, PropertiesFile* prefs,
     midiPage_->onChannelFilterChange = cbs.onChannelFilterChange;
     addPage (LvhStr ("STR_NAV_MIDI_SETTINGS"), midiPage_);
 
+    visualPage_ = new VisualizerSettingsPage (prefs);
+    visualPage_->onVuThemeChanged   = cbs.onVuThemeChanged;
+    visualPage_->onVuOpacityChanged = cbs.onVuOpacityChanged;
+    addPage (LvhStr ("STR_NAV_VISUALIZER"), visualPage_);
+
     selectPage (0);
     setSize (700, 450);
 }
@@ -511,19 +602,21 @@ SettingsWindow::Content::Content (AudioDeviceManager& dm, PropertiesFile* prefs,
 void SettingsWindow::Content::refresh()
 {
     // Update nav labels
-    if (names.size() == 4)
+    if (names.size() == 5)
     {
         names.set (0, LvhStr ("STR_NAV_GENERAL"));
         names.set (1, LvhStr ("STR_NAV_AUDIO_MIDI"));
         names.set (2, LvhStr ("STR_NAV_PLUGIN_PATHS"));
         names.set (3, LvhStr ("STR_NAV_MIDI_SETTINGS"));
+        names.set (4, LvhStr ("STR_NAV_VISUALIZER"));
     }
     repaint();
 
     // Refresh each page's text content
-    if (genPage_)   genPage_  ->refreshLanguage();
-    if (midiPage_)  midiPage_ ->refreshLanguage();
-    if (pathsPage_) pathsPage_->refreshLanguage();
+    if (genPage_)    genPage_   ->refreshLanguage();
+    if (midiPage_)   midiPage_  ->refreshLanguage();
+    if (pathsPage_)  pathsPage_ ->refreshLanguage();
+    if (visualPage_) visualPage_->refreshLanguage();
 }
 
 void SettingsWindow::Content::paint (Graphics& g)

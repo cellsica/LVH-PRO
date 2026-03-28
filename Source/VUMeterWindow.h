@@ -193,10 +193,11 @@ private:
     {
         struct Mark { float db; bool major; };
         static const Mark kMarks[] = {
-            { -20.f, true  }, { -10.f, true  }, {  -7.f, false },
-            {  -5.f, false }, {  -3.f, true  }, {  -2.f, false },
-            {  -1.f, false }, {   0.f, true  }, {  +1.f, false },
-            {  +2.f, false }, {  +3.f, true  }
+            { -40.f, true  }, { -30.f, true  }, { -20.f, true  },
+            { -10.f, true  }, {  -7.f, false }, {  -5.f, false },
+            {  -3.f, true  }, {  -2.f, false }, {  -1.f, false },
+            {   0.f, true  }, {  +1.f, false }, {  +2.f, false },
+            {  +3.f, true  }
         };
 
         for (const auto& m : kMarks)
@@ -296,6 +297,15 @@ public:
         setAlwaysOnTop (true);
     }
 
+    // Adds windowIsSemiTransparent so JUCE sets WS_EX_LAYERED at creation.
+    // This enables the UpdateLayeredWindow path, where peer->setAlpha() works
+    // by storing the alpha in updateLayeredWindowAlpha and triggering a repaint.
+    int getDesktopWindowStyleFlags() const override
+    {
+        return DocumentWindow::getDesktopWindowStyleFlags()
+               | juce::ComponentPeer::windowIsSemiTransparent;
+    }
+
     void closeButtonPressed() override
     {
         setVisible (false);
@@ -311,6 +321,9 @@ public:
 
     void hide() { setVisible (false); }
 
+    // opacity in [0.0, 1.0]. Applied immediately if the Win32 handle is live.
+    void setOpacity (float opacity);
+
     VUMeterComponent& getComponent() noexcept { return *component_; }
 
 private:
@@ -319,6 +332,7 @@ private:
 
     VUMeterComponent* component_  = nullptr;
     void*             nativeHwnd_ = nullptr;   // non-null after first applyWin32Styles()
+    float             opacity_    = 0.9f;      // [0.0, 1.0], applied via WS_EX_LAYERED
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VUMeterWindow)
 };

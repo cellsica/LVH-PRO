@@ -92,6 +92,31 @@ private:
 };
 
 // =====================================================================
+// VisualizerSettingsPage
+// =====================================================================
+class VisualizerSettingsPage : public Component
+{
+public:
+    // Fired when the VU meter backlight theme changes (0 = VintageWarm, 1 = OxygenNeon).
+    std::function<void(int)>   onVuThemeChanged;
+    // Fired when the VU meter opacity changes (20–100).
+    std::function<void(int)>   onVuOpacityChanged;
+
+    explicit VisualizerSettingsPage (PropertiesFile* prefs);
+    void resized() override;
+    void refreshLanguage();
+
+private:
+    Label        vuHeader_;
+    Label        themeLabel_;
+    ToggleButton warmBtn_, neonBtn_;
+    Label        opacityLabel_;
+    Slider       opacitySlider_;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VisualizerSettingsPage)
+};
+
+// =====================================================================
 // SettingsWindow — flat left-nav + right content pane
 // =====================================================================
 class SettingsWindow : public DocumentWindow
@@ -104,6 +129,8 @@ public:
         std::function<void()>             onPluginPathsChanged;
         std::function<void(juce::String)> onLanguageChanged;
         std::function<void(int)>          onMetronomeClickTypeChanged;
+        std::function<void(int)>          onVuThemeChanged;
+        std::function<void(int)>          onVuOpacityChanged;
     };
 
     SettingsWindow (AudioDeviceManager& dm, PropertiesFile* prefs, Callbacks cbs);
@@ -130,9 +157,10 @@ private:
         StringArray           names;
         OwnedArray<Component> pages;
         int                   currentIdx    = -1;
-        GeneralSettingsPage*  genPage_      = nullptr;
-        MidiSettingsPage*     midiPage_     = nullptr;
-        PluginPathsPage*      pathsPage_    = nullptr;
+        GeneralSettingsPage*      genPage_      = nullptr;
+        MidiSettingsPage*         midiPage_     = nullptr;
+        PluginPathsPage*          pathsPage_    = nullptr;
+        VisualizerSettingsPage*   visualPage_   = nullptr;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Content)
     };

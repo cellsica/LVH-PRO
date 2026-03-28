@@ -88,6 +88,13 @@ public:
             { "STR_NAV_AUDIO_MIDI",      "Audio / MIDI",                       "オーディオ / MIDI"           },
             { "STR_NAV_PLUGIN_PATHS",    "Plugin Paths",                       "プラグインパス"              },
             { "STR_NAV_MIDI_SETTINGS",   "MIDI Settings",                      "MIDI設定"                    },
+            { "STR_NAV_VISUALIZER",      "Visualizer",                         "ビジュアライザー"            },
+            // ── Settings — Visualizer page ──────────────────────────────
+            { "STR_VIS_VU_HEADER",       "VU Meter",                           "VUメーター"                  },
+            { "STR_VIS_VU_THEME",        "Backlight Theme:",                   "バックライトテーマ："        },
+            { "STR_VIS_WARM",            "Vintage Warm",                       "ヴィンテージウォーム"        },
+            { "STR_VIS_NEON",            "Oxygen Neon",                        "オキシジェンネオン"          },
+            { "STR_VIS_OPACITY",         "Opacity:",                            "透明度："                    },
             // ── Settings — General page ─────────────────────────────────
             { "STR_LANGUAGE",            "Language",                           "言語"                        },
             { "STR_SHOW_LEVEL_METER",    "Level Meter (toolbar)",              "レベルメーター（ツールバー）" },
