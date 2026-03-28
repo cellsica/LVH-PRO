@@ -2,7 +2,8 @@
 
 ## 完了したタスク ✅
 - [x] Pro版プロジェクトのリポジトリ作成・基本ファイルのコピー
-- [x] プロジェクト名の変更（LIGHT-VST-HOST → LVH）
+- [x] プロジェクト名の変更（LVH-PRO → LVH / ステージ版）
+- [x] 文字化けの修復と指示書の再構築 (2026-03-27)
 - [x] アプリケーション名・バージョンの初期化 (0.1.0)
 - [x] 設計・移行計画書（PRO_VERSION_PLAN.md）の策定
 - [x] **Bridge プロトタイプ基盤の実装**:
@@ -43,15 +44,10 @@
     - [x] Stable: Xボタン終了時のフリーズ・プロセス残存バグ修正
     - [x] Fix: Instrument スプリット時の FX チェーン無音バグ修正 (Ver 0.4.4-alpha)
 
-
-
 - [x] **Mission 019**: ミキシング操作 ＆ リアルタイム・メーター (Phase 2) ✅ (しずく019)
     - [x] 音量・パン、ソロ・ミュートのロジック実装。
     - [x] LED メーターのリアルタイム表示アニメーション。
     - [x] Core ツールバー ↔ Mixer MASTER の双方向同期。
-
-
-
 
 ## 確認済みの未完了タスク 🔜
 - [x] **Mission 020**: ミキサー UI 強化 ＆ カスタマイズ (Phase 3) ✅ (しずく020)
@@ -76,12 +72,11 @@
     - [x] **Persistence**: Global ブリッジを曲切り替え時も生存させる `isGlobal` フラグの導入。
     - [x] **Manager 拡張**: `BridgeManager::clearBridges(bool keepGlobal)` 等のライフサイクル管理。
     - [x] **UI 統合**: ミキサー上での Global と Local の視覚的共存（金色ストリップ）。
-- [x] **Mission 035-D**: メトロノーム機能 🔜
-- [x] **Mission 035-E**: 究極の VU メーター 🔜
-
-
-
-
+- [x] Mission 035-D: メトロノーム機能の指示書作成 (to_shizuku_038.md)
+- [x] Mission 035-D: メトロノーム機能の実装 ✅ (しずく038)
+- [x] Mission 035-E: 究極の VU メーターの指示書作成 (to_shizuku_039.md)
+- [x] Mission 035-E: 究極の VU メーターの実装 ✅ (しずく039)
+- [ ] Mission 039: プラグイン・お気に入り機能 🔜
 
 ## 直近の作業ログ 📝
 - [2026-03-17] かえで：Bridge プロトタイプの最小構成ソースコードを実装。
@@ -107,7 +102,7 @@
 - [2026-03-23] かえで：Mission 024 (Phase B) 指示書作成。
 - [2026-03-23] しずく：Mission 024 (Phase B) 完了！ProjectSerializerの抽出。250行削減！
 - [2026-03-23] かえで：Mission 025 (Phase C) 指示書作成。
-- [2026-03-23] しずく：Mission 025 (Phase C) 完了！BridgeManagerの抽出。依存関係をB案で最適化。
+- [2026-03-23] しずく：Mission 025 (Phase C) 完了！BridgeManagerの抽出. 依存関係をB案で最適化。
 - [2026-03-23] かえで：Mission 026 (Phase D) 指示書作成。
 - [2026-03-23] しずく：Mission 026 (Phase D) 完了！UIManagerの抽出。God Class解体完了！
 - [2026-03-23] かえで：Mission 027 (Mixer-Driven Plugin Loading & UI Refinement) 指示書作成。
@@ -130,3 +125,7 @@
 - [2026-03-26] かえで：Mission 035-B を Mission 036 に昇格させ、しずくちゃんへの指示書を作成。
 - [2026-03-26] しずく：Mission 036 完了！Rescan ボタン、UI 刷新、i18n 化、終了処理安定化を実装。Ver 0.6.0-alpha。
 - [2026-03-26] しずく：Mission 037 (035-C) 完了！Global Layer 実装。Slot 0 常駐化・Switch モード・金色 UI。Ver 0.6.1-alpha。
+- [2026-03-27] かえで：プロジェクト名を「LVH ステージ版」に統一。文字化けの修復作業。
+- [2026-03-27] かえで：Mission 035-D (メトロノーム機能) の指示書 (to_shizuku_038.md) を作成。しずくちゃんにパス！
+- [2026-03-27] かえで：ロードマップに Mission 039 「プラグイン・お気に入り機能」を新規追加。
+- [2026-03-27] かえで：Mission 035-E (究極の VU メーター) の指示書 (to_shizuku_039.md) を作成！- [2026-03-28] しずく：Mission 038 (035-D) 完了！メトロノーム UI、TAP テンポ、YMO CLICK 技術を実装。Ver 0.6.4-alpha。
