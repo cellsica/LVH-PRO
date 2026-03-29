@@ -13,6 +13,7 @@
 class MainComponent;
 class SettingsWindow;
 class StageWindow;
+class PluginPickerComponent;
 
 // =====================================================================
 // UIManager
@@ -94,6 +95,11 @@ public:
     // Refresh all open windows after a language change
     void refreshAllWindows();
 
+    // ── Plugin favorites ──────────────────────────────────────────────────
+    void toggleFavorite (const juce::String& pluginId);
+    bool isFavorite     (const juce::String& pluginId) const;
+    const juce::StringArray& getFavoriteIds() const noexcept { return favoriteIds_; }
+
     // Process incoming MIDI for remote control (Master Volume + Stage + Mixer).
     // Call from the message thread (e.g. via MessageManager::callAsync).
     void handleMidiRemote (const juce::MidiMessage& msg);
@@ -149,6 +155,7 @@ private:
 
     // ── State ─────────────────────────────────────────────────────────────
     MainComponent*                   mc_               = nullptr;
+    juce::StringArray                favoriteIds_;
     double                           masterVolume_     = 1.0;
     std::unique_ptr<MixerWindow>         mixerWindow_;
     std::unique_ptr<MetronomeWindow>     metronomeWindow_;
@@ -156,6 +163,7 @@ private:
     std::unique_ptr<StageWindow>         stageWindow_;
     std::unique_ptr<VUPhysicsEngine>     vuPhysicsEngine_;
     std::unique_ptr<VUMeterWindow>       vuMeterWindow_;
+    std::unique_ptr<juce::DocumentWindow> pluginPickerWindow_;
 
     // Mixer MIDI mapping state
     LearnState                               learnState_;

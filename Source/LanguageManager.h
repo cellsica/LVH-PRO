@@ -133,6 +133,11 @@ public:
             { "STR_SAVE_SET_DIALOG",     "Save Stage Set...",                  "ステージセットを保存..."     },
             { "STR_OPEN_SET_DIALOG",     "Open Stage Set...",                  "ステージセットを開く..."     },
             { "STR_ADD_BRIDGE_DIALOG",   "Add project to set...",              "セットにプロジェクトを追加..."},
+            // ── Plugin Picker ────────────────────────────────────────────
+            { "STR_SEARCH_PLUGIN",       "Search plugins...",          "プラグインを検索..."         },
+            { "STR_FILTER_ALL",          "All",                        "すべて"                      },
+            { "STR_FILTER_FAVORITE",     "Favorites",                  "お気に入り"                  },
+            { "STR_REFRESH_PLUGINS",     "Refresh Plugin List",        "プラグインリストを更新"      },
             // sentinel
             { nullptr, nullptr, nullptr }
         };

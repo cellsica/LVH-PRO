@@ -239,6 +239,40 @@ namespace Icons
         g.fillEllipse (bobX - 2.2f, bobY - 2.2f, 4.4f, 4.4f);
     }
 
+    // Star icon — 5-point star, filled (★) or outline (☆)
+    inline void star (Graphics& g, Rectangle<float> a, bool filled)
+    {
+        const float cx = a.getCentreX();
+        const float cy = a.getCentreY() + a.getHeight() * 0.04f;  // slight downward shift for visual balance
+        const float r1 = a.getWidth()  * 0.44f;   // outer radius
+        const float r2 = r1 * 0.42f;              // inner radius
+        const int   pts = 5;
+
+        Path star;
+        for (int i = 0; i < pts * 2; ++i)
+        {
+            float angle = (float(i) / float(pts * 2)) * MathConstants<float>::twoPi
+                          - MathConstants<float>::halfPi;
+            float r = (i % 2 == 0) ? r1 : r2;
+            float x = cx + r * std::cos (angle);
+            float y = cy + r * std::sin (angle);
+            if (i == 0) star.startNewSubPath (x, y);
+            else        star.lineTo (x, y);
+        }
+        star.closeSubPath();
+
+        if (filled)
+        {
+            g.setColour (Colour (0xffffcc00));
+            g.fillPath (star);
+        }
+        else
+        {
+            g.setColour (Colours::white.withAlpha (0.55f));
+            g.strokePath (star, PathStrokeType (1.2f));
+        }
+    }
+
     // VU meter icon — semi-circular scale arc + needle + pivot dot
     inline void vuMeter (Graphics& g, Rectangle<float> a)
     {
