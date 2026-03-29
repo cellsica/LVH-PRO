@@ -34,6 +34,9 @@ public:
     std::function<void()> onToggleWindow;
     std::function<void(BridgeInstance*)> onAddFx;  // fired when placeholder (+) is clicked
 
+    // Set true while this slot is being dragged (dims the appearance)
+    bool isDragging = false;
+
     FXSlotComponent()
     {
         bypassBtn.setButtonText ("B");
@@ -58,7 +61,7 @@ public:
         repaint();
     }
 
-    void mouseDown (const MouseEvent&) override
+    void mouseDown (const MouseEvent& e) override
     {
         if (bridge == nullptr)
         {
@@ -66,9 +69,39 @@ public:
             return;
         }
         if (bridge->getState() != BridgeInstance::State::Connected)
-            return;  // bridge disconnected — ignore click to avoid writing to dead pipe
-        windowShown_ = ! windowShown_;
-        if (onToggleWindow) onToggleWindow();
+            return;
+        dragStartPos_ = e.getPosition();
+        dragStarted_  = false;
+    }
+
+    void mouseDrag (const MouseEvent& e) override
+    {
+        if (bridge == nullptr) return;
+        if (! dragStarted_ && e.getDistanceFromDragStart() > 4)
+        {
+            dragStarted_ = true;
+            if (auto* container = DragAndDropContainer::findParentDragContainerFor (this))
+            {
+                isDragging = true;
+                repaint();
+                container->startDragging ("FXSlot", this);
+            }
+        }
+    }
+
+    void mouseUp (const MouseEvent& e) override
+    {
+        if (bridge == nullptr) return;
+        if (! dragStarted_)
+        {
+            // Short click — toggle window visibility
+            if (bridge->getState() != BridgeInstance::State::Connected) return;
+            windowShown_ = ! windowShown_;
+            if (onToggleWindow) onToggleWindow();
+            repaint();
+        }
+        isDragging  = false;
+        dragStarted_ = false;
         repaint();
     }
 
@@ -78,18 +111,20 @@ public:
         bool isPlaceholder = (bridge == nullptr);
         bool bypassed = bypassBtn.getToggleState();
 
-        g.setColour (isPlaceholder ? juce::Colour (0xff1a1a25)
-                   : bypassed      ? juce::Colour (0xff1e1414)
-                                   : juce::Colour (0xff1e1e30));
+        float alpha = isDragging ? 0.35f : 1.0f;
+
+        g.setColour ((isPlaceholder ? juce::Colour (0xff1a1a25)
+                    : bypassed      ? juce::Colour (0xff1e1414)
+                                    : juce::Colour (0xff1e1e30)).withAlpha (alpha));
         g.fillRoundedRectangle (bounds.toFloat(), 2.0f);
-        g.setColour (juce::Colour (0xff333344));
+        g.setColour (juce::Colour (0xff333344).withAlpha (alpha));
         g.drawRoundedRectangle (bounds.toFloat(), 2.0f, 1.0f);
 
         auto textArea = bounds.withTrimmedRight (isPlaceholder ? 4 : 22).reduced (3, 0);
-        g.setColour (isPlaceholder ? juce::Colour (0xff444455)
-                   : bypassed      ? juce::Colour (0xff555566)
-                   : windowShown_  ? juce::Colours::white.withAlpha (0.85f)
-                                   : juce::Colour (0xffaaaacc));
+        g.setColour ((isPlaceholder ? juce::Colour (0xff444455)
+                    : bypassed      ? juce::Colour (0xff555566)
+                    : windowShown_  ? juce::Colours::white.withAlpha (0.85f)
+                                    : juce::Colour (0xffaaaacc)).withAlpha (alpha));
         g.setFont (Font (9.5f));
         g.drawText (nameStr, textArea,
                     isPlaceholder ? Justification::centred : Justification::centredLeft, true);
@@ -107,6 +142,8 @@ private:
     juce::String nameStr;
     TextButton   bypassBtn;
     bool         windowShown_ = true;
+    bool         dragStarted_ = false;
+    juce::Point<int> dragStartPos_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FXSlotComponent)
 };
@@ -128,9 +165,10 @@ public:
     std::function<void(bool)>                onSoloChange;
     std::function<void(const juce::String&)> onNameChange;       // fired when user edits channel name
     std::function<void(juce::Colour)>        onColorChange;      // fired when user picks accent colour
-    std::function<void(BridgeInstance*)>     onAddFx;            // bubbled up from placeholder FXSlotComponents
-    std::function<void(MixerParam)>          onMidiLearnRequest; // right-click → MIDI Learn
-    std::function<void(MixerParam)>          onMidiClearMapping; // right-click → Clear Mapping
+    std::function<void(BridgeInstance*)>          onAddFx;            // bubbled up from placeholder FXSlotComponents
+    std::function<void(MixerParam)>               onMidiLearnRequest; // right-click → MIDI Learn
+    std::function<void(MixerParam)>               onMidiClearMapping; // right-click → Clear Mapping
+    std::function<void(BridgeInstance*, int)>     onFxReorderRequest; // drag-drop reorder within strip
 
     ~MixerStrip() override { fader.setLookAndFeel (nullptr); }
 
@@ -231,6 +269,10 @@ public:
     {
         auto* slot = fxContent_.slots.add (new FXSlotComponent());
         fxContent_.addAndMakeVisible (slot);
+        // Keep FxContent's reorder callback in sync with MixerStrip's callback
+        fxContent_.onFxReorderRequest = [this] (BridgeInstance* b, int newIdx) {
+            if (onFxReorderRequest) onFxReorderRequest (b, newIdx);
+        };
         resized();
         return slot;
     }
@@ -585,10 +627,17 @@ private:
             });
     }
 
-    // Scrollable FX container (inner component + viewport)
-    struct FxContent : public juce::Component
+    // Scrollable FX container — also acts as the D&D container and drop target
+    struct FxContent : public juce::Component,
+                       public juce::DragAndDropContainer,
+                       public juce::DragAndDropTarget
     {
         juce::OwnedArray<FXSlotComponent> slots;
+
+        // Fired when the user drops a slot at a new position.
+        // Arguments: (bridge being moved, new slot index within this strip's FX list)
+        std::function<void(BridgeInstance*, int)> onFxReorderRequest;
+
         void resized() override
         {
             int y = 0;
@@ -597,6 +646,67 @@ private:
                 s->setBounds (0, y, getWidth(), MixerStrip::kFxSlotH - 2);
                 y += MixerStrip::kFxSlotH;
             }
+        }
+
+        // ── DragAndDropTarget ─────────────────────────────────────────────
+        bool isInterestedInDragSource (const SourceDetails& details) override
+        {
+            // Only accept FXSlot drags from slots in this same FxContent
+            if (details.description.toString() != "FXSlot") return false;
+            auto* slot = dynamic_cast<FXSlotComponent*> (details.sourceComponent.get());
+            return slot != nullptr && slot->bridge != nullptr && slots.contains (slot);
+        }
+
+        void itemDragMove (const SourceDetails& details) override
+        {
+            dropLineY_ = calcDropIndex (details.localPosition.y) * MixerStrip::kFxSlotH;
+            showDropLine_ = true;
+            repaint();
+        }
+
+        void itemDragExit (const SourceDetails&) override
+        {
+            showDropLine_ = false;
+            repaint();
+        }
+
+        void itemDropped (const SourceDetails& details) override
+        {
+            showDropLine_ = false;
+            repaint();
+
+            auto* slot = dynamic_cast<FXSlotComponent*> (details.sourceComponent.get());
+            if (slot == nullptr || slot->bridge == nullptr) return;
+
+            slot->isDragging = false;
+            slot->repaint();
+
+            int newIdx = calcDropIndex (details.localPosition.y);
+            if (onFxReorderRequest)
+                onFxReorderRequest (slot->bridge, newIdx);
+        }
+
+        void paintOverChildren (juce::Graphics& g) override
+        {
+            if (! showDropLine_) return;
+            g.setColour (juce::Colour (0xff88aaff));
+            g.fillRect (0, dropLineY_ - 1, getWidth(), 2);
+        }
+
+    private:
+        bool showDropLine_ = false;
+        int  dropLineY_    = 0;
+
+        // Returns the slot index (0-based) at which to insert, ignoring placeholder
+        int calcDropIndex (int localY) const
+        {
+            // Count non-placeholder slots
+            int fxCount = 0;
+            for (auto* s : slots)
+                if (s->bridge != nullptr) ++fxCount;
+
+            int idx = juce::jlimit (0, fxCount, localY / MixerStrip::kFxSlotH);
+            return idx;
         }
     };
 
@@ -669,9 +779,10 @@ public:
 
     std::function<void(float)>                        onMasterGainChange;
     std::function<void(BridgeInstance*)>              onToggleFxWindow;
-    std::function<void(BridgeInstance*)>              onAddFx;            // bubbled up from any placeholder (+) slot
-    std::function<void(BridgeInstance*, MixerParam)>  onMidiLearnRequest; // bubbled up from strip right-click
-    std::function<void(BridgeInstance*, MixerParam)>  onMidiClearMapping; // bubbled up from strip right-click
+    std::function<void(BridgeInstance*)>              onAddFx;              // bubbled up from any placeholder (+) slot
+    std::function<void(BridgeInstance*, MixerParam)>  onMidiLearnRequest;   // bubbled up from strip right-click
+    std::function<void(BridgeInstance*, MixerParam)>  onMidiClearMapping;   // bubbled up from strip right-click
+    std::function<void(BridgeInstance*, int)>         onFxReorderRequest;   // bubbled up from FX D&D reorder
 
     // Called by UIManager to highlight/remove learn indicator on a strip.
     // b == nullptr targets the Master strip.
@@ -768,6 +879,9 @@ public:
             strip->onMidiClearMapping = [this, b] (MixerParam p) {
                 if (onMidiClearMapping) onMidiClearMapping (b, p);
             };
+            strip->onFxReorderRequest = [this] (BridgeInstance* fx, int newIdx) {
+                if (onFxReorderRequest) onFxReorderRequest (fx, newIdx);
+            };
 
             // Per-channel FX slots for this instrument strip
             strip->clearFxSlots();
@@ -824,6 +938,9 @@ public:
             placeholder->setFxName ("+");
             placeholder->onAddFx = [this] (BridgeInstance* parent) { if (onAddFx) onAddFx (parent); };
         }
+        masterStrip->onFxReorderRequest = [this] (BridgeInstance* fx, int newIdx) {
+            if (onFxReorderRequest) onFxReorderRequest (fx, newIdx);
+        };
         masterStrip->resized();  // re-layout after bridge pointers are set (bounds may be unchanged)
 
         resized();
@@ -954,6 +1071,9 @@ public:
         content->onMidiClearMapping = [this] (BridgeInstance* b, MixerParam p) {
             if (onMidiClearMapping) onMidiClearMapping (b, p);
         };
+        content->onFxReorderRequest = [this] (BridgeInstance* fx, int newIdx) {
+            if (onFxReorderRequest) onFxReorderRequest (fx, newIdx);
+        };
         setContentOwned (content, true);
         setResizable (true, false);
         centreWithSize (720, 480);
@@ -994,6 +1114,7 @@ public:
     std::function<void(BridgeInstance*)>             onAddFx;
     std::function<void(BridgeInstance*, MixerParam)> onMidiLearnRequest;
     std::function<void(BridgeInstance*, MixerParam)> onMidiClearMapping;
+    std::function<void(BridgeInstance*, int)>        onFxReorderRequest;
 
     // Called by UIManager to forward learn state / CC values to the correct strip
     void setStripLearnMode (BridgeInstance* b, MixerParam p, bool active)

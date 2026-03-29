@@ -157,6 +157,20 @@ void BridgeManager::clearBridges (bool keepGlobal)
     }
 }
 
+void BridgeManager::moveBridge (BridgeInstance* b, int newIndex)
+{
+    int oldIndex = -1;
+    for (int i = 0; i < bridges_.size(); ++i)
+        if (bridges_[i] == b) { oldIndex = i; break; }
+
+    if (oldIndex < 0) return;
+    newIndex = juce::jlimit (0, bridges_.size() - 1, newIndex);
+    if (oldIndex == newIndex) return;
+
+    bridges_.move (oldIndex, newIndex);
+    rebuildBridgeGraph();
+}
+
 juce::Array<juce::File> BridgeManager::getRecentBridgeFiles() const
 {
     auto* prefs = appProperties_.getUserSettings();

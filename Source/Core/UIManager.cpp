@@ -209,6 +209,35 @@ void UIManager::toggleMixerWindow (bool show)
             mixerWindow_->onMidiClearMapping = [this] (BridgeInstance* b, MixerParam p) {
                 clearMidiMapping (b, p);
             };
+            mixerWindow_->onFxReorderRequest = [this] (BridgeInstance* fx, int newSlotIndex)
+            {
+                // newSlotIndex is the desired position among siblings (same FX parent).
+                // Translate to an absolute index in bridges_ and call moveBridge.
+                const juce::String parentPath = fx->getFxParentPath();
+                const auto& allBridges = bridgeManager_.getBridges();
+
+                // Collect sibling FX in current order
+                juce::Array<BridgeInstance*> siblings;
+                for (auto* b : allBridges)
+                    if (b->getRole() == BridgeInstance::Role::Effect
+                        && b->getFxParentPath() == parentPath
+                        && b->getState() == BridgeInstance::State::Connected)
+                        siblings.add (b);
+
+                int clampedIdx = juce::jlimit (0, juce::jmax (0, siblings.size() - 1), newSlotIndex);
+                if (clampedIdx >= siblings.size()) return;
+
+                BridgeInstance* targetSibling = siblings[clampedIdx];
+                if (targetSibling == fx) return;
+
+                // Find absolute index of targetSibling in bridges_
+                int absTarget = -1;
+                for (int i = 0; i < allBridges.size(); ++i)
+                    if (allBridges[i] == targetSibling) { absTarget = i; break; }
+
+                if (absTarget >= 0)
+                    bridgeManager_.moveBridge (fx, absTarget);
+            };
         }
 
         // Restore pin state
