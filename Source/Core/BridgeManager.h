@@ -67,6 +67,10 @@ public:
     // (used when switching songs within a Stage Set so the Global layer persists).
     void clearBridges (bool keepGlobal = false);
 
+    // Move a bridge to newIndex within bridges_ and rebuild the audio graph.
+    // Used by UIManager to reorder FX slots in the Mixer.
+    void moveBridge (BridgeInstance* b, int newIndex);
+
     // Read-only access to the bridge array (for MidiRoutingManager / ProjectSerializer).
     const juce::OwnedArray<BridgeInstance>& getBridges() const noexcept { return bridges_; }
 
