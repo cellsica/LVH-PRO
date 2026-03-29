@@ -61,6 +61,7 @@ target_sources(LVH
         Source/Core/ProjectSerializer.cpp
         Source/Core/BridgeManager.cpp
         Source/Core/UIManager.cpp
+        Source/Core/PluginPickerComponent.cpp
         Source/Core/StageManager.cpp
         Source/MetronomeManager.cpp
         Source/VUMeterWindow.cpp

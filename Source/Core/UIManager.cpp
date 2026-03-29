@@ -3,6 +3,7 @@
 #include "MixerWindow.h"
 #include "SettingsWindow.h"
 #include "StageWindow.h"
+#include "PluginPickerComponent.h"
 #include "../LanguageManager.h"
 
 UIManager::UIManager (AudioEngine&                  audioEngine,
@@ -40,6 +41,14 @@ void UIManager::setMainComponent (MainComponent* mc)
 
     // Load persisted MIDI mappings for Mixer channels
     loadMixerMappings();
+
+    // Load persisted plugin favorites
+    if (auto* prefs = appProperties_.getUserSettings())
+    {
+        juce::String saved = prefs->getValue ("pluginFavorites", "");
+        if (saved.isNotEmpty())
+            favoriteIds_.addTokens (saved, "|", "");
+    }
 
     // Speaker mute button + volume slider (share savedGain)
     auto savedGain = std::make_shared<double> (1.0);
@@ -137,6 +146,7 @@ void UIManager::shutdown()
     mixerWindow_.reset();
     metronomeWindow_.reset();
     vuMeterWindow_.reset();
+    pluginPickerWindow_.reset();
     mc_ = nullptr;
 }
 
@@ -815,6 +825,27 @@ void UIManager::loadMixerMappings()
     }
 }
 
+// ── Plugin favorites ──────────────────────────────────────────────────────
+
+void UIManager::toggleFavorite (const juce::String& pluginId)
+{
+    if (favoriteIds_.contains (pluginId))
+        favoriteIds_.removeString (pluginId);
+    else
+        favoriteIds_.add (pluginId);
+
+    if (auto* prefs = appProperties_.getUserSettings())
+    {
+        prefs->setValue ("pluginFavorites", favoriteIds_.joinIntoString ("|"));
+        prefs->saveIfNeeded();
+    }
+}
+
+bool UIManager::isFavorite (const juce::String& pluginId) const
+{
+    return favoriteIds_.contains (pluginId);
+}
+
 BridgeInstance* UIManager::findBridgeByPath (const juce::String& path) const
 {
     for (auto* b : bridgeManager_.getBridges())
@@ -858,10 +889,40 @@ void UIManager::launchBridgeFileChooser (BridgeInstance::Role role)
         });
 }
 
-// ── Plugin picker popup (used by Mixer + slots) ───────────────────────────
+// ── Plugin picker window (persistent floating window) ────────────────────
+
+namespace {
+
+class PluginPickerWindow : public juce::DocumentWindow
+{
+public:
+    PluginPickerWindow (PluginPickerComponent* content, const juce::String& title)
+        : juce::DocumentWindow (title,
+                                juce::Colour (0xff252535),
+                                juce::DocumentWindow::closeButton)
+    {
+        setUsingNativeTitleBar (false);
+        setContentOwned (content, true);
+        setResizable (false, false);
+        centreWithSize (content->getWidth(), content->getHeight());
+        setAlwaysOnTop (true);
+        setVisible (true);
+    }
+
+    void closeButtonPressed() override { setVisible (false); }
+};
+
+} // namespace
 
 void UIManager::showPluginPicker (BridgeInstance::Role fixedRole, BridgeInstance* parentInstrument)
 {
+    // If already open, bring to front
+    if (pluginPickerWindow_ != nullptr && pluginPickerWindow_->isVisible())
+    {
+        pluginPickerWindow_->toFront (true);
+        return;
+    }
+
     juce::Array<juce::PluginDescription> filteredTypes;
     for (auto& t : knownPlugins_.getTypes())
     {
@@ -870,41 +931,29 @@ void UIManager::showPluginPicker (BridgeInstance::Role fixedRole, BridgeInstance
         filteredTypes.add (t);
     }
 
-    juce::PopupMenu m;
-    if (filteredTypes.isEmpty())
-    {
-        m.addItem (1, "(No compatible plugins found)", false, false);
-    }
-    else
-    {
-        int id = 100;
-        for (auto& t : filteredTypes)
-            m.addItem (id++, t.name);
-        m.addSeparator();
-    }
-    m.addItem (1, "Refresh Plugin List...");
-
     juce::String parentPath = parentInstrument ? parentInstrument->getPluginPath() : juce::String{};
 
-    m.showMenuAsync (juce::PopupMenu::Options(),
-        [this, filteredTypes, fixedRole, parentPath] (int result)
-        {
-            if (result == 1)
-            {
-                if (onStartPluginScan) onStartPluginScan();
-                return;
-            }
-            int idx = result - 100;
-            if (idx >= 0 && idx < filteredTypes.size())
-            {
-                auto& desc = filteredTypes[idx];
-                juce::File pluginFile (desc.fileOrIdentifier);
-                if (pluginFile.exists())
-                    bridgeManager_.launchBridgeWithPath (pluginFile, fixedRole, {}, std::nullopt, {}, parentPath);
-                else if (mc_ != nullptr)
-                    mc_->pushSystemMessage ("Plugin not found: " + desc.fileOrIdentifier);
-            }
-        });
+    auto* picker = new PluginPickerComponent (
+        filteredTypes,
+        [this] (const juce::String& id) { return isFavorite (id); },
+        [this] (const juce::String& id) { toggleFavorite (id); });
+
+    picker->onPluginSelected = [this, fixedRole, parentPath] (const juce::PluginDescription& desc)
+    {
+        juce::File pluginFile (desc.fileOrIdentifier);
+        if (pluginFile.exists())
+            bridgeManager_.launchBridgeWithPath (pluginFile, fixedRole, {}, std::nullopt, {}, parentPath);
+        else if (mc_ != nullptr)
+            mc_->pushSystemMessage ("Plugin not found: " + desc.fileOrIdentifier);
+    };
+
+    picker->onRefreshRequested = [this] {
+        if (onStartPluginScan) onStartPluginScan();
+    };
+
+    juce::String title = (fixedRole == BridgeInstance::Role::Effect)
+                         ? "Select Effect" : "Select Instruments";
+    pluginPickerWindow_ = std::make_unique<PluginPickerWindow> (picker, title);
 }
 
 // ── Main popup menu ───────────────────────────────────────────────────────
@@ -913,25 +962,8 @@ void UIManager::showMainMenu()
 {
     juce::PopupMenu m;
 
-    // ── Select Instruments submenu (IDs 3000-3998 = plugins, 3 = refresh) ──
-    juce::PopupMenu instrSub;
-    juce::Array<juce::PluginDescription> instrumentTypes;
-    for (auto& t : knownPlugins_.getTypes())
-        if (t.isInstrument) instrumentTypes.add (t);
-
-    if (instrumentTypes.isEmpty())
-    {
-        instrSub.addItem (3000, "(No instruments found)", false, false);
-    }
-    else
-    {
-        int id = 3000;
-        for (auto& t : instrumentTypes)
-            instrSub.addItem (id++, t.name);
-        instrSub.addSeparator();
-    }
-    instrSub.addItem (3, "Refresh Plugin List...");
-    m.addSubMenu ("Select Instruments", instrSub);
+    // ── Select Instruments (opens PluginPickerComponent, ID 3) ──────────────
+    m.addItem (3, "Select Instruments...");
     m.addSeparator();
 
     // ── MIDI Input submenu (IDs 1000-1999) ──
@@ -991,11 +1023,16 @@ void UIManager::showMainMenu()
     for (auto* b : bridgeManager_.getBridges()) bridgeSnapshot.add ({ b });
 
     m.showMenuAsync (juce::PopupMenu::Options(),
-        [this, midiInputs, recents, instrumentTypes, bridgeSnapshot] (int result)
+        [this, midiInputs, recents, bridgeSnapshot] (int result)
         {
             if (result == 1)
             {
                 openSettings();
+            }
+            else if (result == 3)
+            {
+                // Open plugin picker panel for instruments
+                showPluginPicker (BridgeInstance::Role::Instrument);
             }
             else if (result == 6001)
             {
@@ -1046,10 +1083,6 @@ void UIManager::showMainMenu()
                         }
                     });
             }
-            else if (result == 3)
-            {
-                if (onStartPluginScan) onStartPluginScan();
-            }
             else if (result >= 1000 && result < 2000)
             {
                 int idx = result - 1000;
@@ -1069,20 +1102,6 @@ void UIManager::showMainMenu()
                 int idx = result - 2000;
                 if (idx < recents.size())
                     bridgeManager_.launchBridgeWithPath (recents[idx]);
-            }
-            else if (result >= 3000 && result < 3999)
-            {
-                int idx = result - 3000;
-                if (idx < instrumentTypes.size())
-                {
-                    auto& desc = instrumentTypes[idx];
-                    juce::File pluginFile (desc.fileOrIdentifier);
-                    auto role = BridgeInstance::Role::Instrument;
-                    if (pluginFile.exists())
-                        bridgeManager_.launchBridgeWithPath (pluginFile, role);
-                    else if (mc_ != nullptr)
-                        mc_->pushSystemMessage ("Plugin not found: " + desc.fileOrIdentifier);
-                }
             }
             else if (result == 4000)
             {
