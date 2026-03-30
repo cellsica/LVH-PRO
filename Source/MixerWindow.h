@@ -756,6 +756,16 @@ public:
         };
         addAndMakeVisible (*pinBtn_);
 
+        inputStrip_ = std::make_unique<MixerStrip> ("INPUT", juce::Colour (0xff1a4a3a));
+        inputStrip_->setMeterVisible (true);
+        inputStrip_->onFaderChange = [this] (float v) {
+            if (onInputGainChange) onInputGainChange (v);
+        };
+        inputStrip_->onMuteChange = [this] (bool muted) {
+            if (onInputMuteChange) onInputMuteChange (muted);
+        };
+        addAndMakeVisible (*inputStrip_);
+
         masterStrip = std::make_unique<MixerStrip> ("MASTER", juce::Colour (0xff444455), true);
         addAndMakeVisible (*masterStrip);
         masterStrip->onFaderChange = [this] (float v) {
@@ -783,6 +793,11 @@ public:
     std::function<void(BridgeInstance*, MixerParam)>  onMidiLearnRequest;   // bubbled up from strip right-click
     std::function<void(BridgeInstance*, MixerParam)>  onMidiClearMapping;   // bubbled up from strip right-click
     std::function<void(BridgeInstance*, int)>         onFxReorderRequest;   // bubbled up from FX D&D reorder
+
+    // Physical input strip callbacks
+    std::function<void(float)>                        onInputGainChange;
+    std::function<void(bool)>                         onInputMuteChange;
+    std::function<std::pair<float,float>()>           getInputPeaks;
 
     // Called by UIManager to highlight/remove learn indicator on a strip.
     // b == nullptr targets the Master strip.
@@ -991,6 +1006,8 @@ public:
         pinBtn_->setBounds  (header.removeFromRight (36).reduced (4));
 
         masterStrip->setBounds (area.removeFromRight (100).reduced (4));
+        area.removeFromRight (4);
+        if (inputStrip_) inputStrip_->setBounds (area.removeFromRight (80).reduced (2));
         area.removeFromRight (8);
 
         const int stripW = 80;
@@ -1006,12 +1023,18 @@ private:
         for (int i = 0; i < strips.size() && i < bridges_.size(); ++i)
             strips[i]->updateMeter (bridges_[i]->exchangePeakL(),
                                     bridges_[i]->exchangePeakR());
+        if (inputStrip_ != nullptr && getInputPeaks)
+        {
+            auto [l, r] = getInputPeaks();
+            inputStrip_->updateMeter (l, r);
+        }
     }
 
     void applyMeterVisibility()
     {
         bool v = meterBtn->getToggleState();
         for (auto* s : strips) s->setMeterVisible (v);
+        if (inputStrip_) inputStrip_->setMeterVisible (v);
         masterStrip->setMeterVisible (v);
 
         // Stop the timer when meters are hidden to save CPU
@@ -1033,9 +1056,15 @@ private:
             s->setSoloDimmed (anySoloed && ! s->isSoloed());
     }
 
+    void setInputStripValues (float gain, bool muted)
+    {
+        if (inputStrip_) inputStrip_->setInitialValues (gain, 0.f, muted);
+    }
+
     std::unique_ptr<IconButton>      meterBtn;
     std::unique_ptr<IconButton>      pinBtn_;
     juce::OwnedArray<MixerStrip>     strips;
+    std::unique_ptr<MixerStrip>      inputStrip_;
     std::unique_ptr<MixerStrip>      masterStrip;
     juce::Array<BridgeInstance*>     bridges_;   // parallel to strips[]
 
@@ -1073,6 +1102,15 @@ public:
         };
         content->onFxReorderRequest = [this] (BridgeInstance* fx, int newIdx) {
             if (onFxReorderRequest) onFxReorderRequest (fx, newIdx);
+        };
+        content->onInputGainChange = [this] (float v) {
+            if (onInputGainChange) onInputGainChange (v);
+        };
+        content->onInputMuteChange = [this] (bool m) {
+            if (onInputMuteChange) onInputMuteChange (m);
+        };
+        content->getInputPeaks = [this] () -> std::pair<float,float> {
+            return getInputPeaks ? getInputPeaks() : std::make_pair (0.f, 0.f);
         };
         setContentOwned (content, true);
         setResizable (true, false);
@@ -1115,6 +1153,14 @@ public:
     std::function<void(BridgeInstance*, MixerParam)> onMidiLearnRequest;
     std::function<void(BridgeInstance*, MixerParam)> onMidiClearMapping;
     std::function<void(BridgeInstance*, int)>        onFxReorderRequest;
+    std::function<void(float)>                       onInputGainChange;
+    std::function<void(bool)>                        onInputMuteChange;
+    std::function<std::pair<float,float>()>          getInputPeaks;
+
+    void setInputStripValues (float gain, bool muted)
+    {
+        if (content) content->setInputStripValues (gain, muted);
+    }
 
     // Called by UIManager to forward learn state / CC values to the correct strip
     void setStripLearnMode (BridgeInstance* b, MixerParam p, bool active)

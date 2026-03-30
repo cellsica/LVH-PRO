@@ -119,6 +119,71 @@ private:
 };
 
 // =========================================================================
+// InputGainProcessor
+// Inserted between audioInputNode and the first master FX (or gain/meter).
+// Applies input gain and captures peak L/R levels — audio thread only.
+// =========================================================================
+class InputGainProcessor : public AudioProcessor
+{
+public:
+    InputGainProcessor()
+        : AudioProcessor (BusesProperties()
+              .withInput  ("Input",  AudioChannelSet::stereo(), true)
+              .withOutput ("Output", AudioChannelSet::stereo(), true))
+    {
+        peaks[0].store (0.f);
+        peaks[1].store (0.f);
+    }
+
+    void prepareToPlay (double, int) override
+    {
+        peaks[0].store (0.f);
+        peaks[1].store (0.f);
+    }
+    void releaseResources() override {}
+
+    void processBlock (AudioBuffer<float>& buffer, MidiBuffer&) override
+    {
+        float g = gain_.load (std::memory_order_relaxed);
+        const int numSamples = buffer.getNumSamples();
+        for (int ch = 0; ch < jmin (2, buffer.getNumChannels()); ++ch)
+        {
+            buffer.applyGain (ch, 0, numSamples, g);
+            float p = buffer.getMagnitude (ch, 0, numSamples);
+            float cur = peaks[ch].load (std::memory_order_relaxed);
+            if (p > cur) peaks[ch].store (p, std::memory_order_relaxed);
+        }
+    }
+
+    float exchangePeak (int ch)
+    {
+        if (ch < 0 || ch > 1) return 0.f;
+        return peaks[ch].exchange (0.f, std::memory_order_relaxed);
+    }
+
+    void setGain (float g) noexcept { gain_.store (g, std::memory_order_relaxed); }
+
+    const String getName() const override                { return "LVH Input Gain"; }
+    double getTailLengthSeconds() const override         { return 0.0; }
+    bool acceptsMidi() const override                    { return false; }
+    bool producesMidi() const override                   { return false; }
+    bool hasEditor() const override                      { return false; }
+    AudioProcessorEditor* createEditor() override        { return nullptr; }
+    int getNumPrograms() override                        { return 1; }
+    int getCurrentProgram() override                     { return 0; }
+    void setCurrentProgram (int) override                {}
+    const String getProgramName (int) override           { return {}; }
+    void changeProgramName (int, const String&) override {}
+    void getStateInformation (MemoryBlock&) override     {}
+    void setStateInformation (const void*, int) override {}
+
+private:
+    std::atomic<float> gain_ { 1.0f };
+    std::atomic<float> peaks[2];
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (InputGainProcessor)
+};
+
+// =========================================================================
 // AudioEngine
 // =========================================================================
 class AudioEngine
@@ -269,16 +334,23 @@ public:
             for (int ch = 0; ch < 2; ++ch)
                 audioGraph.addConnection ({{lastNode->nodeID, ch}, {mgNode->nodeID, ch}});
 
-        // Physical audio input — always active when bridges are connected.
+        // Physical audio input — InputGainProcessor for gain/mute/metering.
         // Signal is summed into the first master FX node (or gain/meter if no master FX).
-        // JUCE's AudioProcessorGraph automatically sums multiple connections to the same input.
         {
+            inputGainProcessor_ = nullptr;
             auto inNode = audioGraph.addNode (
                 std::make_unique<AudioProcessorGraph::AudioGraphIOProcessor> (
                     AudioProcessorGraph::AudioGraphIOProcessor::audioInputNode));
+            auto* igProc = new InputGainProcessor();
+            igProc->setGain (pendingInputMuted_ ? 0.f : pendingInputGain_);
+            inputGainProcessor_ = igProc;
+            auto igNode = audioGraph.addNode (std::unique_ptr<InputGainProcessor> (igProc));
             auto& targetNode = (firstMasterFxNode != nullptr) ? firstMasterFxNode : mgNode;
             for (int ch = 0; ch < 2; ++ch)
-                audioGraph.addConnection ({{inNode->nodeID, ch}, {targetNode->nodeID, ch}});
+            {
+                audioGraph.addConnection ({{inNode->nodeID,  ch}, {igNode->nodeID,    ch}});
+                audioGraph.addConnection ({{igNode->nodeID,  ch}, {targetNode->nodeID, ch}});
+            }
         }
 
         connectToOutput (mgNode, outNode, metroNode);
@@ -411,6 +483,29 @@ public:
         if (bs > 0)   lastBufferSize  = bs;
     }
 
+    // ── Physical input control (message thread) ───────────────────────
+    float exchangeInputPeak (int ch)
+    {
+        return inputGainProcessor_ ? inputGainProcessor_->exchangePeak (ch) : 0.f;
+    }
+
+    void setInputGain (float g)
+    {
+        pendingInputGain_ = g;
+        if (inputGainProcessor_ && ! pendingInputMuted_)
+            inputGainProcessor_->setGain (g);
+    }
+
+    void setInputMuted (bool muted)
+    {
+        pendingInputMuted_ = muted;
+        if (inputGainProcessor_)
+            inputGainProcessor_->setGain (muted ? 0.f : pendingInputGain_);
+    }
+
+    float getInputGain()  const noexcept { return pendingInputGain_; }
+    bool  isInputMuted()  const noexcept { return pendingInputMuted_; }
+
     void setTranspose (int semitones)
     {
         pendingTranspose = semitones;
@@ -531,12 +626,15 @@ private:
     MidiInjectionsProcessor*  kbProcessor         = nullptr; // raw ptr; owned by audioGraph
     GainAndMeterProcessor*    meterGainProcessor   = nullptr; // raw ptr; owned by audioGraph
     MetronomeProcessor*       metronomeProcessor_  = nullptr; // raw ptr; owned by audioGraph
+    InputGainProcessor*       inputGainProcessor_  = nullptr; // raw ptr; owned by audioGraph
 
-    float  pendingGain    = 1.0f;
-    int    pendingTranspose = 0;
-    int    pendingChannel   = 0;
-    double lastSampleRate   = 0.0;
-    int    lastBufferSize   = 0;
+    float  pendingGain        = 1.0f;
+    int    pendingTranspose    = 0;
+    int    pendingChannel      = 0;
+    double lastSampleRate      = 0.0;
+    int    lastBufferSize      = 0;
+    float  pendingInputGain_   = 1.0f;
+    bool   pendingInputMuted_  = false;
 
     // Metronome pending state (survives graph rebuilds)
     bool   pendingMetroPlaying_     = false;
