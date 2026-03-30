@@ -288,7 +288,7 @@ public:
         its own per-channel FX chain (perChannelFxMap), then the mixed output is fed
         through each master effect bridge in order.
         inputFxChain: serial FX applied to physical audio input before it merges into the master chain.
-        Pass empty arrays to fall back to the sine-wave generator.
+        Physical input is always active — LINE works even with no instrument bridges loaded.
         Graph: [Instr(parallel+per-chan FX)] → [MasterFX1] → ... → [Gain/Meter] → [Out]
                [PhysIn] → [InputGain] → [InputFX...] ↗ */
     void rebuildBridgeGraph (
@@ -297,12 +297,6 @@ public:
         const std::map<BridgeInstance*, juce::Array<BridgeInstance*>>& perChannelFxMap = {},
         const juce::Array<BridgeInstance*>& inputFxChain = {})
     {
-        if (instrumentBridges.isEmpty() && masterEffects.isEmpty())
-        {
-            buildGraphWithSineWave();
-            return;
-        }
-
         kbProcessor         = nullptr;
         meterGainProcessor  = nullptr;
         metronomeProcessor_ = nullptr;
