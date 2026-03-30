@@ -34,6 +34,7 @@ public:
     void resized() override;
 
 private:
+    Viewport                                      viewport_;
     std::unique_ptr<AudioDeviceSelectorComponent> selector;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioMidiSettingsPage)
 };

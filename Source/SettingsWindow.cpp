@@ -155,12 +155,16 @@ AudioMidiSettingsPage::AudioMidiSettingsPage (AudioDeviceManager& dm)
 {
     selector = std::make_unique<AudioDeviceSelectorComponent>
         (dm, 0, 2, 2, 2, true, true, true, false);
-    addAndMakeVisible (*selector);
+    viewport_.setScrollBarsShown (true, false);
+    viewport_.setViewedComponent (selector.get(), false);
+    addAndMakeVisible (viewport_);
 }
 
 void AudioMidiSettingsPage::resized()
 {
-    selector->setBounds (getLocalBounds());
+    viewport_.setBounds (getLocalBounds());
+    const int sbW = viewport_.getScrollBarThickness();
+    selector->setSize (getWidth() - sbW, 700);
 }
 
 // =====================================================================
