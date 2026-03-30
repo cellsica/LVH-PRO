@@ -10,7 +10,6 @@ venv/
 # Project
 .agent/to_shizuku_*.md
 .agent/to_kaede_*.md
-roadmap.md
 build/
 *.txt
 !CMakeLists.txt
