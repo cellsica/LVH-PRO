@@ -269,12 +269,15 @@ public:
         Instruments are processed in parallel (MultiSourceBridgeProcessor), each with
         its own per-channel FX chain (perChannelFxMap), then the mixed output is fed
         through each master effect bridge in order.
+        inputFxChain: serial FX applied to physical audio input before it merges into the master chain.
         Pass empty arrays to fall back to the sine-wave generator.
-        Graph: [Instr(parallel+per-chan FX)] → [MasterFX1] → [MasterFX2] → ... → [Gain/Meter] → [Out] */
+        Graph: [Instr(parallel+per-chan FX)] → [MasterFX1] → ... → [Gain/Meter] → [Out]
+               [PhysIn] → [InputGain] → [InputFX...] ↗ */
     void rebuildBridgeGraph (
         const juce::Array<BridgeInstance*>& instrumentBridges,
         const juce::Array<BridgeInstance*>& masterEffects,
-        const std::map<BridgeInstance*, juce::Array<BridgeInstance*>>& perChannelFxMap = {})
+        const std::map<BridgeInstance*, juce::Array<BridgeInstance*>>& perChannelFxMap = {},
+        const juce::Array<BridgeInstance*>& inputFxChain = {})
     {
         if (instrumentBridges.isEmpty() && masterEffects.isEmpty())
         {
@@ -334,8 +337,8 @@ public:
             for (int ch = 0; ch < 2; ++ch)
                 audioGraph.addConnection ({{lastNode->nodeID, ch}, {mgNode->nodeID, ch}});
 
-        // Physical audio input — InputGainProcessor for gain/mute/metering.
-        // Signal is summed into the first master FX node (or gain/meter if no master FX).
+        // Physical audio input — InputGainProcessor for gain/mute/metering,
+        // followed by optional serial Input FX chain, then summed into master chain.
         {
             inputGainProcessor_ = nullptr;
             auto inNode = audioGraph.addNode (
@@ -345,12 +348,24 @@ public:
             igProc->setGain (pendingInputMuted_ ? 0.f : pendingInputGain_);
             inputGainProcessor_ = igProc;
             auto igNode = audioGraph.addNode (std::unique_ptr<InputGainProcessor> (igProc));
+            for (int ch = 0; ch < 2; ++ch)
+                audioGraph.addConnection ({{inNode->nodeID, ch}, {igNode->nodeID, ch}});
+
+            // Build serial Input FX chain after InputGainProcessor
+            AudioProcessorGraph::Node::Ptr inputLastNode = igNode;
+            for (auto* b : inputFxChain)
+            {
+                auto fxNode = audioGraph.addNode (
+                    std::make_unique<BridgeEffectProcessor> (
+                        b->getSharedMemory(), b->getSyncEvents(), b));
+                for (int ch = 0; ch < 2; ++ch)
+                    audioGraph.addConnection ({{inputLastNode->nodeID, ch}, {fxNode->nodeID, ch}});
+                inputLastNode = fxNode;
+            }
+
             auto& targetNode = (firstMasterFxNode != nullptr) ? firstMasterFxNode : mgNode;
             for (int ch = 0; ch < 2; ++ch)
-            {
-                audioGraph.addConnection ({{inNode->nodeID,  ch}, {igNode->nodeID,    ch}});
-                audioGraph.addConnection ({{igNode->nodeID,  ch}, {targetNode->nodeID, ch}});
-            }
+                audioGraph.addConnection ({{inputLastNode->nodeID, ch}, {targetNode->nodeID, ch}});
         }
 
         connectToOutput (mgNode, outNode, metroNode);

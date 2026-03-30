@@ -202,6 +202,9 @@ void UIManager::toggleMixerWindow (bool show)
             mixerWindow_->onAddFx = [this] (BridgeInstance* parent) {
                 showPluginPicker (BridgeInstance::Role::Effect, parent);
             };
+            mixerWindow_->onAddInputFx = [this] {
+                showPluginPicker (BridgeInstance::Role::Effect, juce::String ("##INPUT##"));
+            };
 
             mixerWindow_->onMidiLearnRequest = [this] (BridgeInstance* b, MixerParam p) {
                 startMidiLearn (b, p);
@@ -966,6 +969,11 @@ public:
 
 void UIManager::showPluginPicker (BridgeInstance::Role fixedRole, BridgeInstance* parentInstrument)
 {
+    showPluginPicker (fixedRole, parentInstrument ? parentInstrument->getPluginPath() : juce::String{});
+}
+
+void UIManager::showPluginPicker (BridgeInstance::Role fixedRole, const juce::String& parentPath)
+{
     // If already open, bring to front
     if (pluginPickerWindow_ != nullptr && pluginPickerWindow_->isVisible())
     {
@@ -980,8 +988,6 @@ void UIManager::showPluginPicker (BridgeInstance::Role fixedRole, BridgeInstance
         if (fixedRole == BridgeInstance::Role::Effect && t.isInstrument) continue;
         filteredTypes.add (t);
     }
-
-    juce::String parentPath = parentInstrument ? parentInstrument->getPluginPath() : juce::String{};
 
     auto* picker = new PluginPickerComponent (
         filteredTypes,

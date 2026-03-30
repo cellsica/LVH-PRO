@@ -88,7 +88,9 @@ void BridgeManager::launchBridgeWithPath (
             if (b->getRole() == BridgeInstance::Role::Effect)
             {
                 juce::String parentLabel = "MASTER";
-                if (b->getFxParentPath().isNotEmpty())
+                if (b->getFxParentPath() == "##INPUT##")
+                    parentLabel = "INPUT";
+                else if (b->getFxParentPath().isNotEmpty())
                     parentLabel = juce::File (b->getFxParentPath()).getFileNameWithoutExtension();
                 title = "LVH-Bridge [" + parentLabel + "]: [" + displayName + "]";
             }
@@ -234,19 +236,24 @@ void BridgeManager::rebuildBridgeGraph()
         }
     }
 
-    // Split effects into master chain and per-instrument FX chains
-    juce::Array<BridgeInstance*> masterEffects;
+    // Split effects into master chain, input FX chain, and per-instrument FX chains
+    juce::Array<BridgeInstance*> masterEffects, inputFxEffects;
     std::map<BridgeInstance*, juce::Array<BridgeInstance*>> perChannelFxMap;
 
     for (auto* fx : allEffects)
     {
-        if (fx->getFxParentPath().isEmpty())
+        const juce::String& parent = fx->getFxParentPath();
+        if (parent == "##INPUT##")
+        {
+            inputFxEffects.add (fx);
+        }
+        else if (parent.isEmpty())
         {
             masterEffects.add (fx);
         }
         else
         {
-            juce::File parentFile (fx->getFxParentPath());
+            juce::File parentFile (parent);
             for (auto* instr : instruments)
                 if (juce::File (instr->getPluginPath()) == parentFile)
                 {
@@ -256,7 +263,7 @@ void BridgeManager::rebuildBridgeGraph()
         }
     }
 
-    audioEngine_.rebuildBridgeGraph (instruments, masterEffects, perChannelFxMap);
+    audioEngine_.rebuildBridgeGraph (instruments, masterEffects, perChannelFxMap, inputFxEffects);
     // Pass all effects so the mixer UI can display both master and per-channel slots
     if (onGraphRebuilt) onGraphRebuilt (instruments, allEffects);
 }
