@@ -163,6 +163,7 @@ public:
     std::function<void(float)>               onPanChange;        // -1.0 to +1.0
     std::function<void(bool)>                onMuteChange;
     std::function<void(bool)>                onSoloChange;
+    std::function<void(bool)>                onMonoChange;       // fired when MONO button toggled (input strip only)
     std::function<void(const juce::String&)> onNameChange;       // fired when user edits channel name
     std::function<void(juce::Colour)>        onColorChange;      // fired when user picks accent colour
     std::function<void(BridgeInstance*)>          onAddFx;            // bubbled up from placeholder FXSlotComponents
@@ -254,6 +255,17 @@ public:
         };
         addAndMakeVisible (soloBtn);
 
+        monoBtn.setButtonText ("MONO");
+        monoBtn.setClickingTogglesState (true);
+        monoBtn.setColour (TextButton::buttonColourId,   juce::Colour (0xff333344));
+        monoBtn.setColour (TextButton::buttonOnColourId, juce::Colour (0xff226699));
+        monoBtn.setTooltip ("Mono: duplicate L channel to R");
+        monoBtn.onClick = [this] {
+            if (onMonoChange) onMonoChange (monoBtn.getToggleState());
+        };
+        monoBtn.setVisible (false);  // hidden by default; shown only for INPUT strip
+        addChildComponent (monoBtn);
+
         // Register as mouse listener on sub-controls for right-click MIDI menu
         fader    .addMouseListener (this, false);
         panSlider.addMouseListener (this, false);
@@ -263,6 +275,20 @@ public:
 
     void setMeterVisible (bool v) { ledMeter.setVisible (v); resized(); }
     void setDisplayName (const juce::String& name) { nameLabel.setText (name, dontSendNotification); }
+
+    // Show/hide the MONO button (replaces SOLO in footer for INPUT strip)
+    void setShowMonoButton (bool show)
+    {
+        monoBtn.setVisible (show);
+        soloBtn.setVisible (! show);
+        resized();
+    }
+
+    // Set MONO button state without triggering callback
+    void setMonoNoCallback (bool mono)
+    {
+        monoBtn.setToggleState (mono, dontSendNotification);
+    }
 
     // FX slot management
     FXSlotComponent* addFxSlot()
@@ -484,6 +510,7 @@ public:
         auto footer = area.removeFromBottom (24);
         muteBtn.setBounds (footer.removeFromLeft (footer.getWidth() / 2).reduced (2));
         soloBtn.setBounds (footer.reduced (2));
+        monoBtn.setBounds (soloBtn.getBounds());  // MONO occupies same slot as SOLO
 
         faderValueLabel.setBounds (area.removeFromBottom (12));
         {
@@ -722,7 +749,7 @@ private:
     juce::Viewport           fxViewport_;
     Slider                   panSlider, fader;
     Label                    panValueLabel, faderValueLabel;
-    TextButton               muteBtn, soloBtn;
+    TextButton               muteBtn, soloBtn, monoBtn;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MixerStrip)
 };
@@ -758,11 +785,15 @@ public:
 
         inputStrip_ = std::make_unique<MixerStrip> ("INPUT", juce::Colour (0xff1a4a3a));
         inputStrip_->setMeterVisible (true);
+        inputStrip_->setShowMonoButton (true);
         inputStrip_->onFaderChange = [this] (float v) {
             if (onInputGainChange) onInputGainChange (v);
         };
         inputStrip_->onMuteChange = [this] (bool muted) {
             if (onInputMuteChange) onInputMuteChange (muted);
+        };
+        inputStrip_->onMonoChange = [this] (bool mono) {
+            if (onInputMonoChange) onInputMonoChange (mono);
         };
         addAndMakeVisible (*inputStrip_);
 
@@ -798,7 +829,8 @@ public:
     std::function<void(float)>                        onInputGainChange;
     std::function<void(bool)>                         onInputMuteChange;
     std::function<std::pair<float,float>()>           getInputPeaks;
-    std::function<void()>                             onAddInputFx;    // fired when INPUT strip + slot clicked
+    std::function<void()>                             onAddInputFx;     // fired when INPUT strip + slot clicked
+    std::function<void(bool)>                         onInputMonoChange; // fired when MONO button toggled
 
     // Called by UIManager to highlight/remove learn indicator on a strip.
     // b == nullptr targets the Master strip.
@@ -1028,9 +1060,13 @@ public:
         pinBtn_->setToggleState (pinned, juce::dontSendNotification);
     }
 
-    void setInputStripValues (float gain, bool muted)
+    void setInputStripValues (float gain, bool muted, bool mono = false)
     {
-        if (inputStrip_) inputStrip_->setInitialValues (gain, 0.f, muted);
+        if (inputStrip_)
+        {
+            inputStrip_->setInitialValues (gain, 0.f, muted);
+            inputStrip_->setMonoNoCallback (mono);
+        }
     }
 
     void resized() override
@@ -1145,6 +1181,9 @@ public:
         content->onAddInputFx = [this] {
             if (onAddInputFx) onAddInputFx();
         };
+        content->onInputMonoChange = [this] (bool mono) {
+            if (onInputMonoChange) onInputMonoChange (mono);
+        };
         setContentOwned (content, true);
         setResizable (true, false);
         centreWithSize (720, 480);
@@ -1190,10 +1229,11 @@ public:
     std::function<void(bool)>                        onInputMuteChange;
     std::function<std::pair<float,float>()>          getInputPeaks;
     std::function<void()>                            onAddInputFx;
+    std::function<void(bool)>                        onInputMonoChange;
 
-    void setInputStripValues (float gain, bool muted)
+    void setInputStripValues (float gain, bool muted, bool mono = false)
     {
-        if (content) content->setInputStripValues (gain, muted);
+        if (content) content->setInputStripValues (gain, muted, mono);
     }
 
     // Called by UIManager to forward learn state / CC values to the correct strip

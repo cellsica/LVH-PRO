@@ -225,6 +225,11 @@ void UIManager::toggleMixerWindow (bool show)
             mixerWindow_->getInputPeaks = [this] () -> std::pair<float,float> {
                 return { audioEngine_.exchangeInputPeak (0), audioEngine_.exchangeInputPeak (1) };
             };
+            mixerWindow_->onInputMonoChange = [this] (bool mono) {
+                audioEngine_.setInputMono (mono);
+                if (auto* prefs = appProperties_.getUserSettings())
+                    prefs->setValue ("inputMono", mono);
+            };
 
             mixerWindow_->onFxReorderRequest = [this] (BridgeInstance* fx, int newSlotIndex)
             {
@@ -263,12 +268,14 @@ void UIManager::toggleMixerWindow (bool show)
             bool pinned = prefs->getBoolValue ("mixerAlwaysOnTop", false);
             mixerWindow_->setPinState (pinned);
 
-            // Restore physical input gain / mute
+            // Restore physical input gain / mute / mono
             float savedGain  = (float) prefs->getDoubleValue ("inputGain",  1.0);
             bool  savedMuted = prefs->getBoolValue            ("inputMuted", false);
+            bool  savedMono  = prefs->getBoolValue            ("inputMono",  false);
             audioEngine_.setInputGain  (savedGain);
             audioEngine_.setInputMuted (savedMuted);
-            mixerWindow_->setInputStripValues (savedGain, savedMuted);
+            audioEngine_.setInputMono  (savedMono);
+            mixerWindow_->setInputStripValues (savedGain, savedMuted, savedMono);
         }
 
         // Sync MASTER fader to current Core slider value
