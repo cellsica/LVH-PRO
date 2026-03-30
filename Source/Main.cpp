@@ -139,8 +139,6 @@ public:
         }
         audioEngine.initialise (deviceManager);
 
-        audioEngine.buildGraphWithSineWave();
-
         mainWindow.reset (new MainWindow (getApplicationName(), keyboardState));
 
         pcKeyListener = std::make_unique<PCKeyboardListener> (keyboardState);
