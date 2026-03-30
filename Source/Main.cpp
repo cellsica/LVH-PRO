@@ -127,7 +127,16 @@ public:
         opts.osxLibrarySubFolder   = "Application Support";
         appProperties.setStorageParameters (opts);
 
-        deviceManager.initialiseWithDefaultDevices (0, 2);
+        {
+            std::unique_ptr<juce::XmlElement> savedState;
+            if (auto* prefs = appProperties.getUserSettings())
+            {
+                auto xmlStr = prefs->getValue ("audioDeviceState");
+                if (xmlStr.isNotEmpty())
+                    savedState = juce::XmlDocument::parse (xmlStr);
+            }
+            deviceManager.initialise (2, 2, savedState.get(), true);
+        }
         audioEngine.initialise (deviceManager);
 
         audioEngine.buildGraphWithSineWave();
@@ -211,6 +220,11 @@ public:
 
         deviceManager.removeMidiInputDeviceCallback (String(), this);
         deviceManager.removeMidiInputDeviceCallback (String(), &audioEngine.getPlayer());
+
+        if (auto* prefs = appProperties.getUserSettings())
+            if (auto xml = deviceManager.createStateXml())
+                prefs->setValue ("audioDeviceState", xml->toString());
+
         audioEngine.shutdown (deviceManager);
         mainWindow.reset();
 

@@ -154,7 +154,7 @@ void GeneralSettingsPage::resized()
 AudioMidiSettingsPage::AudioMidiSettingsPage (AudioDeviceManager& dm)
 {
     selector = std::make_unique<AudioDeviceSelectorComponent>
-        (dm, 0, 0, 2, 2, true, true, true, false);
+        (dm, 0, 2, 2, 2, true, true, true, false);
     addAndMakeVisible (*selector);
 }
 
