@@ -209,6 +209,20 @@ void UIManager::toggleMixerWindow (bool show)
             mixerWindow_->onMidiClearMapping = [this] (BridgeInstance* b, MixerParam p) {
                 clearMidiMapping (b, p);
             };
+            mixerWindow_->onInputGainChange = [this] (float v) {
+                audioEngine_.setInputGain (v);
+                if (auto* prefs = appProperties_.getUserSettings())
+                    prefs->setValue ("inputGain", v);
+            };
+            mixerWindow_->onInputMuteChange = [this] (bool muted) {
+                audioEngine_.setInputMuted (muted);
+                if (auto* prefs = appProperties_.getUserSettings())
+                    prefs->setValue ("inputMuted", muted);
+            };
+            mixerWindow_->getInputPeaks = [this] () -> std::pair<float,float> {
+                return { audioEngine_.exchangeInputPeak (0), audioEngine_.exchangeInputPeak (1) };
+            };
+
             mixerWindow_->onFxReorderRequest = [this] (BridgeInstance* fx, int newSlotIndex)
             {
                 // newSlotIndex is the desired position among siblings (same FX parent).
@@ -245,6 +259,13 @@ void UIManager::toggleMixerWindow (bool show)
         {
             bool pinned = prefs->getBoolValue ("mixerAlwaysOnTop", false);
             mixerWindow_->setPinState (pinned);
+
+            // Restore physical input gain / mute
+            float savedGain  = (float) prefs->getDoubleValue ("inputGain",  1.0);
+            bool  savedMuted = prefs->getBoolValue            ("inputMuted", false);
+            audioEngine_.setInputGain  (savedGain);
+            audioEngine_.setInputMuted (savedMuted);
+            mixerWindow_->setInputStripValues (savedGain, savedMuted);
         }
 
         // Sync MASTER fader to current Core slider value
