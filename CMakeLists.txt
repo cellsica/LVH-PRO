@@ -74,7 +74,17 @@ target_compile_definitions(LVH
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_PLUGINHOST_VST3=1
+        # ASIO support: set ASIO_SDK_PATH (cmake -DASIO_SDK_PATH=<path>) to enable
+        $<$<BOOL:${ASIO_SDK_PATH}>:JUCE_ASIO=1>
 )
+
+# ASIO SDK path (optional): cmake -DASIO_SDK_PATH="C:/path/to/asio_sdk"
+if(ASIO_SDK_PATH)
+    message(STATUS "ASIO SDK found: ${ASIO_SDK_PATH} — ASIO enabled")
+    target_include_directories(LVH PRIVATE "${ASIO_SDK_PATH}/common")
+else()
+    message(STATUS "ASIO_SDK_PATH not set — ASIO disabled (WASAPI/DirectSound only)")
+endif()
 
 # MSVC での文字コード問題を解決するために /utf-8 を追加
 if(MSVC)
@@ -146,4 +156,11 @@ target_include_directories(LVH
     PRIVATE
         Source
         Source/Core
+)
+
+# Releaseビルド時のみ \\Storm-pc\lvhpro へ自動デプロイ
+add_custom_command(TARGET LVH POST_BUILD
+    COMMAND powershell -NonInteractive -Command
+        "if ('$<CONFIG>' -eq 'Release') { $r = robocopy '$<TARGET_FILE_DIR:LVH>' '\\\\Storm-pc\\lvhpro' 'LVH.exe' 'LVH-Bridge.exe' /R:2 /W:3 /NP; if ($LASTEXITCODE -le 7) { exit 0 } else { exit 1 } }"
+    COMMENT "Deploying Release build to \\\\Storm-pc\\lvhpro"
 )
