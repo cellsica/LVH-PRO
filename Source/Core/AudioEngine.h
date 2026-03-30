@@ -252,6 +252,7 @@ public:
                 std::make_unique<MultiSourceBridgeProcessor> (std::move (sources)));
         }
 
+        AudioProcessorGraph::Node::Ptr firstMasterFxNode;
         for (auto* b : masterEffects)
         {
             auto effectNode = audioGraph.addNode (
@@ -261,11 +262,24 @@ public:
                 for (int ch = 0; ch < 2; ++ch)
                     audioGraph.addConnection ({{lastNode->nodeID, ch}, {effectNode->nodeID, ch}});
             lastNode = effectNode;
+            if (firstMasterFxNode == nullptr) firstMasterFxNode = effectNode;
         }
 
         if (lastNode != nullptr)
             for (int ch = 0; ch < 2; ++ch)
                 audioGraph.addConnection ({{lastNode->nodeID, ch}, {mgNode->nodeID, ch}});
+
+        // Physical audio input — always active when bridges are connected.
+        // Signal is summed into the first master FX node (or gain/meter if no master FX).
+        // JUCE's AudioProcessorGraph automatically sums multiple connections to the same input.
+        {
+            auto inNode = audioGraph.addNode (
+                std::make_unique<AudioProcessorGraph::AudioGraphIOProcessor> (
+                    AudioProcessorGraph::AudioGraphIOProcessor::audioInputNode));
+            auto& targetNode = (firstMasterFxNode != nullptr) ? firstMasterFxNode : mgNode;
+            for (int ch = 0; ch < 2; ++ch)
+                audioGraph.addConnection ({{inNode->nodeID, ch}, {targetNode->nodeID, ch}});
+        }
 
         connectToOutput (mgNode, outNode, metroNode);
 
