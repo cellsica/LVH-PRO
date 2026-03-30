@@ -145,13 +145,29 @@ public:
     void processBlock (AudioBuffer<float>& buffer, MidiBuffer&) override
     {
         float g = gain_.load (std::memory_order_relaxed);
+        bool  mono = mono_.load (std::memory_order_relaxed);
         const int numSamples = buffer.getNumSamples();
-        for (int ch = 0; ch < jmin (2, buffer.getNumChannels()); ++ch)
+        const int numCh = jmin (2, buffer.getNumChannels());
+
+        if (mono && numCh >= 2)
         {
-            buffer.applyGain (ch, 0, numSamples, g);
-            float p = buffer.getMagnitude (ch, 0, numSamples);
-            float cur = peaks[ch].load (std::memory_order_relaxed);
-            if (p > cur) peaks[ch].store (p, std::memory_order_relaxed);
+            // Apply gain to L, copy to R → centre-panned mono signal
+            buffer.applyGain (0, 0, numSamples, g);
+            buffer.copyFrom (1, 0, buffer, 0, 0, numSamples);
+            float p = buffer.getMagnitude (0, 0, numSamples);
+            float cur = peaks[0].load (std::memory_order_relaxed);
+            if (p > cur) peaks[0].store (p, std::memory_order_relaxed);
+            peaks[1].store (peaks[0].load (std::memory_order_relaxed), std::memory_order_relaxed);
+        }
+        else
+        {
+            for (int ch = 0; ch < numCh; ++ch)
+            {
+                buffer.applyGain (ch, 0, numSamples, g);
+                float p = buffer.getMagnitude (ch, 0, numSamples);
+                float cur = peaks[ch].load (std::memory_order_relaxed);
+                if (p > cur) peaks[ch].store (p, std::memory_order_relaxed);
+            }
         }
     }
 
@@ -162,6 +178,7 @@ public:
     }
 
     void setGain (float g) noexcept { gain_.store (g, std::memory_order_relaxed); }
+    void setMonoMode (bool m) noexcept { mono_.store (m, std::memory_order_relaxed); }
 
     const String getName() const override                { return "LVH Input Gain"; }
     double getTailLengthSeconds() const override         { return 0.0; }
@@ -179,6 +196,7 @@ public:
 
 private:
     std::atomic<float> gain_ { 1.0f };
+    std::atomic<bool>  mono_ { false };
     std::atomic<float> peaks[2];
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (InputGainProcessor)
 };
@@ -346,6 +364,7 @@ public:
                     AudioProcessorGraph::AudioGraphIOProcessor::audioInputNode));
             auto* igProc = new InputGainProcessor();
             igProc->setGain (pendingInputMuted_ ? 0.f : pendingInputGain_);
+            igProc->setMonoMode (pendingInputMono_);
             inputGainProcessor_ = igProc;
             auto igNode = audioGraph.addNode (std::unique_ptr<InputGainProcessor> (igProc));
             for (int ch = 0; ch < 2; ++ch)
@@ -518,8 +537,15 @@ public:
             inputGainProcessor_->setGain (muted ? 0.f : pendingInputGain_);
     }
 
+    void setInputMono (bool mono)
+    {
+        pendingInputMono_ = mono;
+        if (inputGainProcessor_) inputGainProcessor_->setMonoMode (mono);
+    }
+
     float getInputGain()  const noexcept { return pendingInputGain_; }
     bool  isInputMuted()  const noexcept { return pendingInputMuted_; }
+    bool  isInputMono()   const noexcept { return pendingInputMono_; }
 
     void setTranspose (int semitones)
     {
@@ -650,6 +676,7 @@ private:
     int    lastBufferSize      = 0;
     float  pendingInputGain_   = 1.0f;
     bool   pendingInputMuted_  = false;
+    bool   pendingInputMono_   = false;
 
     // Metronome pending state (survives graph rebuilds)
     bool   pendingMetroPlaying_     = false;
