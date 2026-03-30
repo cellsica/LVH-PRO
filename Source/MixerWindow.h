@@ -998,6 +998,11 @@ public:
         pinBtn_->setToggleState (pinned, juce::dontSendNotification);
     }
 
+    void setInputStripValues (float gain, bool muted)
+    {
+        if (inputStrip_) inputStrip_->setInitialValues (gain, 0.f, muted);
+    }
+
     void resized() override
     {
         auto area   = getLocalBounds();
@@ -1054,11 +1059,6 @@ private:
 
         for (auto* s : strips)
             s->setSoloDimmed (anySoloed && ! s->isSoloed());
-    }
-
-    void setInputStripValues (float gain, bool muted)
-    {
-        if (inputStrip_) inputStrip_->setInitialValues (gain, 0.f, muted);
     }
 
     std::unique_ptr<IconButton>      meterBtn;
