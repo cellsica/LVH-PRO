@@ -165,6 +165,9 @@ Live-ready (ライブ演奏特化) な堅牢性を守りつつ、シンセとエ
 #### Mission 044-B: 入力専用 FX スロット ✅
 - [x] **FX ルーティングと永続化**: INPUT ストリップ上での FX 挿入とシグナルルーティング（Input -> FX -> Master）の拡張。MONO 変換機能の実装。
 
+#### Mission 044-C: LINE 入力の常時有効化 ＆ MONO ボタン ✅
+- [x] **Always-ON ＆ モノラル対応**: ブリッジなしでの信号常時有効化、MONO 切り替え機能の実装。
+
 #### Mission 045: ビジュアライザー拡張 🔜
 ##### Phase A: OpenGL 基盤 ＆ Radial Spectrum Analyzer
 - [ ] **ライブラリ分離設計**: ビジュアライザーコアを `Visualizer/` フォルダに独立モジュールとして構成。将来の独立アプリ化（YouTube 等の外部音声対応）を想定し、LVH の AudioEngine への直接依存を排除。
