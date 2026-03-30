@@ -7,7 +7,9 @@ BridgeManager::BridgeManager (AudioEngine&              audioEngine,
     : audioEngine_  (audioEngine),
       deviceManager_(deviceManager),
       appProperties_(appProperties)
-{}
+{
+    deviceManager_.addChangeListener (this);
+}
 
 // ── Public API ────────────────────────────────────────────────────────────
 
@@ -193,6 +195,21 @@ void BridgeManager::addToRecentBridgeFiles (const juce::File& file)
     parts.insert (0, file.getFullPathName());
     while (parts.size() > 20) parts.remove (parts.size() - 1);
     prefs->setValue ("recentBridgeFiles", parts.joinIntoString ("|"));
+}
+
+// ── ChangeListener ────────────────────────────────────────────────────────
+
+void BridgeManager::changeListenerCallback (juce::ChangeBroadcaster*)
+{
+    auto& setup = deviceManager_.getAudioDeviceSetup();
+    auto sr = setup.sampleRate > 0.0 ? setup.sampleRate : 44100.0;
+    auto bs = setup.bufferSize > 0   ? setup.bufferSize : 512;
+
+    for (auto* b : bridges_)
+        if (b->getState() == BridgeInstance::State::Connected)
+            b->sendAudioConfig (static_cast<float> (sr), bs);
+
+    audioEngine_.updateConfig (sr, bs);
 }
 
 // ── Private ───────────────────────────────────────────────────────────────

@@ -391,6 +391,12 @@ public:
         }
     }
 
+    void updateConfig (double sr, int bs)
+    {
+        if (sr > 0.0) lastSampleRate = sr;
+        if (bs > 0)   lastBufferSize  = bs;
+    }
+
     void setTranspose (int semitones)
     {
         pendingTranspose = semitones;

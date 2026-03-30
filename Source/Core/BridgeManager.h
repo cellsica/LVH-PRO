@@ -26,7 +26,7 @@
 // injection at call site in LvhProApplication), so BridgeManager never
 // calls back into ProjectSerializer.
 // =====================================================================
-class BridgeManager
+class BridgeManager : public juce::ChangeListener
 {
 public:
     // ── Construction ──────────────────────────────────────────────────────
@@ -77,6 +77,9 @@ public:
     // Recent bridge file list (stored in appProperties).
     juce::Array<juce::File> getRecentBridgeFiles() const;
     void addToRecentBridgeFiles (const juce::File& file);
+
+    // juce::ChangeListener — fires when AudioDeviceManager settings change
+    void changeListenerCallback (juce::ChangeBroadcaster*) override;
 
 private:
     // ── Private helpers ───────────────────────────────────────────────────
