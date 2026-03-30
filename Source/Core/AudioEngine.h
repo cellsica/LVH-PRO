@@ -222,6 +222,10 @@ public:
         auto& setup = deviceManager.getAudioDeviceSetup();
         lastSampleRate = setup.sampleRate > 0.0 ? setup.sampleRate : 44100.0;
         lastBufferSize = setup.bufferSize > 0   ? setup.bufferSize : 512;
+
+        // Build initial graph so the physical input (LINE) is active from startup,
+        // even before any Bridge is launched.
+        rebuildBridgeGraph ({}, {});
     }
 
     void shutdown (AudioDeviceManager& deviceManager)
