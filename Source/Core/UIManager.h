@@ -111,6 +111,7 @@ private:
     // ── Private helpers ───────────────────────────────────────────────────
     void showMainMenu();
     void showPluginPicker (BridgeInstance::Role fixedRole, BridgeInstance* parentInstrument = nullptr);
+    void showPluginPicker (BridgeInstance::Role fixedRole, const juce::String& parentPath);
     juce::File getBridgeStartDir() const;
 
     // Check isDirty(); if clean, run action() immediately.

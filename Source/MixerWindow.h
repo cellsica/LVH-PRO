@@ -798,6 +798,7 @@ public:
     std::function<void(float)>                        onInputGainChange;
     std::function<void(bool)>                         onInputMuteChange;
     std::function<std::pair<float,float>()>           getInputPeaks;
+    std::function<void()>                             onAddInputFx;    // fired when INPUT strip + slot clicked
 
     // Called by UIManager to highlight/remove learn indicator on a strip.
     // b == nullptr targets the Master strip.
@@ -933,7 +934,7 @@ public:
         masterStrip->clearFxSlots();
         for (auto* b : effectBridges)
         {
-            if (b->getFxParentPath().isNotEmpty()) continue;  // skip per-channel FX
+            if (b->getFxParentPath().isNotEmpty()) continue;  // skip per-channel and input FX
             juce::String name = b->mixerCustomName.isNotEmpty()
                                 ? b->mixerCustomName
                                 : juce::File (b->getPluginPath()).getFileNameWithoutExtension();
@@ -956,7 +957,36 @@ public:
         masterStrip->onFxReorderRequest = [this] (BridgeInstance* fx, int newIdx) {
             if (onFxReorderRequest) onFxReorderRequest (fx, newIdx);
         };
-        masterStrip->resized();  // re-layout after bridge pointers are set (bounds may be unchanged)
+        masterStrip->resized();
+
+        // Rebuild FX slots in the INPUT strip from input effects (fxParentPath == "##INPUT##")
+        inputStrip_->clearFxSlots();
+        for (auto* b : effectBridges)
+        {
+            if (b->getFxParentPath() != "##INPUT##") continue;
+            juce::String name = b->mixerCustomName.isNotEmpty()
+                                ? b->mixerCustomName
+                                : juce::File (b->getPluginPath()).getFileNameWithoutExtension();
+            auto* slot = inputStrip_->addFxSlot();
+            slot->bridge = b;
+            slot->resized();
+            slot->setFxName (name);
+            slot->setBypassed (b->mixerBypassed.load());
+            slot->onToggleWindow = [this, b] {
+                if (onToggleFxWindow) onToggleFxWindow (b);
+            };
+        }
+
+        // One + placeholder for adding the next Input FX
+        {
+            auto* placeholder = inputStrip_->addFxSlot();
+            placeholder->setFxName ("+");
+            placeholder->onAddFx = [this] (BridgeInstance*) { if (onAddInputFx) onAddInputFx(); };
+        }
+        inputStrip_->onFxReorderRequest = [this] (BridgeInstance* fx, int newIdx) {
+            if (onFxReorderRequest) onFxReorderRequest (fx, newIdx);
+        };
+        inputStrip_->resized();
 
         resized();
         repaint();
@@ -1112,6 +1142,9 @@ public:
         content->getInputPeaks = [this] () -> std::pair<float,float> {
             return getInputPeaks ? getInputPeaks() : std::make_pair (0.f, 0.f);
         };
+        content->onAddInputFx = [this] {
+            if (onAddInputFx) onAddInputFx();
+        };
         setContentOwned (content, true);
         setResizable (true, false);
         centreWithSize (720, 480);
@@ -1156,6 +1189,7 @@ public:
     std::function<void(float)>                       onInputGainChange;
     std::function<void(bool)>                        onInputMuteChange;
     std::function<std::pair<float,float>()>          getInputPeaks;
+    std::function<void()>                            onAddInputFx;
 
     void setInputStripValues (float gain, bool muted)
     {
