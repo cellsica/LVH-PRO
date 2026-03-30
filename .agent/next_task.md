@@ -78,6 +78,7 @@
 - [x] Mission 035-E: 究極の VU メーターの実装 ✅ (しずく039)
 - [x] Mission 044: ミキサー入力専用ストリップ (Phase A) ✅
 - [x] Mission 044-B: 入力専用 FX スロット ✅
+- [x] Mission 044-C: LINE 入力の常時有効化 ＆ MONO ボタン ✅
 - [ ] Mission 045: ビジュアライザー拡張 (Visualizer Extension) 🔜
 - [ ] Mission 039: プラグイン・お気に入り機能 🔜
 
@@ -133,5 +134,6 @@
 - [2026-03-27] かえで：ロードマップに Mission 039 「プラグイン・お気に入り機能」を新規追加。
 - [2026-03-27] かえで：Mission 035-E (究極の VU メーター) の指示書 (to_shizuku_039.md) を作成！
 - [2026-03-28] しずく：Mission 038 (035-D) 完了！メトロノーム UI、TAP テンポ、YMO CLICK 技術を実装。Ver 0.6.4-alpha。
+- [2026-03-30] しずく：Mission 044-C 完了！LINE 入力の常時有効化、MONO 切り替え。
 - [2026-03-30] しずく：Mission 044-B 完了！INPUT FX スロット、MONO ボタン、永続化を実装。
 - [2026-03-30] しずく：Mission 044 Phase A 完了！INPUT ストリップ、ゲイン、ミュート、メーター実装。
