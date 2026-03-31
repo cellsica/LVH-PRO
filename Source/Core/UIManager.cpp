@@ -177,8 +177,7 @@ void UIManager::shutdown()
             prefs->setValue ("visualizerWindowH", b.getHeight());
 
             // Persist Phase E window settings
-            prefs->setValue ("vizOpacity",      (int) (visualizerWindow_->getOpacity() * 100.f));
-            prefs->setValue ("vizClickThrough", visualizerWindow_->isClickThrough());
+            prefs->setValue ("vizOpacity", (int) (visualizerWindow_->getOpacity() * 100.f));
         }
     }
 
@@ -490,11 +489,9 @@ void UIManager::toggleVisualizerWindow (bool show)
                     visualizerManager_->setSwitchMode (VisualizerManager::SwitchMode::Random);
                 }
 
-                // Restore window opacity and click-through (Phase E)
-                float savedOpacity    = prefs->getIntValue ("vizOpacity", 100) / 100.f;
-                bool  savedClickThru  = prefs->getBoolValue ("vizClickThrough", false);
+                // Restore window opacity (Phase E)
+                float savedOpacity = prefs->getIntValue ("vizOpacity", 100) / 100.f;
                 visualizerWindow_->setOpacity (savedOpacity);
-                visualizerWindow_->setClickThrough (savedClickThru);
             }
         }
 

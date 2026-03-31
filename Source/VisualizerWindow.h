@@ -18,9 +18,8 @@
 //
 // Phase E additions:
 //   - Window Opacity (right-click menu: 100% / 75% / 50%)
-//   - Click-Through toggle (right-click menu)
 //   - Rescan DLLs (right-click menu)
-//   - setOpacity() / setClickThrough() for UIManager integration
+//   - setOpacity() for UIManager integration
 // =============================================================================
 class VisualizerWindow final : public juce::DocumentWindow
 {
@@ -45,10 +44,7 @@ public:
         setSize (preferred.getWidth(), preferred.getHeight());
     }
 
-    ~VisualizerWindow() override
-    {
-        uninstallWndProc();
-    }
+    ~VisualizerWindow() override = default;
 
     void closeButtonPressed() override
     {
@@ -56,8 +52,7 @@ public:
         if (onClose) onClose();
     }
 
-    /** Show the window and install Win32 styles (idempotent).
-        Call instead of setVisible(true) to ensure click-through is active. */
+    /** Show the window and install Win32 styles (idempotent). */
     void show()
     {
         setVisible (true);
@@ -65,20 +60,14 @@ public:
         applyWin32Styles();   // installs WndProc subclass once the peer exists
     }
 
-    // ── Opacity & click-through (Phase E) ─────────────────────────────────────
+    // ── Opacity (Phase E) ─────────────────────────────────────────────────────
 
     /** Set the window opacity [0.0, 1.0].
         Uses SetLayeredWindowAttributes (LWA_ALPHA) which is compatible with
         OpenGL rendering, unlike per-pixel alpha (UpdateLayeredWindow). */
     void setOpacity (float opacity);
 
-    float getOpacity()    const noexcept { return opacity_; }
-    bool  isClickThrough() const noexcept { return clickThrough_; }
-
-    /** Enable/disable click-through mode.
-        When enabled, mouse clicks pass through to windows behind this one,
-        except on the close-button area (top-left corner). */
-    void setClickThrough (bool enabled);
+    float getOpacity() const noexcept { return opacity_; }
 
     // ウィンドウを閉じた時のコールバック（ツールバーボタン状態の同期用）
     std::function<void()> onClose;
@@ -219,9 +208,6 @@ public:
             opacityMenu.addItem (3003,  "50%", true, curOpacity <= 0.60f);
             menu.addSubMenu ("Window Opacity", opacityMenu);
 
-            // ---- Click-Through ----
-            bool ct = vw ? vw->isClickThrough() : false;
-            menu.addItem (3004, "Click-Through", true, ct);
             menu.addSeparator();
 
             // ---- Rescan ----
@@ -254,9 +240,6 @@ public:
                         case 3001: if (vw2) vw2->setOpacity (1.00f); break;
                         case 3002: if (vw2) vw2->setOpacity (0.75f); break;
                         case 3003: if (vw2) vw2->setOpacity (0.50f); break;
-
-                        // Click-through toggle
-                        case 3004: if (vw2) vw2->setClickThrough (! vw2->isClickThrough()); break;
 
                         // Rescan
                         case 3000: manager_.rescan(); break;
@@ -322,13 +305,11 @@ public:
 
 private:
     void applyWin32Styles();    // implemented in VisualizerWindow.cpp
-    void uninstallWndProc();    // implemented in VisualizerWindow.cpp
 
     VisualizerManager&          manager_;
     std::unique_ptr<RenderView> renderView_;
     void*  nativeHwnd_   = nullptr;
     float  opacity_      = 1.0f;
-    bool   clickThrough_ = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VisualizerWindow)
 };
