@@ -1,8 +1,10 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_audio_devices/juce_audio_devices.h>
+#include <juce_dsp/juce_dsp.h>
 #include <functional>
 #include <atomic>
+#include <array>
 #include <map>
 #include "SineWaveProcessor.h"
 #include "PluginSlot.h"
@@ -71,7 +73,61 @@ public:
             rmsSmoothed[ch] += rmsAlpha * (blockRms - rmsSmoothed[ch]);
             rms[ch].store (rmsSmoothed[ch], std::memory_order_relaxed);
         }
+
+        // ── FFT + Waveform accumulation ─────────────────────────────────
+        // Mix L+R to mono and accumulate into fftAccum_.
+        const float* L = buffer.getReadPointer (0);
+        const float* R = buffer.getNumChannels() > 1 ? buffer.getReadPointer (1) : L;
+        for (int i = 0; i < numSamples; ++i)
+        {
+            fftAccum_[fftPos_] = (L[i] + R[i]) * 0.5f;
+            ++fftPos_;
+            if (fftPos_ >= fftSize_)
+            {
+                // Apply Hann window and run FFT (in-place, frequency-only).
+                std::copy_n (fftAccum_.begin(), fftSize_, fftWork_.begin());
+                window_.multiplyWithWindowingTable (fftWork_.data(), fftSize_);
+                // Zero imaginary part before FFT
+                std::fill (fftWork_.begin() + fftSize_, fftWork_.end(), 0.f);
+                fft_.performFrequencyOnlyForwardTransform (fftWork_.data());
+
+                // Publish under lock (SpinLock — fast, audio-safe)
+                {
+                    juce::SpinLock::ScopedLockType lock (fftPubLock_);
+                    const float norm = 1.0f / (float)fftSize_;
+                    for (int k = 0; k < fftBins_; ++k)
+                        fftMag_[k] = fftWork_[k] * norm;
+                    std::copy_n (fftAccum_.begin(), fftSize_, waveformPub_.begin());
+                }
+                fftPos_ = 0;
+            }
+        }
     }
+
+    // ── FFT / Waveform read (message thread or plugin render thread) ─────
+    // Try-lock: if the audio thread is mid-write, returns without blocking.
+    // Returns the number of bins/samples actually written (may be < size).
+    int readFFTMagnitudes (float* buf, int size) const
+    {
+        juce::SpinLock::ScopedTryLockType tryLock (fftPubLock_);
+        if (! tryLock.isLocked()) return 0;
+        const int n = juce::jmin (size, fftBins_);
+        std::copy_n (fftMag_.begin(), n, buf);
+        return n;
+    }
+
+    int readWaveform (float* buf, int size) const
+    {
+        juce::SpinLock::ScopedTryLockType tryLock (fftPubLock_);
+        if (! tryLock.isLocked()) return 0;
+        const int n = juce::jmin (size, fftSize_);
+        std::copy_n (waveformPub_.begin(), n, buf);
+        return n;
+    }
+
+    static constexpr int fftOrder_ = 10;
+    static constexpr int fftSize_  = 1 << fftOrder_;  // 1024 samples
+    static constexpr int fftBins_  = fftSize_ / 2;    // 512 magnitude bins
 
     // Call from the message thread only — returns peak since last call and resets.
     float exchangePeak (int ch)
@@ -114,6 +170,19 @@ private:
     std::atomic<float> rms[2];
     float rmsSmoothed[2] = {};  // IIR state — audio thread only
     float rmsAlpha       = 0.1f;
+
+    // ── FFT pipeline (audio thread writes, message thread reads) ─────────
+    juce::dsp::FFT                      fft_    { fftOrder_ };
+    juce::dsp::WindowingFunction<float> window_ { (size_t)fftSize_,
+                                                   juce::dsp::WindowingFunction<float>::hann };
+    // Accumulation (audio thread only)
+    std::array<float, fftSize_>         fftAccum_ {};
+    std::array<float, fftSize_ * 2>     fftWork_  {};  // interleaved for FFT
+    int                                 fftPos_   = 0;
+    // Published data (protected by fftPubLock_)
+    mutable juce::SpinLock             fftPubLock_;
+    std::array<float, fftBins_>         fftMag_      {};
+    std::array<float, fftSize_>         waveformPub_ {};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GainAndMeterProcessor)
 };
@@ -250,6 +319,25 @@ public:
     {
         return meterGainProcessor ? meterGainProcessor->exchangeRms (ch) : 0.f;
     }
+
+    // ── FFT / Waveform data for VisualizerManager (IAudioSource) ────────
+    void readFFTData (float* buf, int size)
+    {
+        if (meterGainProcessor != nullptr)
+            meterGainProcessor->readFFTMagnitudes (buf, size);
+        else
+            std::fill_n (buf, size, 0.f);
+    }
+
+    void readWaveformData (float* buf, int size)
+    {
+        if (meterGainProcessor != nullptr)
+            meterGainProcessor->readWaveform (buf, size);
+        else
+            std::fill_n (buf, size, 0.f);
+    }
+
+    static constexpr int kFFTBins = GainAndMeterProcessor::fftBins_;  // 512
 
     // Master output gain — thread-safe.
     void setOutputGain (float g)

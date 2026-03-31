@@ -273,6 +273,34 @@ namespace Icons
         }
     }
 
+    // Visualizer icon — circle with radial frequency bars
+    inline void visualizer (Graphics& g, Rectangle<float> a)
+    {
+        g.setColour (Colours::white);
+        const float cx = a.getCentreX();
+        const float cy = a.getCentreY();
+        const float r  = a.getWidth() * 0.30f;
+
+        // Outer ring
+        g.drawEllipse (cx - r, cy - r, r * 2.f, r * 2.f, 1.0f);
+
+        // Radial bars at 8 angles, varying heights
+        const float barHeights[] = { 0.55f, 0.80f, 0.45f, 1.00f,
+                                     0.65f, 0.90f, 0.50f, 0.70f };
+        const int   numBars = 8;
+        const float barMaxLen = a.getWidth() * 0.22f;
+        for (int i = 0; i < numBars; ++i)
+        {
+            float angle = (float)i / (float)numBars * juce::MathConstants<float>::twoPi;
+            float bLen  = barMaxLen * barHeights[i];
+            float x1 = cx + r * std::cos (angle);
+            float y1 = cy + r * std::sin (angle);
+            float x2 = cx + (r + bLen) * std::cos (angle);
+            float y2 = cy + (r + bLen) * std::sin (angle);
+            g.drawLine (x1, y1, x2, y2, 1.5f);
+        }
+    }
+
     // VU meter icon — semi-circular scale arc + needle + pivot dot
     inline void vuMeter (Graphics& g, Rectangle<float> a)
     {

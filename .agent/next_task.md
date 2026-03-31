@@ -146,8 +146,11 @@
 - [2026-03-27] かえで：ロードマップに Mission 039 「プラグイン・お気に入り機能」を新規追加。
 - [2026-03-27] かえで：Mission 035-E (究極の VU メーター) の指示書 (to_shizuku_039.md) を作成！
 - [2026-03-28] しずく：Mission 038 (035-D) 完了！メトロノーム UI、TAP テンポ、YMO CLICK 技術を実装。Ver 0.6.4-alpha。
-- [2026-03-30] しずく：Mission 044-C 完了！LINE 入力の常時有効化、MONO 切り替え。
-- [2026-03-30] しずく：Mission 044-B 完了！INPUT FX スロット、MONO ボタン、永続化を実装。
+- [2026-03-29] しずく：Mission 040 完了！プラグイン・お気に入り機能 (PluginPickerWindow) を実装。
+- [2026-03-29] しずく：Mission 041 完了！Mixer FX スロットのドラッグ＆ドロップによる順序変更を実装。
+- [2026-03-30] しずく：Mission 042/043 完了！オーディオ I/F 入力サポートとマルチドライバ対応。
 - [2026-03-30] しずく：Mission 044 Phase A 完了！INPUT ストリップ、ゲイン、ミュート、メーター実装。
-- [2026-03-31] しずく：Mission 045 Phase A 完了！SDK インターフェース・DLL 動的ロード・FFT パイプライン構築。
+- [2026-03-30] しずく：Mission 044-B 完了！INPUT FX スロット、MONO ボタン、永続化を実装。
+- [2026-03-30] しずく：Mission 044-C 完了！LINE 入力の常時有効化、MONO 切り替え。
+- [2026-03-31] しずく：Mission 045 Phase A 完了！Visualizer SDK (IAudioSource/IVisualizerPlugin)、VisualizerManager DLL ロード基盤、FFT パイプライン (1024pt Hann窓)、OpenGL 統合ウィンドウ、TestVisualizer DLL を実装。
 - [2026-03-31] しずく：Mission 045 Phase B 完了！RadialVisualizer (16バンド対数・波紋リング・コサイン補間)・VIS ボタン UI 統合・タイトルバー非表示モード実装。
