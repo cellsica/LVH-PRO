@@ -40,8 +40,8 @@ static constexpr float kTileWorldH     = 0.040f; // tile height in radial direct
 static constexpr float kTileSpeedMin   = 0.018f;
 static constexpr float kTileSpeedMax   = 0.095f;
 static constexpr float kEmitThreshold  = 0.00008f;
-static constexpr int   kTileSpawnLoud  = 3;      // min frames between spawns (loud)
-static constexpr int   kTileSpawnQuiet = 10;     // max frames between spawns (at threshold)
+static constexpr int   kTileSpawnLoud  = 8;      // min frames between spawns (loud)
+static constexpr int   kTileSpawnQuiet = 22;     // max frames between spawns (at threshold)
 
 // Shared
 static constexpr float kZNear          = 0.05f;
