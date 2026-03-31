@@ -206,7 +206,10 @@ private:
         const float hue         = progress * 0.72f;
         const float sat         = 0.85f + (1.f - progress) * 0.10f;
         const float alphaScaled = alpha * (0.25f + ring.emitEnergy * 0.75f);
-        const float strokeW     = 0.6f  + ring.emitEnergy * 1.2f;
+        // 発射直後は太め、広がるにつれて細くなる（鍵盤アタック → 減衰のイメージ）
+        const float strokeThick = 1.8f + ring.emitEnergy * 2.2f;  // 新しい波紋
+        const float strokeThin  = 0.5f + ring.emitEnergy * 0.5f;  // 減衰後
+        const float strokeW     = strokeThin + (1.f - progress) * (strokeThick - strokeThin);
         g.setColour (juce::Colour::fromHSV (hue, sat, 0.95f, alphaScaled));
         g.strokePath (path, juce::PathStrokeType (strokeW));
     }
