@@ -15,6 +15,8 @@ class AudioEngine;
 //   2. Load each DLL with juce::DynamicLibrary, resolve createVisualizer().
 //   3. Manage plugin lifecycle (initialise / render / shutdown).
 //   4. Implement IAudioSource so plugins can query FFT / waveform data.
+//   5. (Phase D) Manage which plugin is currently displayed.
+//   6. (Phase D) Auto-switch plugins on a timer (Sequential / Random).
 //
 // Thread safety:
 //   All public methods (except render) must be called from the message thread.
@@ -22,18 +24,29 @@ class AudioEngine;
 //   The IAudioSource methods are likewise called from the plugin's render(),
 //   which runs on the message thread.  Audio data is copied with a SpinLock.
 // =============================================================================
-class VisualizerManager final : public IAudioSource
+class VisualizerManager final : public IAudioSource,
+                                private juce::Timer
 {
 public:
+    // ------------------------------------------------------------------
+    // Auto-switching playback mode
+    // ------------------------------------------------------------------
+    enum class SwitchMode
+    {
+        Manual,      // User selects manually — no auto-switch timer
+        Sequential,  // Advance through plugins in order at switchIntervalSec_
+        Random       // Pick a random plugin (different from current) at switchIntervalSec_
+    };
+
     VisualizerManager();
     ~VisualizerManager() override;
 
     // ------------------------------------------------------------------
     // Setup — call before scanAndLoad()
     // ------------------------------------------------------------------
-    void setAudioEngine    (AudioEngine* engine)  noexcept { audioEngine_     = engine; }
-    void setCurrentBPM     (double bpm)            noexcept { currentBpm_      = bpm;    }
-    void setCurrentSampleRate (double sr)          noexcept { currentSampleRate_ = sr;   }
+    void setAudioEngine       (AudioEngine* engine) noexcept { audioEngine_      = engine; }
+    void setCurrentBPM        (double bpm)           noexcept { currentBpm_       = bpm;    }
+    void setCurrentSampleRate (double sr)            noexcept { currentSampleRate_ = sr;    }
 
     // ------------------------------------------------------------------
     // Plugin management (message thread)
@@ -49,28 +62,55 @@ public:
     /** Number of successfully loaded plugins. */
     int getNumPlugins() const noexcept { return (int)plugins_.size(); }
 
-    /** ロード済みプラグインの最大推奨サイズを返す。
+    /** Returns the names of all loaded plugins (DLL filename without extension). */
+    juce::StringArray getPluginNames() const;
+
+    /** ロード済み現在プラグインの推奨サイズを返す。
         プラグイン未ロード時はデフォルト値 (500x500) を返す。 */
     juce::Rectangle<int> getPreferredSize() const noexcept
     {
-        int w = 500, h = 500;
-        for (auto& p : plugins_)
-        {
-            if (p->instance != nullptr)
-            {
-                w = juce::jmax (w, p->instance->getPreferredWidth());
-                h = juce::jmax (h, p->instance->getPreferredHeight());
-            }
-        }
-        return { 0, 0, w, h };
+        if (plugins_.empty()) return { 0, 0, 500, 500 };
+
+        int idx = juce::jlimit (0, (int)plugins_.size() - 1, currentPluginIndex_);
+        if (plugins_[idx]->instance != nullptr)
+            return { 0, 0,
+                     plugins_[idx]->instance->getPreferredWidth(),
+                     plugins_[idx]->instance->getPreferredHeight() };
+        return { 0, 0, 500, 500 };
     }
+
+    // ------------------------------------------------------------------
+    // Plugin selection (message thread)
+    // ------------------------------------------------------------------
+
+    /** Returns the index of the currently displayed plugin. */
+    int getCurrentPluginIndex() const noexcept { return currentPluginIndex_; }
+
+    /** Switch to the plugin at `index` (clamped to valid range). */
+    void setCurrentPlugin (int index);
+
+    /** Advance to the next plugin according to the current SwitchMode. */
+    void nextPlugin();
+
+    // ------------------------------------------------------------------
+    // Auto-switching control (message thread)
+    // ------------------------------------------------------------------
+
+    SwitchMode getSwitchMode()     const noexcept { return switchMode_; }
+    int        getSwitchInterval() const noexcept { return switchIntervalSec_; }
+
+    /** Set the playback mode.  Starts or stops the internal timer as needed. */
+    void setSwitchMode (SwitchMode mode);
+
+    /** Set the auto-switch interval in seconds.  Restarts timer if active. */
+    void setSwitchInterval (int seconds);
 
     // ------------------------------------------------------------------
     // Rendering (message thread)
     // ------------------------------------------------------------------
 
-    /** Call this from a repaint / timer callback to forward the render
-        call to every loaded plugin.  openGLContext may be nullptr. */
+    /** Call this from a repaint / timer callback.
+        Renders only the currently selected plugin.  openGLContext may be nullptr. */
     void render (juce::Graphics& g, juce::OpenGLContext* openGLContext);
 
     // ------------------------------------------------------------------
@@ -100,11 +140,20 @@ private:
         }
     };
 
-    AudioEngine* audioEngine_     = nullptr;
+    // juce::Timer — fires when it's time to switch to the next plugin
+    void timerCallback() override;
+
+    AudioEngine* audioEngine_      = nullptr;
     double       currentSampleRate_ = 44100.0;
     double       currentBpm_        = 120.0;
 
     std::vector<std::unique_ptr<LoadedPlugin>> plugins_;
+
+    // Phase D state
+    int        currentPluginIndex_ = 0;
+    SwitchMode switchMode_         = SwitchMode::Manual;
+    int        switchIntervalSec_  = 20;
+    juce::Random random_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VisualizerManager)
 };
