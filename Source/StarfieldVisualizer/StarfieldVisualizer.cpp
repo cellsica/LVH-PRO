@@ -29,9 +29,10 @@ static constexpr int   kRawBins        = 512;
 static constexpr int   kBands          = 16;
 
 // Ambient dots
-static constexpr int   kMaxDots        = 120;
-static constexpr float kDotSpeed       = 0.0026f;
-static constexpr int   kDotSpawnFrames = 14;     // ~4 dots/sec at 60fps
+static constexpr int   kMaxDots          = 180;
+static constexpr float kDotSpeed         = 0.0026f;
+static constexpr int   kDotSpawnSilent   = 14;   // ~4/sec (silent)
+static constexpr int   kDotSpawnLoudest  = 4;    // ~15/sec (loud)
 
 // Band tiles — circular layout
 static constexpr int   kMaxTiles       = kBands * 22;
@@ -137,8 +138,18 @@ public:
         // ── Background ────────────────────────────────────────────────
         g.fillAll (juce::Colour (0xff06060e));
 
-        // ── Ambient dots (1px, no perspective size, ~4/sec) ───────────
-        if (++dotTimer_ >= kDotSpawnFrames)
+        // ── Overall energy → dynamic dot spawn rate ───────────────────
+        float overallEnergy = 0.f;
+        for (int b = 0; b < kBands; ++b) overallEnergy += bands_[b];
+        overallEnergy /= (float)kBands;
+        // Normalised 0..1 (sqrt for perceptual scaling)
+        const float overallNorm = juce::jmin (1.f, std::sqrt (overallEnergy / 0.0005f));
+        // Interval: silent=14f → loud=4f
+        const int dotInterval = juce::jmax (kDotSpawnLoudest,
+            juce::roundToInt (kDotSpawnSilent * (1.f - overallNorm * 0.72f)));
+
+        // ── Ambient dots (1px, no perspective size) ───────────────────
+        if (++dotTimer_ >= dotInterval)
         {
             dotTimer_ = 0;
             spawnDot (false);
