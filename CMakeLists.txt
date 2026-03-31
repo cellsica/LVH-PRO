@@ -38,10 +38,12 @@ target_link_libraries(LVH
         juce::juce_audio_utils
         juce::juce_core
         juce::juce_data_structures
+        juce::juce_dsp
         juce::juce_events
         juce::juce_graphics
         juce::juce_gui_basics
         juce::juce_gui_extra
+        juce::juce_opengl
         LVH_BinaryData
 )
 
@@ -63,6 +65,7 @@ target_sources(LVH
         Source/Core/UIManager.cpp
         Source/Core/PluginPickerComponent.cpp
         Source/Core/StageManager.cpp
+        Source/Core/VisualizerManager.cpp
         Source/MetronomeManager.cpp
         Source/VUMeterWindow.cpp
 )
@@ -156,6 +159,47 @@ target_include_directories(LVH
     PRIVATE
         Source
         Source/Core
+        Source/VisualizerSDK
+)
+
+# =====================================================================
+# LVH-TestVisualizer — Minimal SDK-compliant test DLL
+# Demonstrates that VisualizerManager can load a DLL and receive FFT data.
+# =====================================================================
+add_library(LVH-TestVisualizer SHARED
+    Source/TestVisualizer/TestVisualizer.cpp
+)
+
+target_include_directories(LVH-TestVisualizer PRIVATE
+    Source
+)
+
+target_link_libraries(LVH-TestVisualizer
+    PRIVATE
+        juce::juce_core
+        juce::juce_graphics
+        juce::juce_gui_basics
+        juce::juce_opengl
+)
+
+target_compile_definitions(LVH-TestVisualizer
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+)
+
+if(MSVC)
+    target_compile_options(LVH-TestVisualizer PRIVATE /utf-8)
+endif()
+
+# Copy the test DLL into <LVH.exe>/Visualizers/ after build
+add_custom_command(TARGET LVH-TestVisualizer POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_FILE_DIR:LVH>/Visualizers"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:LVH-TestVisualizer>"
+        "$<TARGET_FILE_DIR:LVH>/Visualizers/LVH-TestVisualizer.dll"
+    COMMENT "Copying LVH-TestVisualizer.dll to Visualizers/ directory"
 )
 
 # Releaseビルド時のみ \\Storm-pc\lvhpro へ自動デプロイ
