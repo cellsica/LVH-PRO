@@ -1,18 +1,18 @@
-// StarfieldVisualizer.cpp — LVH Visualizer SDK Plugin (Redesigned)
+// StarfieldVisualizer.cpp — LVH Visualizer SDK Plugin
 //
 // Two visual layers:
 //
-//  [1] Ambient dots (always visible, silent-mode warp stars)
-//      • 1px dots, no perspective size scaling
-//      • Very slow speed, ~2-5 spawns per second
-//      • Fly outward from centre (warp projection: x/z, y/z)
+//  [1] Ambient dots (silent-mode warp stars)
+//      • 1px dots, no perspective size scaling, ~4/sec
+//      • Warp-outward from centre (x/z, y/z projection)
 //
-//  [2] Band tiles (music-reactive, 16 EQ bands)
-//      • 16 horizontal lanes across X axis
-//      • Each band spawns rectangular "LED segment" tiles from far-z
-//      • Tiles grow with perspective as they fly toward camera
+//  [2] Band tiles (music-reactive, 16 EQ bands, circular layout)
+//      • 16 bands arranged in a circle (evenly spaced angles)
+//      • Each band tile spawns at its angle on a world-space ring
+//      • Perspective projection makes tiles burst outward as z decreases
+//      • Tile rectangle is oriented tangentially (wide side ⊥ radius)
 //      • Trail: 4 faded copies drawn behind each tile
-//      • Color: blue (quiet) → red (loud)  — Doppler redshift
+//      • Colour: blue (quiet) → red (loud)  — Doppler redshift
 
 #include <juce_core/juce_core.h>
 #include <juce_graphics/juce_graphics.h>
@@ -30,40 +30,43 @@ static constexpr int   kBands          = 16;
 
 // Ambient dots
 static constexpr int   kMaxDots        = 120;
-static constexpr float kDotSpeed       = 0.0026f;   // z-decrement per frame
-static constexpr int   kDotSpawnFrames = 14;        // frames between dot spawns (~4/sec)
+static constexpr float kDotSpeed       = 0.0026f;
+static constexpr int   kDotSpawnFrames = 14;     // ~4 dots/sec at 60fps
 
-// Band tiles
-static constexpr int   kMaxTiles       = kBands * 22; // pool per band × lanes
+// Band tiles — circular layout
+static constexpr int   kMaxTiles       = kBands * 22;
+static constexpr float kOrbitRadius    = 0.40f;  // world-space radius of tile ring
+static constexpr float kTileWorldH     = 0.040f; // tile height in radial direction
 static constexpr float kTileSpeedMin   = 0.018f;
 static constexpr float kTileSpeedMax   = 0.095f;
-static constexpr float kTileWorldH     = 0.045f;    // fixed world-space height
-static constexpr float kEmitThreshold  = 0.00008f;  // same floor as RadialVisualizer
-static constexpr int   kTileSpawnLoud  = 3;         // min frames between spawns (loud)
-static constexpr int   kTileSpawnQuiet = 10;        // max frames between spawns (threshold)
+static constexpr float kEmitThreshold  = 0.00008f;
+static constexpr int   kTileSpawnLoud  = 3;      // min frames between spawns (loud)
+static constexpr int   kTileSpawnQuiet = 10;     // max frames between spawns (at threshold)
 
 // Shared
 static constexpr float kZNear          = 0.05f;
 static constexpr float kZFar           = 1.0f;
 static constexpr int   kTrailSteps     = 4;
-static constexpr float kTrailSpacing   = 5.0f;      // trail step in z-speed multiples
+static constexpr float kTrailSpacing   = 5.0f;  // trail step in z-speed multiples
 
 // ─── Particle structures ──────────────────────────────────────────────────────
 
 struct Dot
 {
-    float x = 0.f, y = 0.f;   // world space, small near-centre values
+    float x = 0.f, y = 0.f;
     float z = 1.f;
     bool  active = false;
 };
 
 struct Tile
 {
-    float x      = 0.f;   // world X — band lane centre
-    float y      = 0.f;   // world Y — slight random offset
+    float x      = 0.f;   // world X = cos(angle) * kOrbitRadius
+    float y      = 0.f;   // world Y = sin(angle) * kOrbitRadius
     float z      = 1.f;
     float speed  = 0.f;
-    float energy = 0.f;   // 0..1, drives colour hue and alpha
+    float energy = 0.f;   // 0..1, drives colour hue
+    float angle  = 0.f;   // band direction angle (radians) — for tile rotation
+    float worldW = 0.f;   // tangential width in world space
     bool  active = false;
 };
 
@@ -78,8 +81,8 @@ public:
 
     void initialise (IAudioSource* source) override
     {
-        source_    = source;
-        dotTimer_  = 0;
+        source_   = source;
+        dotTimer_ = 0;
 
         std::fill (tileTimers_.begin(), tileTimers_.end(), 0);
         std::fill (bands_.begin(),      bands_.end(),      0.f);
@@ -88,7 +91,7 @@ public:
         for (auto& d : dots_)  d.active = false;
         for (auto& t : tiles_) t.active = false;
 
-        // Logarithmic band boundaries (bin 1 ≈ 43 Hz to bin 480 ≈ 20.6 kHz)
+        // Logarithmic band boundaries
         const float logMin = std::log2 (1.f);
         const float logMax = std::log2 (480.f);
         for (int b = 0; b <= kBands; ++b)
@@ -98,9 +101,9 @@ public:
             bandBounds_[b] = juce::jlimit (1, kRawBins - 1, bin);
         }
 
-        // Pre-seed dots spread across depth range
+        // Pre-seed ambient dots
         for (int i = 0; i < 60; ++i)
-            spawnDot (true /*scatter*/);
+            spawnDot (true);
     }
 
     // ── Render ────────────────────────────────────────────────────────────
@@ -114,7 +117,7 @@ public:
         const float cy     = bounds.getCentreY();
         const float scale  = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.50f;
 
-        // ── FFT → 16 bands ────────────────────────────────────────────
+        // ── FFT → 16 log-spaced bands ─────────────────────────────────
         float raw[kRawBins] = {};
         source_->getFFTData (raw, kRawBins);
 
@@ -124,7 +127,7 @@ public:
         for (int b = 0; b < kBands; ++b)
         {
             const int s = bandBounds_[b], e = bandBounds_[b + 1];
-            if (e <= s) { bands_[b] = bands_[b] * 0.6f; continue; }
+            if (e <= s) { bands_[b] *= 0.6f; continue; }
             float sum = 0.f;
             for (int i = s; i < e; ++i) sum += smoothed_[i];
             bands_[b] = bands_[b] * 0.6f + (sum / (float)(e - s)) * 0.4f;
@@ -133,8 +136,7 @@ public:
         // ── Background ────────────────────────────────────────────────
         g.fillAll (juce::Colour (0xff06060e));
 
-        // ── Ambient dots ──────────────────────────────────────────────
-        // Spawn ~4/sec
+        // ── Ambient dots (1px, no perspective size, ~4/sec) ───────────
         if (++dotTimer_ >= kDotSpawnFrames)
         {
             dotTimer_ = 0;
@@ -153,37 +155,33 @@ public:
                 sy < 0.f || sy > bounds.getHeight())
             { d.active = false; continue; }
 
-            // 1px dot — no perspective sizing
             const float progress = 1.f - (d.z / kZFar);
-            const float alpha    = 0.15f + progress * 0.55f;
-            g.setColour (juce::Colour (0xffffffff).withAlpha (alpha));
+            g.setColour (juce::Colour (0xffffffff).withAlpha (0.15f + progress * 0.55f));
             g.fillRect (sx - 0.5f, sy - 0.5f, 1.f, 1.f);
         }
 
-        // ── Band tiles ────────────────────────────────────────────────
-        // Lane layout: 16 bands evenly across X = -0.85 .. +0.85
-        const float laneW       = 1.70f / (float)kBands;
-        const float tileWorldW  = laneW * 0.80f;
+        // ── Tile arc width per band (tangential, world space) ─────────
+        // Arc length per band at kOrbitRadius = 2π*R / kBands * fillFactor
+        const float tileArcW = kOrbitRadius
+                               * juce::MathConstants<float>::twoPi
+                               / (float)kBands
+                               * 0.75f;
 
-        // Spawn new tiles per band
+        // ── Spawn new tiles per band ──────────────────────────────────
         for (int b = 0; b < kBands; ++b)
         {
             if (tileTimers_[b] > 0) { --tileTimers_[b]; continue; }
-
             if (bands_[b] < kEmitThreshold) continue;
 
-            // Normalised energy 0..1 (sqrt for perceptual scaling)
             const float energyNorm = juce::jmin (1.f, std::sqrt (bands_[b] / 0.002f));
+            spawnTile (b, energyNorm, tileArcW);
 
-            spawnTile (b, energyNorm, laneW);
-
-            // Next spawn delay: loud → fast, quiet → slow
             tileTimers_[b] = juce::roundToInt (
                 juce::jmax ((float)kTileSpawnLoud,
                             (float)kTileSpawnQuiet * (1.f - energyNorm)));
         }
 
-        // Update + draw tiles (trail first, then main tile)
+        // ── Update + draw tiles ───────────────────────────────────────
         for (auto& t : tiles_)
         {
             if (!t.active) continue;
@@ -192,47 +190,80 @@ public:
 
             const float progress = 1.f - (t.z / kZFar);
 
-            // Doppler colour: energy=0→blue (hue 0.65), energy=1→red (hue 0.0)
+            // Doppler colour: low energy → blue (hue 0.65), high → red (hue 0.0)
             const float hue  = 0.65f * (1.f - t.energy);
             const float sat  = 0.75f + t.energy * 0.25f;
-            const float bri  = 0.55f + progress * 0.45f;
+            const float bri  = 0.50f + progress * 0.50f;
             const float alph = 0.25f + progress * 0.70f;
             const juce::Colour col = juce::Colour::fromHSV (hue, sat, bri,
                                                              juce::jmin (1.f, alph));
 
-            // Draw trail (back to front so main tile is on top)
+            // Tile orientation:
+            //   tangential direction (wide axis) = (-sin(angle), cos(angle))
+            //   radial direction    (thin axis)  = ( cos(angle), sin(angle))
+            const float cosA  = std::cos (t.angle);
+            const float sinA  = std::sin (t.angle);
+            const float tangX = -sinA;
+            const float tangY =  cosA;
+            const float radX  =  cosA;
+            const float radY  =  sinA;
+
+            // Draw trail (farthest first, main tile last)
             for (int step = kTrailSteps; step >= 0; --step)
             {
                 const float tz = t.z + step * t.speed * kTrailSpacing;
-                if (tz > kZFar + 0.1f) continue;
+                if (tz > kZFar + 0.2f) continue;
 
                 const float tsx = cx + (t.x / tz) * scale;
                 const float tsy = cy + (t.y / tz) * scale;
-                const float tw  = tileWorldW / tz * scale;
-                const float th  = kTileWorldH / tz * scale;
+                const float tw  = t.worldW   / tz * scale;   // tangential width
+                const float th  = kTileWorldH / tz * scale;  // radial height
 
-                if (tsx + tw * 0.5f < 0.f || tsx - tw * 0.5f > bounds.getWidth() ||
-                    tsy + th * 0.5f < 0.f || tsy - th * 0.5f > bounds.getHeight())
+                // Cull off-screen (conservative bounding radius)
+                const float diagR = std::sqrt (tw * tw + th * th) * 0.5f;
+                if (tsx + diagR < 0.f || tsx - diagR > bounds.getWidth() ||
+                    tsy + diagR < 0.f || tsy - diagR > bounds.getHeight())
                     continue;
 
                 const float trailAlpha = (step == 0) ? 1.f
                                                       : (1.f - step * 0.22f);
-                g.setColour (col.withAlpha (col.getFloatAlpha() * trailAlpha));
+                const float drawAlpha  = col.getFloatAlpha() * trailAlpha;
 
-                // Rounded rect for main tile, plain rect for trail
-                if (step == 0)
-                    g.fillRoundedRectangle (tsx - tw * 0.5f, tsy - th * 0.5f,
-                                            tw, th, th * 0.25f);
-                else
-                    g.fillRect (tsx - tw * 0.5f, tsy - th * 0.5f, tw, th);
+                // Build rotated quad corners:
+                //   ±tw/2 in tangential direction
+                //   ±th/2 in radial direction
+                const float hw = tw * 0.5f, hh = th * 0.5f;
+                juce::Path quad;
+                quad.startNewSubPath (tsx + (-hw) * tangX + (-hh) * radX,
+                                      tsy + (-hw) * tangY + (-hh) * radY);
+                quad.lineTo          (tsx + ( hw) * tangX + (-hh) * radX,
+                                      tsy + ( hw) * tangY + (-hh) * radY);
+                quad.lineTo          (tsx + ( hw) * tangX + ( hh) * radX,
+                                      tsy + ( hw) * tangY + ( hh) * radY);
+                quad.lineTo          (tsx + (-hw) * tangX + ( hh) * radX,
+                                      tsy + (-hw) * tangY + ( hh) * radY);
+                quad.closeSubPath();
 
-                // Bright highlight on leading edge of main tile
-                if (step == 0 && tw > 4.f)
+                g.setColour (col.withAlpha (drawAlpha));
+                g.fillPath  (quad);
+
+                // Leading-edge highlight (main tile only)
+                if (step == 0 && tw > 5.f)
                 {
-                    g.setColour (juce::Colours::white.withAlpha (
-                        col.getFloatAlpha() * 0.35f));
-                    g.fillRoundedRectangle (tsx - tw * 0.5f, tsy - th * 0.5f,
-                                            tw, th * 0.22f, th * 0.22f);
+                    // Thin bright strip on the outer (radial +) edge
+                    const float hs = juce::jmin (hh * 0.25f, 2.5f);
+                    juce::Path highlight;
+                    highlight.startNewSubPath (tsx + (-hw) * tangX + (hh - hs) * radX,
+                                               tsy + (-hw) * tangY + (hh - hs) * radY);
+                    highlight.lineTo          (tsx + ( hw) * tangX + (hh - hs) * radX,
+                                               tsy + ( hw) * tangY + (hh - hs) * radY);
+                    highlight.lineTo          (tsx + ( hw) * tangX + (hh      ) * radX,
+                                               tsy + ( hw) * tangY + (hh      ) * radY);
+                    highlight.lineTo          (tsx + (-hw) * tangX + (hh      ) * radX,
+                                               tsy + (-hw) * tangY + (hh      ) * radY);
+                    highlight.closeSubPath();
+                    g.setColour (juce::Colours::white.withAlpha (drawAlpha * 0.45f));
+                    g.fillPath  (highlight);
                 }
             }
         }
@@ -250,10 +281,10 @@ private:
     std::array<Dot,  kMaxDots>   dots_  {};
     std::array<Tile, kMaxTiles>  tiles_ {};
 
-    std::array<float, kRawBins>   smoothed_    {};
-    std::array<float, kBands>     bands_       {};
-    std::array<int,   kBands + 1> bandBounds_  {};
-    std::array<int,   kBands>     tileTimers_  {};
+    std::array<float, kRawBins>   smoothed_   {};
+    std::array<float, kBands>     bands_      {};
+    std::array<int,   kBands + 1> bandBounds_ {};
+    std::array<int,   kBands>     tileTimers_ {};
 
     std::mt19937 rng_;
     int          dotTimer_ = 0;
@@ -262,7 +293,7 @@ private:
 
     void spawnDot (bool scatter)
     {
-        std::uniform_real_distribution<float> xyDist (-0.08f, 0.08f);   // near centre
+        std::uniform_real_distribution<float> xyDist  (-0.08f, 0.08f);
         std::uniform_real_distribution<float> zScatter (0.12f, kZFar);
 
         for (auto& d : dots_)
@@ -276,23 +307,24 @@ private:
         }
     }
 
-    void spawnTile (int band, float energyNorm, float laneW)
+    void spawnTile (int band, float energyNorm, float tileArcW)
     {
-        const float bandCentreX = -0.85f + (band + 0.5f) * laneW;
+        const float angle = (float)band / (float)kBands
+                            * juce::MathConstants<float>::twoPi;
 
-        std::uniform_real_distribution<float> yJitter (-0.03f, 0.03f);
-
-        const float tileSpeed = kTileSpeedMin
-                                + energyNorm * (kTileSpeedMax - kTileSpeedMin);
+        const float speed = kTileSpeedMin
+                            + energyNorm * (kTileSpeedMax - kTileSpeedMin);
 
         for (auto& t : tiles_)
         {
             if (t.active) continue;
-            t.x      = bandCentreX;
-            t.y      = yJitter (rng_);
+            t.x      = std::cos (angle) * kOrbitRadius;
+            t.y      = std::sin (angle) * kOrbitRadius;
             t.z      = kZFar;
-            t.speed  = tileSpeed;
+            t.speed  = speed;
             t.energy = energyNorm;
+            t.angle  = angle;
+            t.worldW = tileArcW;
             t.active = true;
             return;
         }
