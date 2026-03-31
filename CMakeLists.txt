@@ -234,6 +234,45 @@ add_custom_command(TARGET LVH-RadialVisualizer POST_BUILD
     COMMENT "Copying LVH-RadialVisualizer.dll to Visualizers/ directory"
 )
 
+# =====================================================================
+# LVH-StarfieldVisualizer — Warp-speed starfield spectrum DLL
+# =====================================================================
+add_library(LVH-StarfieldVisualizer SHARED
+    Source/StarfieldVisualizer/StarfieldVisualizer.cpp
+)
+
+target_include_directories(LVH-StarfieldVisualizer PRIVATE
+    Source
+)
+
+target_link_libraries(LVH-StarfieldVisualizer
+    PRIVATE
+        juce::juce_core
+        juce::juce_graphics
+        juce::juce_gui_basics
+        juce::juce_opengl
+)
+
+target_compile_definitions(LVH-StarfieldVisualizer
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+)
+
+if(MSVC)
+    target_compile_options(LVH-StarfieldVisualizer PRIVATE /utf-8)
+endif()
+
+# Copy the starfield DLL into <LVH.exe>/Visualizers/ after build
+add_custom_command(TARGET LVH-StarfieldVisualizer POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_FILE_DIR:LVH>/Visualizers"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:LVH-StarfieldVisualizer>"
+        "$<TARGET_FILE_DIR:LVH>/Visualizers/LVH-StarfieldVisualizer.dll"
+    COMMENT "Copying LVH-StarfieldVisualizer.dll to Visualizers/ directory"
+)
+
 # Releaseビルド時のみ \\Storm-pc\lvhpro へ自動デプロイ
 add_custom_command(TARGET LVH POST_BUILD
     COMMAND powershell -NonInteractive -Command
