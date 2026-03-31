@@ -28,13 +28,14 @@ public:
     static constexpr float kEmitSpeed    = 2.0f;
     static constexpr int   kEmitInterval = 3;
     static constexpr int   kMaxRings     = 45;
-    static constexpr float kEmitThreshold = 0.005f; // バンド平均がこれ以下なら無音
+    static constexpr float kEmitThreshold = 0.00008f; // 真の無音のみブロック（機器ノイズ等）
 
     // ── Wave ring ─────────────────────────────────────────────────────────
     struct WaveRing
     {
         std::array<float, kBands> band {};   // 16 バンドのスナップショット
-        float baseRadius = 0.f;
+        float baseRadius  = 0.f;
+        float emitEnergy  = 0.f;  // 発射時のエネルギー (0..1)：透明度・線幅に反映
     };
 
     // ── Orbiting particle ─────────────────────────────────────────────────
@@ -128,8 +129,10 @@ public:
             && (int)rings_.size() < kMaxRings)
         {
             WaveRing ring;
-            ring.band       = bands_;
-            ring.baseRadius = coreR + 2.f;
+            ring.band        = bands_;
+            ring.baseRadius  = coreR + 2.f;
+            // エネルギーを 0..1 に正規化（小さい音も確実に出るよう対数的に底上げ）
+            ring.emitEnergy  = juce::jmin (std::sqrt (avgEnergy / 0.05f), 1.f);
             rings_.push_back (ring);
         }
 
@@ -199,10 +202,13 @@ private:
         path.closeSubPath();
 
         // ドップラー配色：新しい（中心寄り）= 赤、古い（外側）= 青紫
-        const float hue = progress * 0.72f;
-        const float sat = 0.85f + (1.f - progress) * 0.10f;
-        g.setColour (juce::Colour::fromHSV (hue, sat, 0.95f, alpha));
-        g.strokePath (path, juce::PathStrokeType (1.3f));
+        // emitEnergy で透明度・線幅を調整（小さい音 = 薄く細い雨粒）
+        const float hue         = progress * 0.72f;
+        const float sat         = 0.85f + (1.f - progress) * 0.10f;
+        const float alphaScaled = alpha * (0.25f + ring.emitEnergy * 0.75f);
+        const float strokeW     = 0.6f  + ring.emitEnergy * 1.2f;
+        g.setColour (juce::Colour::fromHSV (hue, sat, 0.95f, alphaScaled));
+        g.strokePath (path, juce::PathStrokeType (strokeW));
     }
 
     // ── Radial bars ───────────────────────────────────────────────────────
