@@ -83,13 +83,16 @@ public:
             smoothed_[i] = smoothed_[i] * 0.72f + raw[i] * 0.28f;
 
         // 16 バンドへ集約（各バンド内の平均値）
+        // ※ 低域バンドは bin 数が 1 以下になる場合があるためガード必須
         for (int b = 0; b < kBands; ++b)
         {
-            int   s   = bandBounds_[b];
-            int   e   = bandBounds_[b + 1];
+            int s     = bandBounds_[b];
+            int e     = bandBounds_[b + 1];
+            int count = e - s;
+            if (count <= 0) { continue; }   // NaN 防止：スキップして前フレーム値を保持
             float sum = 0.f;
             for (int i = s; i < e; ++i) sum += smoothed_[i];
-            bands_[b] = bands_[b] * 0.6f + (sum / (float)(e - s)) * 0.4f;  // band-level smoothing
+            bands_[b] = bands_[b] * 0.6f + (sum / (float)count) * 0.4f;
         }
 
         const auto  bounds = g.getClipBounds().toFloat();
