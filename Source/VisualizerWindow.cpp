@@ -40,6 +40,10 @@ static LRESULT CALLBACK vizSubclassProc (HWND hwnd, UINT msg, WPARAM wp, LPARAM 
         if (! GetProp (hwnd, "VizClickThrough"))
             return HTCLIENT;
 
+        // 右クリックは常にインタラクティブ（コンテキストメニューでOFF操作ができるように）
+        if (GetKeyState (VK_RBUTTON) & 0x8000)
+            return HTCLIENT;
+
         // Click-through mode: allow close-button corner to remain interactive.
         const int cursorX = (short) LOWORD (lp);
         const int cursorY = (short) HIWORD (lp);
