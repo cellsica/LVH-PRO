@@ -144,6 +144,16 @@ public:
                 manager_.nextPlugin();
                 return true;
             }
+
+            if (key == juce::KeyPress::F12Key)
+            {
+                if (auto* dw = dynamic_cast<juce::DocumentWindow*> (getTopLevelComponent()))
+                {
+                    dw->setFullScreen (! dw->isFullScreen());
+                    return true;
+                }
+            }
+
             return false;
         }
 
