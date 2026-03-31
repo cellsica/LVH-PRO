@@ -1,4 +1,4 @@
-# LVH (Live-ready VST Host) 開発ロードマップ
+﻿# LVH (Live-ready VST Host) 開発ロードマップ
 
 ## 🌟 ビジョン：ハイパー・モジュラー・コンソールの完成
 「Core は管制塔、Mixer は創造の場」。
@@ -169,27 +169,30 @@ Live-ready (ライブ演奏特化) な堅牢性を守りつつ、シンセとエ
 - [x] **Always-ON ＆ モノラル対応**: ブリッジなしでの信号常時有効化、MONO 切り替え機能の実装。
 
 #### Mission 045: ビジュアライザー拡張 🔜
-##### Phase A: OpenGL 基盤 ＆ Radial Spectrum Analyzer
-- [ ] **ライブラリ分離設計**: ビジュアライザーコアを `Visualizer/` フォルダに独立モジュールとして構成。将来の独立アプリ化（YouTube 等の外部音声対応）を想定し、LVH の AudioEngine への直接依存を排除。
-- [ ] **AudioSource 抽象化**: 音声データの供給元を `AudioSource` インターフェースで抽象化。LVH 版 (`LvhAudioSource`) と将来の WASAPI Loopback 版 (`WasapiLoopbackSource`) を差し替え可能な設計。
+##### Phase A: SDK 基盤 ＆ アーキテクチャ設計
+- [ ] **Visualizer SDK 設計**: `IVisualizerPlugin` / `IAudioSource` インターフェースを SDK ヘッダとして整備。CMake テンプレートとサンプル実装をセットで公開し、第三者が LVH 本体なしで（JUCE のみ用意して）ビジュアライザープラグインを開発・ビルドできる環境を提供。
+- [ ] **DLL プラグイン方式**: ビジュアライザーを独立した `.dll` として実装。LVH 本体および将来の専用ビジュアライザーアプリの両方から `IVisualizerPlugin` インターフェース経由で読み込み可能な設計。LVH の Visualizers フォルダを自動スキャンしてプラグインを検出。
+- [ ] **IAudioSource 抽象化**: 音声データの供給元を `IAudioSource` インターフェースで抽象化。LVH 版 (`LvhAudioSource`) と将来の WASAPI Loopback 版 (`WasapiLoopbackSource`) を差し替え可能な設計。
 - [ ] **OpenGL 基盤**: `OpenGLContext` の導入・既存 UI との統合。
+
+##### Phase B: Radial Spectrum Analyzer
 - [ ] **FFT パイプライン**: オーディオエンジンからのリアルタイム周波数データ取得。
 - [ ] **Radial Spectrum Analyzer**: 周波数帯を円形配置し、強度を半径で表現するビジュアライザー。
 - [ ] **スムージング**: アニメーションの補間処理による滑らかな描画。
 
-##### Phase B: Starfield Spectrum Visualizer
+##### Phase C: Starfield Spectrum Visualizer
 - [ ] **パーティクルシステム**: `Star` 構造体・プール管理による効率的な粒子制御。
 - [ ] **放射状飛行**: 中央から外側へ向かうパーティクルの飛行アルゴリズム。
 - [ ] **ドップラー色分け**: 音の強さに応じた青→白→赤のカラーグラデーション。
 - [ ] **FFT 連動**: 周波数帯域のエネルギーとパーティクル生成・速度の連動。
 
-##### Phase C: 演出効果 (Polish)
+##### Phase D: 演出効果 (Polish)
 - [ ] **ブルーム効果**: 光の滲みによる発光演出。
 - [ ] **モーションブラー**: 残像効果によるスピード感の強調。
 - [ ] **背景エフェクト**: 星雲・グリッド等の背景演出の検討。
 - [ ] **ビート検出連動**: ドラムの頭拍等の強いビートで演出を強調するリアクション。
 
-##### Phase D: UI 統合 ＆ 設定
+##### Phase E: UI 統合 ＆ 設定
 - [ ] **モード切替**: Radial / Starfield / 重ね合わせの切り替え UI。
 - [ ] **カラーテーマ連動**: 既存の Vintage Warm / Oxygen Neon テーマとの統合。
 - [ ] **透過ウィンドウ**: VU メーターと同様の透過ウィンドウ対応。

@@ -79,8 +79,20 @@
 - [x] Mission 044: ミキサー入力専用ストリップ (Phase A) ✅
 - [x] Mission 044-B: 入力専用 FX スロット ✅
 - [x] Mission 044-C: LINE 入力の常時有効化 ＆ MONO ボタン ✅
-- [ ] Mission 045: ビジュアライザー拡張 (Visualizer Extension) 🔜
-- [ ] Mission 039: プラグイン・お気に入り機能 🔜
+- [x] **Mission 045: ビジュアライザー拡張 (Visualizer Extension)**
+    - [x] Phase A: SDK 基盤 ＆ アーキテクチャ設計 ✅ (しずく045-A)
+        - [x] SDK インターフェース (IVisualizerPlugin / IAudioSource) の定義
+        - [x] VisualizerManager による DLL 動的ロードの実装
+        - [x] AudioEngine からの FFT/音声データ供給パイプラインの構築
+        - [x] OpenGL コンテキストの統合基盤作成
+    - [x] **Phase B: Radial Spectrum Analyzer & UI 統合 ✅ (しずく045-B)**
+        - [x] VisualizerWindow の描画フロー修正 (タイトルバー非表示・ボーダー・×ボタン)
+        - [x] UI 統合 (MainComponent への VIS ボタン追加)
+        - [x] UIManager での VisualizerWindow 管理実装
+        - [x] Radial Spectrum Analyzer (16バンド対数スケール・波紋リング) の実装
+        - [x] 表示データのスムージング (コサイン補間) 処理追加
+
+- [x] Mission 040: プラグイン・お気に入り機能 ✅ (Mission 039 から昇格)
 
 ## 直近の作業ログ 📝
 - [2026-03-17] かえで：Bridge プロトタイプの最小構成ソースコードを実装。
@@ -137,3 +149,5 @@
 - [2026-03-30] しずく：Mission 044-C 完了！LINE 入力の常時有効化、MONO 切り替え。
 - [2026-03-30] しずく：Mission 044-B 完了！INPUT FX スロット、MONO ボタン、永続化を実装。
 - [2026-03-30] しずく：Mission 044 Phase A 完了！INPUT ストリップ、ゲイン、ミュート、メーター実装。
+- [2026-03-31] しずく：Mission 045 Phase A 完了！SDK インターフェース・DLL 動的ロード・FFT パイプライン構築。
+- [2026-03-31] しずく：Mission 045 Phase B 完了！RadialVisualizer (16バンド対数・波紋リング・コサイン補間)・VIS ボタン UI 統合・タイトルバー非表示モード実装。
