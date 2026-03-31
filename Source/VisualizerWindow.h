@@ -34,7 +34,11 @@ public:
     void closeButtonPressed() override
     {
         setVisible (false);
+        if (onClose) onClose();
     }
+
+    // Called when the user closes the window (sync toolbar button state).
+    std::function<void()> onClose;
 
     // -------------------------------------------------------------------------
     // Inner component — hosts the OpenGL context and runs the render timer.
@@ -47,8 +51,9 @@ public:
         {
             setOpaque (true);
 
-            // Attach OpenGL context to this component.
-            openGLContext_.setComponentPaintingEnabled (false);
+            // Attach OpenGL context — setComponentPaintingEnabled(true) is the
+            // default and causes JUCE to route paint() through OpenGL, which is
+            // exactly what we want for plugins that draw with juce::Graphics.
             openGLContext_.attachTo (*this);
 
             startTimerHz (60);

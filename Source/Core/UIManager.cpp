@@ -25,6 +25,15 @@ UIManager::UIManager (AudioEngine&                  audioEngine,
 {
     vuPhysicsEngine_ = std::make_unique<VUPhysicsEngine> (
         [this] (int ch) { return audioEngine_.exchangeRms (ch); });
+
+    // Create VisualizerManager and scan for plugins immediately.
+    visualizerManager_ = std::make_unique<VisualizerManager>();
+    visualizerManager_->setAudioEngine (&audioEngine_);
+
+    juce::File vizDir = juce::File::getSpecialLocation (juce::File::currentExecutableFile)
+                            .getParentDirectory()
+                            .getChildFile ("Visualizers");
+    visualizerManager_->scanAndLoad (vizDir);
 }
 
 UIManager::~UIManager() = default;
@@ -84,6 +93,7 @@ void UIManager::setMainComponent (MainComponent* mc)
     mc_->onStageToggle         = [this] (bool show) { toggleStageWindow     (show); };
     mc_->onMetronomeToggle     = [this] (bool show) { toggleMetronomeWindow (show); };
     mc_->onVuMeterToggle       = [this] (bool show) { toggleVuMeterWindow   (show); };
+    mc_->onVisualizerToggle    = [this] (bool show) { toggleVisualizerWindow (show); };
     mc_->onLaunchBridgeClicked = [this] { launchBridgeFileChooser(); };
 
     // Beat callback: fires on message thread (via AsyncUpdater in MetronomeProcessor)
@@ -141,11 +151,28 @@ void UIManager::shutdown()
             prefs->setValue ("metronomeAlwaysOnTop", metronomeWindow_->isAlwaysOnTop());
     }
 
+    // Persist VisualizerWindow state
+    if (auto* prefs = appProperties_.getUserSettings())
+    {
+        bool visVisible = visualizerWindow_ != nullptr && visualizerWindow_->isVisible();
+        prefs->setValue ("visualizerWindowVisible", visVisible);
+        if (visualizerWindow_ != nullptr)
+        {
+            auto b = visualizerWindow_->getBounds();
+            prefs->setValue ("visualizerWindowX", b.getX());
+            prefs->setValue ("visualizerWindowY", b.getY());
+            prefs->setValue ("visualizerWindowW", b.getWidth());
+            prefs->setValue ("visualizerWindowH", b.getHeight());
+        }
+    }
+
     stageWindow_.reset();
     settingsWindow_.reset();
     mixerWindow_.reset();
     metronomeWindow_.reset();
     vuMeterWindow_.reset();
+    visualizerWindow_.reset();
+    visualizerManager_.reset();
     pluginPickerWindow_.reset();
     mc_ = nullptr;
 }
@@ -406,6 +433,45 @@ void UIManager::toggleVuMeterWindow (bool show)
         if (vuMeterWindow_ != nullptr)
             vuMeterWindow_->hide();
         if (mc_ != nullptr) mc_->setVuMeterWindowVisible (false);
+    }
+}
+
+void UIManager::toggleVisualizerWindow (bool show)
+{
+    if (show)
+    {
+        if (visualizerWindow_ == nullptr)
+        {
+            visualizerWindow_ = std::make_unique<VisualizerWindow> (*visualizerManager_);
+
+            visualizerWindow_->onClose = [this] {
+                if (mc_ != nullptr) mc_->setVisualizerWindowVisible (false);
+            };
+
+            // Restore saved bounds
+            if (auto* prefs = appProperties_.getUserSettings())
+            {
+                int x = prefs->getIntValue ("visualizerWindowX", 100);
+                int y = prefs->getIntValue ("visualizerWindowY", 100);
+                int w = prefs->getIntValue ("visualizerWindowW", 800);
+                int h = prefs->getIntValue ("visualizerWindowH", 300);
+                visualizerWindow_->setBounds (x, y, w, h);
+            }
+        }
+
+        // Keep BPM in sync with current metronome state
+        visualizerManager_->setCurrentBPM (audioEngine_.getMetronomeBpm());
+        visualizerManager_->setCurrentSampleRate (44100.0);  // updated when device changes
+
+        visualizerWindow_->setVisible (true);
+        visualizerWindow_->toFront (true);
+        if (mc_ != nullptr) mc_->setVisualizerWindowVisible (true);
+    }
+    else
+    {
+        if (visualizerWindow_ != nullptr)
+            visualizerWindow_->setVisible (false);
+        if (mc_ != nullptr) mc_->setVisualizerWindowVisible (false);
     }
 }
 

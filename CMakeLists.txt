@@ -202,6 +202,45 @@ add_custom_command(TARGET LVH-TestVisualizer POST_BUILD
     COMMENT "Copying LVH-TestVisualizer.dll to Visualizers/ directory"
 )
 
+# =====================================================================
+# LVH-RadialVisualizer — Circular spectrum analyzer DLL
+# =====================================================================
+add_library(LVH-RadialVisualizer SHARED
+    Source/RadialVisualizer/RadialVisualizer.cpp
+)
+
+target_include_directories(LVH-RadialVisualizer PRIVATE
+    Source
+)
+
+target_link_libraries(LVH-RadialVisualizer
+    PRIVATE
+        juce::juce_core
+        juce::juce_graphics
+        juce::juce_gui_basics
+        juce::juce_opengl
+)
+
+target_compile_definitions(LVH-RadialVisualizer
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+)
+
+if(MSVC)
+    target_compile_options(LVH-RadialVisualizer PRIVATE /utf-8)
+endif()
+
+# Copy the radial DLL into <LVH.exe>/Visualizers/ after build
+add_custom_command(TARGET LVH-RadialVisualizer POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_FILE_DIR:LVH>/Visualizers"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:LVH-RadialVisualizer>"
+        "$<TARGET_FILE_DIR:LVH>/Visualizers/LVH-RadialVisualizer.dll"
+    COMMENT "Copying LVH-RadialVisualizer.dll to Visualizers/ directory"
+)
+
 # Releaseビルド時のみ \\Storm-pc\lvhpro へ自動デプロイ
 add_custom_command(TARGET LVH POST_BUILD
     COMMAND powershell -NonInteractive -Command
