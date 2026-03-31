@@ -67,6 +67,7 @@ struct Tile
     float energy = 0.f;   // 0..1, drives colour hue
     float angle  = 0.f;   // band direction angle (radians) — for tile rotation
     float worldW = 0.f;   // tangential width in world space
+    float life   = 1.f;   // 1.0 at spawn → 0.0 at death (drives brightness/alpha)
     bool  active = false;
 };
 
@@ -185,16 +186,16 @@ public:
         for (auto& t : tiles_)
         {
             if (!t.active) continue;
-            t.z -= t.speed;
-            if (t.z < kZNear) { t.active = false; continue; }
-
-            const float progress = 1.f - (t.z / kZFar);
+            t.z    -= t.speed;
+            t.life -= t.speed / (kZFar - kZNear);  // reaches 0 when z reaches kZNear
+            if (t.z < kZNear || t.life <= 0.f) { t.active = false; continue; }
 
             // Doppler colour: low energy → blue (hue 0.65), high → red (hue 0.0)
             const float hue  = 0.65f * (1.f - t.energy);
             const float sat  = 0.75f + t.energy * 0.25f;
-            const float bri  = 0.50f + progress * 0.50f;
-            const float alph = 0.25f + progress * 0.70f;
+            // Attack → decay: bright at spawn (life=1), dims as tile travels (life→0)
+            const float bri  = 0.25f + t.life * 0.75f;
+            const float alph = 0.15f + t.life * 0.85f;
             const juce::Colour col = juce::Colour::fromHSV (hue, sat, bri,
                                                              juce::jmin (1.f, alph));
 
@@ -325,6 +326,7 @@ private:
             t.energy = energyNorm;
             t.angle  = angle;
             t.worldW = tileArcW;
+            t.life   = 1.0f;
             t.active = true;
             return;
         }
