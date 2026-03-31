@@ -9,6 +9,7 @@ VisualizerManager::VisualizerManager() = default;
 
 VisualizerManager::~VisualizerManager()
 {
+    stopTimer();
     unloadAll();
 }
 
@@ -19,6 +20,7 @@ VisualizerManager::~VisualizerManager()
 void VisualizerManager::scanAndLoad (const juce::File& vizDirectory)
 {
     unloadAll();
+    currentPluginIndex_ = 0;
 
     if (! vizDirectory.isDirectory())
     {
@@ -72,17 +74,92 @@ void VisualizerManager::unloadAll()
     plugins_.clear();
 }
 
+juce::StringArray VisualizerManager::getPluginNames() const
+{
+    juce::StringArray names;
+    for (auto& p : plugins_)
+        names.add (p->name);
+    return names;
+}
+
 // -----------------------------------------------------------------------------
-// Rendering
+// Plugin selection
+// -----------------------------------------------------------------------------
+
+void VisualizerManager::setCurrentPlugin (int index)
+{
+    if (plugins_.empty()) return;
+    currentPluginIndex_ = juce::jlimit (0, (int)plugins_.size() - 1, index);
+    DBG ("[VisualizerManager] Switched to plugin " + juce::String (currentPluginIndex_)
+         + ": " + plugins_[currentPluginIndex_]->name);
+}
+
+void VisualizerManager::nextPlugin()
+{
+    if (plugins_.size() <= 1) return;
+
+    if (switchMode_ == SwitchMode::Random)
+    {
+        // Pick a random plugin that is different from the current one
+        int next;
+        do { next = random_.nextInt ((int)plugins_.size()); }
+        while (next == currentPluginIndex_);
+        currentPluginIndex_ = next;
+    }
+    else
+    {
+        currentPluginIndex_ = (currentPluginIndex_ + 1) % (int)plugins_.size();
+    }
+
+    DBG ("[VisualizerManager] Auto-switched to plugin " + juce::String (currentPluginIndex_)
+         + ": " + plugins_[currentPluginIndex_]->name);
+}
+
+// -----------------------------------------------------------------------------
+// Auto-switching
+// -----------------------------------------------------------------------------
+
+void VisualizerManager::setSwitchMode (SwitchMode mode)
+{
+    switchMode_ = mode;
+
+    if (mode == SwitchMode::Manual)
+    {
+        stopTimer();
+        DBG ("[VisualizerManager] Auto-switch: OFF");
+    }
+    else
+    {
+        startTimer (switchIntervalSec_ * 1000);
+        DBG ("[VisualizerManager] Auto-switch: "
+             + juce::String (mode == SwitchMode::Random ? "Random" : "Sequential")
+             + " every " + juce::String (switchIntervalSec_) + "s");
+    }
+}
+
+void VisualizerManager::setSwitchInterval (int seconds)
+{
+    switchIntervalSec_ = seconds;
+    if (switchMode_ != SwitchMode::Manual)
+        startTimer (seconds * 1000);
+}
+
+void VisualizerManager::timerCallback()
+{
+    nextPlugin();
+}
+
+// -----------------------------------------------------------------------------
+// Rendering — Phase D: render current plugin only
 // -----------------------------------------------------------------------------
 
 void VisualizerManager::render (juce::Graphics& g, juce::OpenGLContext* openGLContext)
 {
-    for (auto& p : plugins_)
-    {
-        if (p->instance != nullptr)
-            p->instance->render (g, openGLContext);
-    }
+    if (plugins_.empty()) return;
+
+    int idx = juce::jlimit (0, (int)plugins_.size() - 1, currentPluginIndex_);
+    if (plugins_[idx]->instance != nullptr)
+        plugins_[idx]->instance->render (g, openGLContext);
 }
 
 // -----------------------------------------------------------------------------

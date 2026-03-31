@@ -277,5 +277,7 @@ add_custom_command(TARGET LVH-StarfieldVisualizer POST_BUILD
 add_custom_command(TARGET LVH POST_BUILD
     COMMAND powershell -NonInteractive -Command
         "if ('$<CONFIG>' -eq 'Release') { $r = robocopy '$<TARGET_FILE_DIR:LVH>' '\\\\Storm-pc\\lvhpro' 'LVH.exe' 'LVH-Bridge.exe' /R:2 /W:3 /NP; if ($LASTEXITCODE -le 7) { exit 0 } else { exit 1 } }"
+    COMMAND powershell -NonInteractive -Command
+        "if ('$<CONFIG>' -eq 'Release') { $src = '$<TARGET_FILE_DIR:LVH>\\Visualizers'; if (Test-Path $src) { $r = robocopy $src '\\\\Storm-pc\\lvhpro\\Visualizers' '*.dll' /R:2 /W:3 /NP; if ($LASTEXITCODE -le 7) { exit 0 } else { exit 1 } } }"
     COMMENT "Deploying Release build to \\\\Storm-pc\\lvhpro"
 )
