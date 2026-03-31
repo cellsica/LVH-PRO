@@ -91,11 +91,12 @@
         - [x] UIManager での VisualizerWindow 管理実装
         - [x] Radial Spectrum Analyzer (16バンド対数スケール・波紋リング) の実装
         - [x] 表示データのスムージング (コサイン補間) 処理追加
-    - [ ] **Phase C: Starfield Spectrum Visualizer**
-        - [ ] パーティクルシステム (Star 構造体・プール管理) の実装
-        - [ ] 放射状飛行アルゴリズムの実装
-        - [ ] ドップラー色分けと FFT (特に低域) との連動
-        - [ ] パフォーマンス最適化と動作確認
+    - [x] **Phase C: Starfield Spectrum Visualizer ✅ (しずく045-C)**
+        - [x] 無音時: 1px ドット ~4/秒 ゆっくりワープ飛行
+        - [x] 演奏時: 16バンド円形配置タイルが放射状に飛び出す (接線方向回転)
+        - [x] アタック→ディケイ: life フィールドで出音は明るく・減衰で暗く
+        - [x] 赤方偏移カラー (blue → red) + 軌跡トレイル
+        - [x] 演奏中はドットのスポーン数が増加 (エネルギー連動)
 
 - [x] Mission 040: プラグイン・お気に入り機能 ✅ (Mission 039 から昇格)
 
@@ -159,3 +160,4 @@
 - [2026-03-30] しずく：Mission 044-C 完了！LINE 入力の常時有効化、MONO 切り替え。
 - [2026-03-31] しずく：Mission 045 Phase A 完了！Visualizer SDK (IAudioSource/IVisualizerPlugin)、VisualizerManager DLL ロード基盤、FFT パイプライン (1024pt Hann窓)、OpenGL 統合ウィンドウ、TestVisualizer DLL を実装。
 - [2026-03-31] しずく：Mission 045 Phase B 完了！RadialVisualizer (16バンド対数・波紋リング・コサイン補間)・VIS ボタン UI 統合・タイトルバー非表示モード実装。
+- [2026-03-31] しずく：Mission 045 Phase C 完了！StarfieldVisualizer (16バンド円形タイル・赤方偏移・life アタック/ディケイ・エネルギー連動ドット増加) 実装。
