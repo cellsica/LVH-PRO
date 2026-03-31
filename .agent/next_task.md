@@ -91,6 +91,11 @@
         - [x] UIManager での VisualizerWindow 管理実装
         - [x] Radial Spectrum Analyzer (16バンド対数スケール・波紋リング) の実装
         - [x] 表示データのスムージング (コサイン補間) 処理追加
+    - [ ] **Phase C: Starfield Spectrum Visualizer**
+        - [ ] パーティクルシステム (Star 構造体・プール管理) の実装
+        - [ ] 放射状飛行アルゴリズムの実装
+        - [ ] ドップラー色分けと FFT (特に低域) との連動
+        - [ ] パフォーマンス最適化と動作確認
 
 - [x] Mission 040: プラグイン・お気に入り機能 ✅ (Mission 039 から昇格)
 
