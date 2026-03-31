@@ -192,15 +192,8 @@ if(MSVC)
     target_compile_options(LVH-TestVisualizer PRIVATE /utf-8)
 endif()
 
-# Copy the test DLL into <LVH.exe>/Visualizers/ after build
-add_custom_command(TARGET LVH-TestVisualizer POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory
-        "$<TARGET_FILE_DIR:LVH>/Visualizers"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "$<TARGET_FILE:LVH-TestVisualizer>"
-        "$<TARGET_FILE_DIR:LVH>/Visualizers/LVH-TestVisualizer.dll"
-    COMMENT "Copying LVH-TestVisualizer.dll to Visualizers/ directory"
-)
+# TestVisualizer は Phase A の動作確認用のため Visualizers/ には配置しない。
+# ビルドされた DLL は build/Debug/ に残るが、本番ロードパスには含まれない。
 
 # =====================================================================
 # LVH-RadialVisualizer — Circular spectrum analyzer DLL
