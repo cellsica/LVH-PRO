@@ -161,6 +161,9 @@ public:
 
     void shutdown() override { source_ = nullptr; }
 
+    int getPreferredWidth()  const override { return 520; }
+    int getPreferredHeight() const override { return 520; }
+
 private:
     // ── バンド値を角度から補間取得 ─────────────────────────────────────────
     // 0 〜 1 の正規化角度 t に対して 16 バンド値を滑らかに補間する。

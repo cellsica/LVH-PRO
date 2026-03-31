@@ -448,13 +448,14 @@ void UIManager::toggleVisualizerWindow (bool show)
                 if (mc_ != nullptr) mc_->setVisualizerWindowVisible (false);
             };
 
-            // Restore saved bounds
+            // 保存済みサイズがあれば復元、なければプラグイン推奨サイズを使用
             if (auto* prefs = appProperties_.getUserSettings())
             {
+                auto preferred = visualizerManager_->getPreferredSize();
                 int x = prefs->getIntValue ("visualizerWindowX", 100);
                 int y = prefs->getIntValue ("visualizerWindowY", 100);
-                int w = prefs->getIntValue ("visualizerWindowW", 800);
-                int h = prefs->getIntValue ("visualizerWindowH", 300);
+                int w = prefs->getIntValue ("visualizerWindowW", preferred.getWidth());
+                int h = prefs->getIntValue ("visualizerWindowH", preferred.getHeight());
                 visualizerWindow_->setBounds (x, y, w, h);
             }
         }

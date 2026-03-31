@@ -27,7 +27,10 @@ public:
 
         renderView_ = std::make_unique<RenderView> (manager_);
         setContentOwned (renderView_.get(), false);
-        setSize (800, 300);
+
+        // プラグインの推奨サイズに合わせる（未ロード時は 500x500）
+        auto preferred = manager_.getPreferredSize();
+        setSize (preferred.getWidth(), preferred.getHeight());
         setAlwaysOnTop (false);
     }
 

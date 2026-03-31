@@ -43,6 +43,15 @@ public:
 
     /** Called before the DLL is unloaded.  Release all resources here. */
     virtual void shutdown() = 0;
+
+    // -------------------------------------------------------------------------
+    // Preferred window size (optional override)
+    // Return the ideal client-area size for this visualizer.
+    // VisualizerWindow uses this when the window is first created.
+    // Default: 500 x 500 (square, suitable for radial visualizers).
+    // -------------------------------------------------------------------------
+    virtual int getPreferredWidth()  const { return 500; }
+    virtual int getPreferredHeight() const { return 500; }
 };
 
 // =============================================================================

@@ -49,6 +49,22 @@ public:
     /** Number of successfully loaded plugins. */
     int getNumPlugins() const noexcept { return (int)plugins_.size(); }
 
+    /** ロード済みプラグインの最大推奨サイズを返す。
+        プラグイン未ロード時はデフォルト値 (500x500) を返す。 */
+    juce::Rectangle<int> getPreferredSize() const noexcept
+    {
+        int w = 500, h = 500;
+        for (auto& p : plugins_)
+        {
+            if (p->instance != nullptr)
+            {
+                w = juce::jmax (w, p->instance->getPreferredWidth());
+                h = juce::jmax (h, p->instance->getPreferredHeight());
+            }
+        }
+        return { 0, 0, w, h };
+    }
+
     // ------------------------------------------------------------------
     // Rendering (message thread)
     // ------------------------------------------------------------------
