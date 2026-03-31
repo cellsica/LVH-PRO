@@ -12,8 +12,15 @@
 //   ドラッグ       — コンテンツ領域をドラッグしてウィンドウを移動
 //   ×ボタン       — マウスオーバー時に左上に表示、クリックで閉じる
 //   リサイズ       — OS フレーム端のドラッグで自由にリサイズ可能
-//   右クリック     — プラグイン選択 / Auto-Switching 設定メニュー
+//   右クリック     — プラグイン選択 / Auto-Switching / 透過 / クリック透過設定
 //   N キー         — 次のプラグインへ手動切り替え
+//   F12            — 全画面 ↔ ウィンドウ表示トグル
+//
+// Phase E additions:
+//   - Window Opacity (right-click menu: 100% / 75% / 50%)
+//   - Click-Through toggle (right-click menu)
+//   - Rescan DLLs (right-click menu)
+//   - setOpacity() / setClickThrough() for UIManager integration
 // =============================================================================
 class VisualizerWindow final : public juce::DocumentWindow
 {
@@ -26,7 +33,7 @@ public:
     {
         setUsingNativeTitleBar (false);
         setTitleBarHeight (0);
-        setResizable (true, false);   // OS フレームでリサイズ可、隅コンポーネントなし
+        setResizable (true, false);
 
         renderView_ = std::make_unique<RenderView> (manager_, [this] {
             setVisible (false);
@@ -38,11 +45,40 @@ public:
         setSize (preferred.getWidth(), preferred.getHeight());
     }
 
+    ~VisualizerWindow() override
+    {
+        uninstallWndProc();
+    }
+
     void closeButtonPressed() override
     {
         setVisible (false);
         if (onClose) onClose();
     }
+
+    /** Show the window and install Win32 styles (idempotent).
+        Call instead of setVisible(true) to ensure click-through is active. */
+    void show()
+    {
+        setVisible (true);
+        toFront (true);
+        applyWin32Styles();   // installs WndProc subclass once the peer exists
+    }
+
+    // ── Opacity & click-through (Phase E) ─────────────────────────────────────
+
+    /** Set the window opacity [0.0, 1.0].
+        Uses SetLayeredWindowAttributes (LWA_ALPHA) which is compatible with
+        OpenGL rendering, unlike per-pixel alpha (UpdateLayeredWindow). */
+    void setOpacity (float opacity);
+
+    float getOpacity()    const noexcept { return opacity_; }
+    bool  isClickThrough() const noexcept { return clickThrough_; }
+
+    /** Enable/disable click-through mode.
+        When enabled, mouse clicks pass through to windows behind this one,
+        except on the close-button area (top-left corner). */
+    void setClickThrough (bool enabled);
 
     // ウィンドウを閉じた時のコールバック（ツールバーボタン状態の同期用）
     std::function<void()> onClose;
@@ -71,26 +107,21 @@ public:
 
     private:
         // ── 定数 ─────────────────────────────────────────────────────────
-        static constexpr int   kBtnSize      = 16;    // × ボタンの直径
-        static constexpr int   kBtnMargin    =  6;    // 左上からのマージン
-        static constexpr int   kBorderPx     =  1;    // 枠線の太さ
-        static constexpr float kFlashDecay   = 0.06f; // フラッシュ減衰量/フレーム
+        static constexpr int   kBtnSize    = 16;
+        static constexpr int   kBtnMargin  =  6;
+        static constexpr int   kBorderPx   =  1;
+        static constexpr float kFlashDecay = 0.06f;
 
         juce::Rectangle<int> closeBtnBounds() const noexcept
         {
             return { kBtnMargin, kBtnMargin, kBtnSize, kBtnSize };
         }
 
-        // ── Flash helper ──────────────────────────────────────────────────
-        void triggerFlash()
-        {
-            flashAlpha_ = 0.55f;
-        }
+        void triggerFlash() { flashAlpha_ = 0.55f; }
 
         // ── Paint ─────────────────────────────────────────────────────────
         void paint (juce::Graphics& g) override
         {
-            // プラグイン切り替えを検出してフラッシュ起動
             int current = manager_.getCurrentPluginIndex();
             if (current != lastRenderedIndex_)
             {
@@ -98,10 +129,8 @@ public:
                 triggerFlash();
             }
 
-            // 1. ビジュアライザー描画（現在のプラグインのみ）
             manager_.render (g, &openGLContext_);
 
-            // 2. 切り替えフラッシュエフェクト
             if (flashAlpha_ > 0.0f)
             {
                 g.setColour (juce::Colours::white.withAlpha (flashAlpha_));
@@ -109,26 +138,21 @@ public:
                 flashAlpha_ = juce::jmax (0.0f, flashAlpha_ - kFlashDecay);
             }
 
-            // 3. 細枠（常時表示）
             g.setColour (juce::Colour (0x88445566));
             g.drawRect (getLocalBounds(), kBorderPx);
 
-            // 4. × ボタン（マウスオーバー時のみ）
             if (mouseOver_)
             {
                 auto cb = closeBtnBounds().toFloat();
-
-                // 背景サークル（ホバー時は少し明るく）
                 g.setColour (mouseOnClose_
                     ? juce::Colour (0xddcc3333)
                     : juce::Colour (0xaa1e1e2e));
                 g.fillEllipse (cb);
 
-                // × のライン
                 g.setColour (juce::Colours::white.withAlpha (0.80f));
                 const float pad = 4.5f;
-                float x1 = cb.getX() + pad,       y1 = cb.getY() + pad;
-                float x2 = cb.getRight() - pad,    y2 = cb.getBottom() - pad;
+                float x1 = cb.getX() + pad,    y1 = cb.getY() + pad;
+                float x2 = cb.getRight() - pad, y2 = cb.getBottom() - pad;
                 g.drawLine (x1, y1, x2, y2, 1.5f);
                 g.drawLine (x2, y1, x1, y2, 1.5f);
             }
@@ -168,10 +192,8 @@ public:
             for (int i = 0; i < names.size(); ++i)
                 vizMenu.addItem (1000 + i, names[i], true,
                                  i == manager_.getCurrentPluginIndex());
-
             if (names.isEmpty())
                 vizMenu.addItem (1, "(No plugins loaded)", false, false);
-
             menu.addSubMenu ("Visualizer", vizMenu);
             menu.addSeparator();
 
@@ -179,64 +201,73 @@ public:
             juce::PopupMenu autoMenu;
             auto mode     = manager_.getSwitchMode();
             int  interval = manager_.getSwitchInterval();
-
-            bool isOff      = (mode == VisualizerManager::SwitchMode::Manual);
-            bool is15s      = (mode == VisualizerManager::SwitchMode::Sequential && interval == 15);
-            bool is30s      = (mode == VisualizerManager::SwitchMode::Sequential && interval == 30);
-            bool is1min     = (mode == VisualizerManager::SwitchMode::Sequential && interval == 60);
-            bool isRandom   = (mode == VisualizerManager::SwitchMode::Random);
-
-            autoMenu.addItem (2000, "Off",    true, isOff);
-            autoMenu.addItem (2001, "15 sec", true, is15s);
-            autoMenu.addItem (2002, "30 sec", true, is30s);
-            autoMenu.addItem (2003, "1 min",  true, is1min);
+            autoMenu.addItem (2000, "Off",    true, mode == VisualizerManager::SwitchMode::Manual);
+            autoMenu.addItem (2001, "15 sec", true, mode == VisualizerManager::SwitchMode::Sequential && interval == 15);
+            autoMenu.addItem (2002, "30 sec", true, mode == VisualizerManager::SwitchMode::Sequential && interval == 30);
+            autoMenu.addItem (2003, "1 min",  true, mode == VisualizerManager::SwitchMode::Sequential && interval == 60);
             autoMenu.addSeparator();
-            autoMenu.addItem (2004, "Random", true, isRandom);
-
+            autoMenu.addItem (2004, "Random", true, mode == VisualizerManager::SwitchMode::Random);
             menu.addSubMenu ("Auto-Switching", autoMenu);
+            menu.addSeparator();
+
+            // ---- Window Opacity ----
+            auto* vw = dynamic_cast<VisualizerWindow*> (getTopLevelComponent());
+            float curOpacity = vw ? vw->getOpacity() : 1.0f;
+            juce::PopupMenu opacityMenu;
+            opacityMenu.addItem (3001, "100%", true, curOpacity >= 0.99f);
+            opacityMenu.addItem (3002,  "75%", true, curOpacity > 0.60f && curOpacity < 0.99f);
+            opacityMenu.addItem (3003,  "50%", true, curOpacity <= 0.60f);
+            menu.addSubMenu ("Window Opacity", opacityMenu);
+
+            // ---- Click-Through ----
+            bool ct = vw ? vw->isClickThrough() : false;
+            menu.addItem (3004, "Click-Through", true, ct);
+            menu.addSeparator();
+
+            // ---- Rescan ----
+            menu.addItem (3000, "Rescan Plugins");
 
             menu.showMenuAsync (juce::PopupMenu::Options{},
                 [this] (int result)
                 {
-                    // Visualizer selection
+                    auto* vw2 = dynamic_cast<VisualizerWindow*> (getTopLevelComponent());
+
                     if (result >= 1000 && result < 2000)
                     {
                         manager_.setCurrentPlugin (result - 1000);
                         return;
                     }
 
-                    // Auto-switching
                     switch (result)
                     {
-                        case 2000:
-                            manager_.setSwitchMode (VisualizerManager::SwitchMode::Manual);
-                            break;
-                        case 2001:
-                            manager_.setSwitchInterval (15);
-                            manager_.setSwitchMode (VisualizerManager::SwitchMode::Sequential);
-                            break;
-                        case 2002:
-                            manager_.setSwitchInterval (30);
-                            manager_.setSwitchMode (VisualizerManager::SwitchMode::Sequential);
-                            break;
-                        case 2003:
-                            manager_.setSwitchInterval (60);
-                            manager_.setSwitchMode (VisualizerManager::SwitchMode::Sequential);
-                            break;
-                        case 2004:
-                            manager_.setSwitchMode (VisualizerManager::SwitchMode::Random);
-                            break;
-                        default:
-                            break;
+                        // Auto-switching
+                        case 2000: manager_.setSwitchMode (VisualizerManager::SwitchMode::Manual);     break;
+                        case 2001: manager_.setSwitchInterval (15);
+                                   manager_.setSwitchMode (VisualizerManager::SwitchMode::Sequential); break;
+                        case 2002: manager_.setSwitchInterval (30);
+                                   manager_.setSwitchMode (VisualizerManager::SwitchMode::Sequential); break;
+                        case 2003: manager_.setSwitchInterval (60);
+                                   manager_.setSwitchMode (VisualizerManager::SwitchMode::Sequential); break;
+                        case 2004: manager_.setSwitchMode (VisualizerManager::SwitchMode::Random);     break;
+
+                        // Opacity
+                        case 3001: if (vw2) vw2->setOpacity (1.00f); break;
+                        case 3002: if (vw2) vw2->setOpacity (0.75f); break;
+                        case 3003: if (vw2) vw2->setOpacity (0.50f); break;
+
+                        // Click-through toggle
+                        case 3004: if (vw2) vw2->setClickThrough (! vw2->isClickThrough()); break;
+
+                        // Rescan
+                        case 3000: manager_.rescan(); break;
+
+                        default: break;
                     }
                 });
         }
 
         // ── Mouse ─────────────────────────────────────────────────────────
-        void mouseEnter (const juce::MouseEvent&) override
-        {
-            mouseOver_ = true;
-        }
+        void mouseEnter (const juce::MouseEvent&) override { mouseOver_ = true; }
 
         void mouseExit (const juce::MouseEvent&) override
         {
@@ -251,7 +282,6 @@ public:
 
         void mouseDown (const juce::MouseEvent& e) override
         {
-            // 右クリック → コンテキストメニュー
             if (e.mods.isRightButtonDown())
             {
                 grabKeyboardFocus();
@@ -259,7 +289,6 @@ public:
                 return;
             }
 
-            // × ボタン以外の領域はウィンドウドラッグ
             if (! closeBtnBounds().contains (e.getPosition()))
                 if (auto* w = getTopLevelComponent())
                     dragger_.startDraggingComponent (w, e);
@@ -285,15 +314,21 @@ public:
         juce::ComponentDragger dragger_;
         bool  mouseOver_         = false;
         bool  mouseOnClose_      = false;
-        int   lastRenderedIndex_ = -1;   // フラッシュ検出用
-        float flashAlpha_        = 0.0f; // 切り替えフラッシュ
+        int   lastRenderedIndex_ = -1;
+        float flashAlpha_        = 0.0f;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RenderView)
     };
 
 private:
+    void applyWin32Styles();    // implemented in VisualizerWindow.cpp
+    void uninstallWndProc();    // implemented in VisualizerWindow.cpp
+
     VisualizerManager&          manager_;
     std::unique_ptr<RenderView> renderView_;
+    void*  nativeHwnd_   = nullptr;
+    float  opacity_      = 1.0f;
+    bool   clickThrough_ = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VisualizerWindow)
 };

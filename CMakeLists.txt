@@ -68,6 +68,7 @@ target_sources(LVH
         Source/Core/VisualizerManager.cpp
         Source/MetronomeManager.cpp
         Source/VUMeterWindow.cpp
+        Source/VisualizerWindow.cpp
 )
 
 # コンパイル定義

@@ -161,6 +161,13 @@ public:
 
     void shutdown() override { source_ = nullptr; }
 
+    void setThemeColors (uint32_t mainColor, uint32_t accentColor) override
+    {
+        // Extract hue from packed ARGB colors
+        mainHue_   = juce::Colour (mainColor).getHue();    // e.g. 0.0 (red) or 0.5 (cyan)
+        accentHue_ = juce::Colour (accentColor).getHue();  // e.g. 0.08 (amber) or 0.08 (orange)
+    }
+
     int getPreferredWidth()  const override { return 520; }
     int getPreferredHeight() const override { return 520; }
 
@@ -237,9 +244,9 @@ private:
             const float cosA  = std::cos (angle);
             const float sinA  = std::sin (angle);
 
-            // 大きい音量 = 赤 / 小さい音量 = シアン
+            // 大きい音量 = mainHue_ / 小さい音量 = accentHue_（テーマカラー連動）
             const float th  = juce::jmin (mag * 14.f, 1.f);
-            const float hue = (1.f - th) * 0.50f;
+            const float hue = accentHue_ + (mainHue_ - accentHue_) * th;
             g.setColour (juce::Colour::fromHSV (hue, 0.9f, 1.0f, 0.80f + th * 0.15f));
 
             g.drawLine (cx + innerR * cosA, cy + innerR * sinA,
@@ -254,17 +261,17 @@ private:
                       float cx, float cy,
                       float coreR, float energy)
     {
-        // グロー
+        // グロー（テーマ mainHue_ でティント）
         for (int layer = 5; layer >= 1; --layer)
         {
             const float r  = coreR + (float)layer * 5.5f;
             const float al = 0.12f / (float)layer;
-            g.setColour (juce::Colour::fromHSV (0.58f, 0.75f, 1.0f, al));
+            g.setColour (juce::Colour::fromHSV (mainHue_, 0.75f, 1.0f, al));
             g.fillEllipse (cx - r, cy - r, r * 2.f, r * 2.f);
         }
 
-        // コア
-        g.setColour (juce::Colour::fromHSV (0.60f, 0.55f, 0.95f, 0.75f));
+        // コア（テーマ mainHue_ でティント）
+        g.setColour (juce::Colour::fromHSV (mainHue_, 0.55f, 0.95f, 0.75f));
         g.fillEllipse (cx - coreR, cy - coreR, coreR * 2.f, coreR * 2.f);
 
         // ハイライト
@@ -299,6 +306,11 @@ private:
     std::deque<WaveRing>        rings_;
     std::array<Particle, 5>     particles_  {};
     int                         frameCount_ = 0;
+
+    // Theme colors (Phase E) — hue values in [0, 1] for juce::Colour::fromHSV()
+    // Defaults match Vintage Warm: main=red(0.0), accent=green/cyan(0.5)
+    float mainHue_   = 0.0f;   // loud / core color  (Warm=red,   Neon=cyan)
+    float accentHue_ = 0.5f;   // quiet / outer color (Warm=green, Neon=orange)
 };
 
 // =============================================================================
