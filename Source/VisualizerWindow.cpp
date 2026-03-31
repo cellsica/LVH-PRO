@@ -29,6 +29,12 @@ static LRESULT CALLBACK vizSubclassProc (HWND hwnd, UINT msg, WPARAM wp, LPARAM 
 
     if (msg == WM_NCHITTEST)
     {
+        // 右クリックは常にインタラクティブ（GetAsyncKeyState でリアルタイム判定）
+        // GetKeyState はメッセージキューと同期するため WM_NCHITTEST のタイミングでは
+        // まだ押下状態が反映されていないことがある。original proc より先に判定する。
+        if (GetAsyncKeyState (VK_RBUTTON) & 0x8000)
+            return HTCLIENT;
+
         // Ask the original JUCE WndProc for its opinion first.
         LRESULT base = original ? CallWindowProc (original, hwnd, msg, wp, lp)
                                 : DefWindowProc  (hwnd, msg, wp, lp);
@@ -38,10 +44,6 @@ static LRESULT CALLBACK vizSubclassProc (HWND hwnd, UINT msg, WPARAM wp, LPARAM 
 
         // Check click-through flag stored as a window property.
         if (! GetProp (hwnd, "VizClickThrough"))
-            return HTCLIENT;
-
-        // 右クリックは常にインタラクティブ（コンテキストメニューでOFF操作ができるように）
-        if (GetKeyState (VK_RBUTTON) & 0x8000)
             return HTCLIENT;
 
         // Click-through mode: allow close-button corner to remain interactive.

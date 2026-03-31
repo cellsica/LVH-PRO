@@ -161,13 +161,6 @@ public:
 
     void shutdown() override { source_ = nullptr; }
 
-    void setThemeColors (uint32_t mainColor, uint32_t accentColor) override
-    {
-        // Extract hue from packed ARGB colors
-        mainHue_   = juce::Colour (mainColor).getHue();    // e.g. 0.0 (red) or 0.5 (cyan)
-        accentHue_ = juce::Colour (accentColor).getHue();  // e.g. 0.08 (amber) or 0.08 (orange)
-    }
-
     int getPreferredWidth()  const override { return 520; }
     int getPreferredHeight() const override { return 520; }
 
@@ -307,10 +300,9 @@ private:
     std::array<Particle, 5>     particles_  {};
     int                         frameCount_ = 0;
 
-    // Theme colors (Phase E) — hue values in [0, 1] for juce::Colour::fromHSV()
-    // Defaults match Vintage Warm: main=red(0.0), accent=green/cyan(0.5)
-    float mainHue_   = 0.0f;   // loud / core color  (Warm=red,   Neon=cyan)
-    float accentHue_ = 0.5f;   // quiet / outer color (Warm=green, Neon=orange)
+    // Fixed hue values for radial bars and nucleus
+    static constexpr float mainHue_   = 0.0f;   // loud / core (red)
+    static constexpr float accentHue_ = 0.5f;   // quiet / outer (cyan)
 };
 
 // =============================================================================

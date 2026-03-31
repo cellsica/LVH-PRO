@@ -46,14 +46,6 @@ UIManager::UIManager (AudioEngine&                  audioEngine,
                             .getChildFile ("Visualizers");
     visualizerManager_->scanAndLoad (vizDir);
 
-    // Apply saved theme to plugins (theme defaults to Vintage Warm in VisualizerManager)
-    if (auto* prefs = appProperties_.getUserSettings())
-    {
-        int savedTheme = prefs->getIntValue ("vuMeterTheme", 0);
-        if (savedTheme == 1)
-            visualizerManager_->notifyThemeColors (0xFF00FFCCu, 0xFFFF8C00u);  // Oxygen Neon
-        // else: Vintage Warm is already the default in VisualizerManager
-    }
 }
 
 UIManager::~UIManager() = default;
@@ -788,11 +780,7 @@ void UIManager::openSettings()
                     v == 1 ? VUMeterComponent::Theme::OxygenNeon
                            : VUMeterComponent::Theme::VintageWarm);
 
-            // Sync visualizer plugin theme colors (Phase E)
-            if (v == 1)
-                visualizerManager_->notifyThemeColors (0xFF00FFCCu, 0xFFFF8C00u);  // Oxygen Neon
-            else
-                visualizerManager_->notifyThemeColors (0xFFE63946u, 0xFFFF9B42u);  // Vintage Warm
+
         };
         cbs.onVuOpacityChanged = [this] (int v) {
             if (vuMeterWindow_ != nullptr)

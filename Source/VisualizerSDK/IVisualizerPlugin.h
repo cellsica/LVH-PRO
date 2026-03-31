@@ -53,16 +53,6 @@ public:
     virtual int getPreferredWidth()  const { return 500; }
     virtual int getPreferredHeight() const { return 500; }
 
-    // -------------------------------------------------------------------------
-    // Theme color sync (optional override — Phase E)
-    // Called by the host whenever the LVH color theme changes.
-    // `mainColor`   — primary accent color (e.g. red for Warm, cyan for Neon)
-    // `accentColor` — secondary accent (e.g. amber for Warm, orange for Neon)
-    // Both values are packed ARGB (0xAARRGGBB), fully opaque.
-    // Default implementation is a no-op so existing DLLs remain compatible
-    // as long as they are recompiled against this updated SDK header.
-    // -------------------------------------------------------------------------
-    virtual void setThemeColors (uint32_t /*mainColor*/, uint32_t /*accentColor*/) {}
 };
 
 // =============================================================================

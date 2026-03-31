@@ -201,7 +201,7 @@ public:
             t.life -= t.speed / (kZFar - kZNear);  // reaches 0 when z reaches kZNear
             if (t.z < kZNear || t.life <= 0.f) { t.active = false; continue; }
 
-            // テーマカラー連動: 低エネルギー = quietHue_, 高エネルギー = loudHue_
+            // 低エネルギー = quietHue_ (blue), 高エネルギー = loudHue_ (red)
             const float hue  = quietHue_ + (loudHue_ - quietHue_) * t.energy;
             const float sat  = 0.75f + t.energy * 0.25f;
             // Attack → decay: bright at spawn (life=1), dims as tile travels (life→0)
@@ -283,12 +283,6 @@ public:
 
     void shutdown() override { source_ = nullptr; }
 
-    void setThemeColors (uint32_t mainColor, uint32_t accentColor) override
-    {
-        loudHue_  = juce::Colour (mainColor).getHue();    // e.g. 0.0 (red) or 0.5 (cyan)
-        quietHue_ = juce::Colour (accentColor).getHue();  // e.g. 0.08 (amber) or 0.08 (orange)
-    }
-
     int getPreferredWidth()  const override { return 520; }
     int getPreferredHeight() const override { return 520; }
 
@@ -309,8 +303,8 @@ private:
 
     // Theme colors (Phase E) — hue values in [0, 1]
     // Defaults = original Doppler redshift: quiet=blue(0.65), loud=red(0.0)
-    float quietHue_ = 0.65f;  // low energy color  (Warm=amber 0.08, Neon=orange 0.08)
-    float loudHue_  = 0.0f;   // high energy color  (Warm=red 0.0,   Neon=cyan 0.5)
+    static constexpr float quietHue_ = 0.65f;  // low energy (blue)
+    static constexpr float loudHue_  = 0.0f;   // high energy (red)
 
     // ── Spawn helpers ─────────────────────────────────────────────────
 

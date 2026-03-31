@@ -60,7 +60,6 @@ void VisualizerManager::scanAndLoad (const juce::File& vizDirectory)
         }
 
         plugin->instance->initialise (this);
-        plugin->instance->setThemeColors (themeMain_, themeAccent_);  // apply current theme
 
         DBG ("[VisualizerManager] Loaded plugin: " + plugin->name);
         plugins_.push_back (std::move (plugin));
@@ -170,19 +169,6 @@ void VisualizerManager::setSwitchInterval (int seconds)
 void VisualizerManager::timerCallback()
 {
     nextPlugin();
-}
-
-// -----------------------------------------------------------------------------
-// Theme color sync (Phase E)
-// -----------------------------------------------------------------------------
-
-void VisualizerManager::notifyThemeColors (uint32_t mainColor, uint32_t accentColor)
-{
-    themeMain_   = mainColor;
-    themeAccent_ = accentColor;
-    for (auto& p : plugins_)
-        if (p->instance != nullptr)
-            p->instance->setThemeColors (mainColor, accentColor);
 }
 
 // -----------------------------------------------------------------------------
