@@ -21,6 +21,7 @@ void VisualizerManager::scanAndLoad (const juce::File& vizDirectory)
 {
     unloadAll();
     currentPluginIndex_ = 0;
+    vizDirectory_ = vizDirectory;   // remember for rescan()
 
     if (! vizDirectory.isDirectory())
     {
@@ -67,6 +68,24 @@ void VisualizerManager::scanAndLoad (const juce::File& vizDirectory)
     DBG ("[VisualizerManager] " + juce::String (plugins_.size()) + " plugin(s) loaded.");
 }
 
+void VisualizerManager::rescan()
+{
+    if (! vizDirectory_.isDirectory())
+    {
+        DBG ("[VisualizerManager] rescan(): no directory set — call scanAndLoad first.");
+        return;
+    }
+
+    // Preserve the current selection across the reload
+    int savedIndex = currentPluginIndex_;
+    scanAndLoad (vizDirectory_);
+
+    if (! plugins_.empty())
+        currentPluginIndex_ = juce::jlimit (0, (int)plugins_.size() - 1, savedIndex);
+
+    DBG ("[VisualizerManager] Rescan complete. " + juce::String (plugins_.size()) + " plugin(s).");
+}
+
 void VisualizerManager::unloadAll()
 {
     // Plugins are shutdown() + deleted in LoadedPlugin destructor,
@@ -92,6 +111,7 @@ void VisualizerManager::setCurrentPlugin (int index)
     currentPluginIndex_ = juce::jlimit (0, (int)plugins_.size() - 1, index);
     DBG ("[VisualizerManager] Switched to plugin " + juce::String (currentPluginIndex_)
          + ": " + plugins_[currentPluginIndex_]->name);
+    if (onStateChanged) onStateChanged();
 }
 
 void VisualizerManager::nextPlugin()
@@ -100,7 +120,6 @@ void VisualizerManager::nextPlugin()
 
     if (switchMode_ == SwitchMode::Random)
     {
-        // Pick a random plugin that is different from the current one
         int next;
         do { next = random_.nextInt ((int)plugins_.size()); }
         while (next == currentPluginIndex_);
@@ -135,6 +154,8 @@ void VisualizerManager::setSwitchMode (SwitchMode mode)
              + juce::String (mode == SwitchMode::Random ? "Random" : "Sequential")
              + " every " + juce::String (switchIntervalSec_) + "s");
     }
+
+    if (onStateChanged) onStateChanged();
 }
 
 void VisualizerManager::setSwitchInterval (int seconds)
@@ -142,6 +163,7 @@ void VisualizerManager::setSwitchInterval (int seconds)
     switchIntervalSec_ = seconds;
     if (switchMode_ != SwitchMode::Manual)
         startTimer (seconds * 1000);
+    if (onStateChanged) onStateChanged();
 }
 
 void VisualizerManager::timerCallback()

@@ -201,8 +201,8 @@ public:
             t.life -= t.speed / (kZFar - kZNear);  // reaches 0 when z reaches kZNear
             if (t.z < kZNear || t.life <= 0.f) { t.active = false; continue; }
 
-            // Doppler colour: low energy → blue (hue 0.65), high → red (hue 0.0)
-            const float hue  = 0.65f * (1.f - t.energy);
+            // 低エネルギー = quietHue_ (blue), 高エネルギー = loudHue_ (red)
+            const float hue  = quietHue_ + (loudHue_ - quietHue_) * t.energy;
             const float sat  = 0.75f + t.energy * 0.25f;
             // Attack → decay: bright at spawn (life=1), dims as tile travels (life→0)
             const float bri  = 0.25f + t.life * 0.75f;
@@ -300,6 +300,11 @@ private:
 
     std::mt19937 rng_;
     int          dotTimer_ = 0;
+
+    // Theme colors (Phase E) — hue values in [0, 1]
+    // Defaults = original Doppler redshift: quiet=blue(0.65), loud=red(0.0)
+    static constexpr float quietHue_ = 0.65f;  // low energy (blue)
+    static constexpr float loudHue_  = 0.0f;   // high energy (red)
 
     // ── Spawn helpers ─────────────────────────────────────────────────
 

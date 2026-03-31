@@ -30,10 +30,22 @@ UIManager::UIManager (AudioEngine&                  audioEngine,
     visualizerManager_ = std::make_unique<VisualizerManager>();
     visualizerManager_->setAudioEngine (&audioEngine_);
 
+    // Persist plugin selection / mode / interval whenever user changes state
+    visualizerManager_->onStateChanged = [this]
+    {
+        if (auto* prefs = appProperties_.getUserSettings())
+        {
+            prefs->setValue ("vizCurrentPlugin",    visualizerManager_->getCurrentPluginIndex());
+            prefs->setValue ("vizSwitchMode",       (int) visualizerManager_->getSwitchMode());
+            prefs->setValue ("vizSwitchIntervalSec", visualizerManager_->getSwitchInterval());
+        }
+    };
+
     juce::File vizDir = juce::File::getSpecialLocation (juce::File::currentExecutableFile)
                             .getParentDirectory()
                             .getChildFile ("Visualizers");
     visualizerManager_->scanAndLoad (vizDir);
+
 }
 
 UIManager::~UIManager() = default;
@@ -163,6 +175,9 @@ void UIManager::shutdown()
             prefs->setValue ("visualizerWindowY", b.getY());
             prefs->setValue ("visualizerWindowW", b.getWidth());
             prefs->setValue ("visualizerWindowH", b.getHeight());
+
+            // Persist Phase E window settings
+            prefs->setValue ("vizOpacity", (int) (visualizerWindow_->getOpacity() * 100.f));
         }
     }
 
@@ -457,6 +472,26 @@ void UIManager::toggleVisualizerWindow (bool show)
                 int w = prefs->getIntValue ("visualizerWindowW", preferred.getWidth());
                 int h = prefs->getIntValue ("visualizerWindowH", preferred.getHeight());
                 visualizerWindow_->setBounds (x, y, w, h);
+
+                // Restore plugin selection and auto-switch settings (Phase E)
+                int savedPlugin   = prefs->getIntValue ("vizCurrentPlugin",     0);
+                int savedMode     = prefs->getIntValue ("vizSwitchMode",        0);
+                int savedInterval = prefs->getIntValue ("vizSwitchIntervalSec", 20);
+                visualizerManager_->setCurrentPlugin (savedPlugin);
+                if (savedMode == 1)
+                {
+                    visualizerManager_->setSwitchInterval (savedInterval);
+                    visualizerManager_->setSwitchMode (VisualizerManager::SwitchMode::Sequential);
+                }
+                else if (savedMode == 2)
+                {
+                    visualizerManager_->setSwitchInterval (savedInterval);
+                    visualizerManager_->setSwitchMode (VisualizerManager::SwitchMode::Random);
+                }
+
+                // Restore window opacity (Phase E)
+                float savedOpacity = prefs->getIntValue ("vizOpacity", 100) / 100.f;
+                visualizerWindow_->setOpacity (savedOpacity);
             }
         }
 
@@ -464,8 +499,7 @@ void UIManager::toggleVisualizerWindow (bool show)
         visualizerManager_->setCurrentBPM (audioEngine_.getMetronomeBpm());
         visualizerManager_->setCurrentSampleRate (44100.0);  // updated when device changes
 
-        visualizerWindow_->setVisible (true);
-        visualizerWindow_->toFront (true);
+        visualizerWindow_->show();   // setVisible + toFront + applyWin32Styles
         if (mc_ != nullptr) mc_->setVisualizerWindowVisible (true);
     }
     else
@@ -742,6 +776,8 @@ void UIManager::openSettings()
                 vuMeterWindow_->getComponent().setTheme (
                     v == 1 ? VUMeterComponent::Theme::OxygenNeon
                            : VUMeterComponent::Theme::VintageWarm);
+
+
         };
         cbs.onVuOpacityChanged = [this] (int v) {
             if (vuMeterWindow_ != nullptr)

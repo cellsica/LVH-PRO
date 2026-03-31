@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(LVH VERSION 0.8.0 LANGUAGES CXX)
+project(LVH VERSION 0.9.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -68,6 +68,7 @@ target_sources(LVH
         Source/Core/VisualizerManager.cpp
         Source/MetronomeManager.cpp
         Source/VUMeterWindow.cpp
+        Source/VisualizerWindow.cpp
 )
 
 # コンパイル定義

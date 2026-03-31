@@ -17,6 +17,7 @@ class AudioEngine;
 //   4. Implement IAudioSource so plugins can query FFT / waveform data.
 //   5. (Phase D) Manage which plugin is currently displayed.
 //   6. (Phase D) Auto-switch plugins on a timer (Sequential / Random).
+//   7. (Phase E) Rescan Visualizers/ folder at runtime.
 //
 // Thread safety:
 //   All public methods (except render) must be called from the message thread.
@@ -55,6 +56,10 @@ public:
     /** Scan `vizDirectory` for *.dll files and load each one.
         Any previously loaded plugins are unloaded first. */
     void scanAndLoad (const juce::File& vizDirectory);
+
+    /** Re-scan the previously used directory and reload all plugins.
+        Tries to restore the previously selected plugin index. */
+    void rescan();
 
     /** Unload all currently loaded plugins. */
     void unloadAll();
@@ -106,6 +111,15 @@ public:
     void setSwitchInterval (int seconds);
 
     // ------------------------------------------------------------------
+    // State-change callback (Phase E)
+    // ------------------------------------------------------------------
+
+    /** Fired on the message thread whenever currentPluginIndex_, switchMode_,
+        or switchIntervalSec_ changes due to user action.
+        UIManager uses this to persist settings to ApplicationProperties. */
+    std::function<void()> onStateChanged;
+
+    // ------------------------------------------------------------------
     // Rendering (message thread)
     // ------------------------------------------------------------------
 
@@ -154,6 +168,9 @@ private:
     SwitchMode switchMode_         = SwitchMode::Manual;
     int        switchIntervalSec_  = 20;
     juce::Random random_;
+
+    // Phase E state
+    juce::File vizDirectory_;           // stored by scanAndLoad for rescan()
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VisualizerManager)
 };

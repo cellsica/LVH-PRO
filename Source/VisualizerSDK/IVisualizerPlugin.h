@@ -52,6 +52,7 @@ public:
     // -------------------------------------------------------------------------
     virtual int getPreferredWidth()  const { return 500; }
     virtual int getPreferredHeight() const { return 500; }
+
 };
 
 // =============================================================================
