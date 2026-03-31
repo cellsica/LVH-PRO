@@ -21,9 +21,10 @@ class RadialVisualizer final : public IVisualizerPlugin
 public:
     static constexpr int   kBins         = 512;
     static constexpr int   kRingBins     = 256;   // sampling resolution for rings
-    static constexpr float kEmitSpeed    = 2.0f;  // pixels per frame
-    static constexpr int   kEmitInterval = 3;     // emit new ring every N frames
-    static constexpr int   kMaxRings     = 45;
+    static constexpr float kEmitSpeed     = 2.0f;  // pixels per frame
+    static constexpr int   kEmitInterval  = 3;     // emit new ring every N frames
+    static constexpr int   kMaxRings      = 45;
+    static constexpr float kEmitThreshold = 0.08f; // 全帯域合計がこれ以下なら無音とみなす
 
     // ── Wave ring snapshot ─────────────────────────────────────────────────
     struct WaveRing
@@ -93,10 +94,15 @@ public:
         // ── 2. Wave rings ─────────────────────────────────────────────
         ++frameCount_;
 
-        if (frameCount_ % kEmitInterval == 0 && (int)rings_.size() < kMaxRings)
+        // 全帯域エネルギーを合算してしきい値判定（無音時はリングを発射しない）
+        float totalEnergy = 0.f;
+        for (int i = 0; i < kBins; ++i) totalEnergy += smoothed_[i];
+
+        if (frameCount_ % kEmitInterval == 0
+            && totalEnergy > kEmitThreshold
+            && (int)rings_.size() < kMaxRings)
         {
             WaveRing ring;
-            // Downsample: average pairs of bins for ring resolution
             for (int k = 0; k < kRingBins; ++k)
                 ring.mag[k] = (smoothed_[k * 2] + smoothed_[k * 2 + 1]) * 0.5f;
             ring.baseRadius = coreR + 2.f;
