@@ -1,215 +1,239 @@
-// StarfieldVisualizer.cpp
-// LVH Visualizer SDK Plugin — Warp-speed starfield driven by FFT data
+// StarfieldVisualizer.cpp — LVH Visualizer SDK Plugin (Redesigned)
 //
-// Doppler coloring: far stars = blue → mid = white → near stars = red
-// Bass  → warp speed burst + new star generation
-// Treble → brightness sparkle on each star
+// Two visual layers:
 //
-// Architecture:
-//   - 800 Star particles in a fixed pool (no heap alloc per frame)
-//   - z-axis warp projection: far(z=1) → near(z≈0), projected as x/z, y/z
-//   - Motion streak drawn for near stars (progress > 0.55)
+//  [1] Ambient dots (always visible, silent-mode warp stars)
+//      • 1px dots, no perspective size scaling
+//      • Very slow speed, ~2-5 spawns per second
+//      • Fly outward from centre (warp projection: x/z, y/z)
+//
+//  [2] Band tiles (music-reactive, 16 EQ bands)
+//      • 16 horizontal lanes across X axis
+//      • Each band spawns rectangular "LED segment" tiles from far-z
+//      • Tiles grow with perspective as they fly toward camera
+//      • Trail: 4 faded copies drawn behind each tile
+//      • Color: blue (quiet) → red (loud)  — Doppler redshift
 
 #include <juce_core/juce_core.h>
 #include <juce_graphics/juce_graphics.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "../VisualizerSDK/IVisualizerPlugin.h"
+#include "../VisualizerSDK/IAudioSource.h"
 #include <array>
 #include <cmath>
 #include <random>
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-static constexpr int   kMaxStars      = 800;
-static constexpr int   kInitStars     = 400;
-static constexpr int   kFFTBins       = 512;
-static constexpr float kBaseSpeed     = 0.016f;   // z decrement per frame at silence
-static constexpr float kMaxSpeedMul   = 7.0f;     // max speed multiplier on bass hit
-static constexpr float kZNear         = 0.04f;    // stars beyond this are recycled
-static constexpr float kZFar          = 1.0f;
-static constexpr int   kBassBinCount  = 18;       // FFT bins 0..17 → kick/bass
-static constexpr int   kTrebleBinStart= 90;       // FFT bins 90..511 → treble
-static constexpr float kBassNormRef   = 0.0008f;  // bass raw value → normalised 1.0
-static constexpr float kTrebleNormRef = 0.0003f;
 
-// ─── Star particle ─────────────────────────────────────────────────────────────
-struct Star
+static constexpr int   kRawBins        = 512;
+static constexpr int   kBands          = 16;
+
+// Ambient dots
+static constexpr int   kMaxDots        = 120;
+static constexpr float kDotSpeed       = 0.0026f;   // z-decrement per frame
+static constexpr int   kDotSpawnFrames = 14;        // frames between dot spawns (~4/sec)
+
+// Band tiles
+static constexpr int   kMaxTiles       = kBands * 22; // pool per band × lanes
+static constexpr float kTileSpeedMin   = 0.018f;
+static constexpr float kTileSpeedMax   = 0.095f;
+static constexpr float kTileWorldH     = 0.045f;    // fixed world-space height
+static constexpr float kEmitThreshold  = 0.00008f;  // same floor as RadialVisualizer
+static constexpr int   kTileSpawnLoud  = 3;         // min frames between spawns (loud)
+static constexpr int   kTileSpawnQuiet = 10;        // max frames between spawns (threshold)
+
+// Shared
+static constexpr float kZNear          = 0.05f;
+static constexpr float kZFar           = 1.0f;
+static constexpr int   kTrailSteps     = 4;
+static constexpr float kTrailSpacing   = 5.0f;      // trail step in z-speed multiples
+
+// ─── Particle structures ──────────────────────────────────────────────────────
+
+struct Dot
 {
-    float x = 0.f, y = 0.f;   // radial position (-1..1 normalised)
-    float z = 1.f;             // depth: 1=far, 0=near camera
-    float size = 1.5f;         // base dot radius
-    float hueOffset = 0.f;     // small random hue variation (±0.05)
-    bool  active    = false;
+    float x = 0.f, y = 0.f;   // world space, small near-centre values
+    float z = 1.f;
+    bool  active = false;
+};
+
+struct Tile
+{
+    float x      = 0.f;   // world X — band lane centre
+    float y      = 0.f;   // world Y — slight random offset
+    float z      = 1.f;
+    float speed  = 0.f;
+    float energy = 0.f;   // 0..1, drives colour hue and alpha
+    bool  active = false;
 };
 
 // ─── Visualizer ───────────────────────────────────────────────────────────────
+
 class StarfieldVisualizer : public IVisualizerPlugin
 {
 public:
     StarfieldVisualizer() : rng_ (std::random_device{}()) {}
 
+    // ── Lifecycle ─────────────────────────────────────────────────────────
+
     void initialise (IAudioSource* source) override
     {
-        source_ = source;
-        for (auto& s : stars_) s.active = false;
-        for (int i = 0; i < kInitStars; ++i)
-            spawnStar (false /*scatter across depths*/);
+        source_    = source;
+        dotTimer_  = 0;
+
+        std::fill (tileTimers_.begin(), tileTimers_.end(), 0);
+        std::fill (bands_.begin(),      bands_.end(),      0.f);
+        std::fill (smoothed_.begin(),   smoothed_.end(),   0.f);
+
+        for (auto& d : dots_)  d.active = false;
+        for (auto& t : tiles_) t.active = false;
+
+        // Logarithmic band boundaries (bin 1 ≈ 43 Hz to bin 480 ≈ 20.6 kHz)
+        const float logMin = std::log2 (1.f);
+        const float logMax = std::log2 (480.f);
+        for (int b = 0; b <= kBands; ++b)
+        {
+            float t   = (float)b / (float)kBands;
+            int   bin = (int)std::round (std::pow (2.f, logMin + t * (logMax - logMin)));
+            bandBounds_[b] = juce::jlimit (1, kRawBins - 1, bin);
+        }
+
+        // Pre-seed dots spread across depth range
+        for (int i = 0; i < 60; ++i)
+            spawnDot (true /*scatter*/);
     }
+
+    // ── Render ────────────────────────────────────────────────────────────
 
     void render (juce::Graphics& g, juce::OpenGLContext*) override
     {
         if (source_ == nullptr) return;
 
-        // ── FFT analysis ──────────────────────────────────────────────
-        std::array<float, kFFTBins> fft {};
-        source_->getFFTData (fft.data(), kFFTBins);
+        const auto  bounds = g.getClipBounds().toFloat();
+        const float cx     = bounds.getCentreX();
+        const float cy     = bounds.getCentreY();
+        const float scale  = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.50f;
 
-        float bassRaw = 0.f;
-        for (int i = 0; i < kBassBinCount; ++i)
-            bassRaw += fft[i];
-        bassRaw /= (float)kBassBinCount;
+        // ── FFT → 16 bands ────────────────────────────────────────────
+        float raw[kRawBins] = {};
+        source_->getFFTData (raw, kRawBins);
 
-        float trebleRaw = 0.f;
-        for (int i = kTrebleBinStart; i < kFFTBins; ++i)
-            trebleRaw += fft[i];
-        trebleRaw /= (float)(kFFTBins - kTrebleBinStart);
+        for (int i = 0; i < kRawBins; ++i)
+            smoothed_[i] = smoothed_[i] * 0.72f + raw[i] * 0.28f;
 
-        bassSmooth_   = bassSmooth_   * 0.72f + bassRaw   * 0.28f;
-        trebleSmooth_ = trebleSmooth_ * 0.80f + trebleRaw * 0.20f;
-
-        // Normalised 0..1 energies  (sqrt for perceptual scaling)
-        const float bassNorm   = juce::jmin (1.f, std::sqrt (bassSmooth_   / kBassNormRef));
-        const float trebleNorm = juce::jmin (1.f, std::sqrt (trebleSmooth_ / kTrebleNormRef));
-
-        // Flash intensity (strong bass hit → brief global brightness)
-        flashAlpha_ = flashAlpha_ * 0.85f + bassNorm * bassNorm * 0.15f;
+        for (int b = 0; b < kBands; ++b)
+        {
+            const int s = bandBounds_[b], e = bandBounds_[b + 1];
+            if (e <= s) { bands_[b] = bands_[b] * 0.6f; continue; }
+            float sum = 0.f;
+            for (int i = s; i < e; ++i) sum += smoothed_[i];
+            bands_[b] = bands_[b] * 0.6f + (sum / (float)(e - s)) * 0.4f;
+        }
 
         // ── Background ────────────────────────────────────────────────
+        g.fillAll (juce::Colour (0xff06060e));
+
+        // ── Ambient dots ──────────────────────────────────────────────
+        // Spawn ~4/sec
+        if (++dotTimer_ >= kDotSpawnFrames)
         {
-            // Slight nebula glow on bass
-            const float glow = bassNorm * 0.18f;
-            juce::Colour bg = juce::Colour (0xff05050f)
-                                  .interpolatedWith (juce::Colour (0xff0d0535), glow);
-            g.fillAll (bg);
+            dotTimer_ = 0;
+            spawnDot (false);
         }
 
-        auto  bounds = g.getClipBounds().toFloat();
-        float cx     = bounds.getCentreX();
-        float cy     = bounds.getCentreY();
-        float scale  = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.50f;
-
-        // ── Speed this frame ──────────────────────────────────────────
-        float speed = kBaseSpeed * (1.f + bassNorm * (kMaxSpeedMul - 1.f));
-
-        // ── Bass burst: spawn new stars on strong beat ─────────────────
-        if (bassNorm > 0.35f)
+        for (auto& d : dots_)
         {
-            int burst = juce::roundToInt ((bassNorm - 0.35f) / 0.65f * 18.f);
-            for (int i = 0; i < burst; ++i)
-                spawnStar (true /*near z=far, tightly clustered*/);
+            if (!d.active) continue;
+            d.z -= kDotSpeed;
+            if (d.z < kZNear) { d.active = false; continue; }
+
+            const float sx = cx + (d.x / d.z) * scale;
+            const float sy = cy + (d.y / d.z) * scale;
+            if (sx < 0.f || sx > bounds.getWidth() ||
+                sy < 0.f || sy > bounds.getHeight())
+            { d.active = false; continue; }
+
+            // 1px dot — no perspective sizing
+            const float progress = 1.f - (d.z / kZFar);
+            const float alpha    = 0.15f + progress * 0.55f;
+            g.setColour (juce::Colour (0xffffffff).withAlpha (alpha));
+            g.fillRect (sx - 0.5f, sy - 0.5f, 1.f, 1.f);
         }
 
-        // ── Update + draw each star ────────────────────────────────────
-        std::uniform_real_distribution<float> sparkleDist (0.85f, 1.15f);
+        // ── Band tiles ────────────────────────────────────────────────
+        // Lane layout: 16 bands evenly across X = -0.85 .. +0.85
+        const float laneW       = 1.70f / (float)kBands;
+        const float tileWorldW  = laneW * 0.80f;
 
-        for (auto& s : stars_)
+        // Spawn new tiles per band
+        for (int b = 0; b < kBands; ++b)
         {
-            if (!s.active) continue;
+            if (tileTimers_[b] > 0) { --tileTimers_[b]; continue; }
 
-            s.z -= speed;
+            if (bands_[b] < kEmitThreshold) continue;
 
-            if (s.z < kZNear)
-            {
-                s.active = false;
-                continue;
-            }
+            // Normalised energy 0..1 (sqrt for perceptual scaling)
+            const float energyNorm = juce::jmin (1.f, std::sqrt (bands_[b] / 0.002f));
 
-            // 2D projection (perspective divide)
-            const float sx = cx + (s.x / s.z) * scale;
-            const float sy = cy + (s.y / s.z) * scale;
+            spawnTile (b, energyNorm, laneW);
 
-            // Cull off-screen
-            if (sx < -4.f || sx > bounds.getWidth() + 4.f ||
-                sy < -4.f || sy > bounds.getHeight() + 4.f)
-            {
-                s.active = false;
-                continue;
-            }
-
-            // progress: 0=far/new, 1=very close
-            const float progress = 1.f - (s.z / kZFar);
-
-            // Dot radius — grows as star approaches + treble sparkle
-            float r = s.size * (0.3f + progress * 1.5f)
-                      * (1.f + trebleNorm * 1.8f * sparkleDist (rng_));
-            r = juce::jmax (0.4f, juce::jmin (r, 9.f));
-
-            // ── Doppler coloring ──────────────────────────────────────
-            // far  (progress≈0) → blue  (hue 0.60)
-            // mid  (progress≈0.5) → white (sat→0)
-            // near (progress≈1)  → red   (hue 0.0)
-            float hue, sat, bri;
-            if (progress < 0.5f)
-            {
-                const float t = progress * 2.f;          // 0..1
-                hue = 0.60f + s.hueOffset;               // blue band
-                sat = 1.f - t * 0.95f;                   // saturated → near-white
-                bri = 0.35f + t * 0.65f;                 // dim → bright
-            }
-            else
-            {
-                const float t = (progress - 0.5f) * 2.f; // 0..1
-                hue = 0.02f * s.hueOffset;                // slight red variation
-                sat = t * 0.95f;                          // white → red
-                bri = 1.0f;
-            }
-            // Treble boosts overall brightness
-            bri = juce::jmin (1.f, bri + trebleNorm * 0.35f);
-            // Alpha: ramp from near-invisible (far) to opaque (near)
-            const float alpha = juce::jmin (1.f, 0.12f + progress * 0.88f);
-
-            const juce::Colour col = juce::Colour::fromHSV (
-                juce::jmax (0.f, juce::jmin (1.f, hue)), sat, bri, alpha);
-
-            // ── Motion streak (near stars only) ──────────────────────
-            if (progress > 0.55f)
-            {
-                const float prevZ  = s.z + speed * 4.f;
-                const float px     = cx + (s.x / prevZ) * scale;
-                const float py     = cy + (s.y / prevZ) * scale;
-                const float streakW = r * 0.55f;
-                g.setColour (col.withAlpha (alpha * 0.28f));
-                g.drawLine (px, py, sx, sy, streakW);
-            }
-
-            // ── Core dot ─────────────────────────────────────────────
-            g.setColour (col);
-            g.fillEllipse (sx - r, sy - r, r * 2.f, r * 2.f);
-
-            // Inner bright core (near only)
-            if (progress > 0.7f)
-            {
-                g.setColour (juce::Colours::white.withAlpha (alpha * 0.55f));
-                const float cr = r * 0.35f;
-                g.fillEllipse (sx - cr, sy - cr, cr * 2.f, cr * 2.f);
-            }
+            // Next spawn delay: loud → fast, quiet → slow
+            tileTimers_[b] = juce::roundToInt (
+                juce::jmax ((float)kTileSpawnLoud,
+                            (float)kTileSpawnQuiet * (1.f - energyNorm)));
         }
 
-        // ── Flash overlay (strong bass hit) ──────────────────────────
-        if (flashAlpha_ > 0.01f)
+        // Update + draw tiles (trail first, then main tile)
+        for (auto& t : tiles_)
         {
-            g.setColour (juce::Colour (0xffffffff).withAlpha (
-                juce::jmin (0.18f, flashAlpha_ * 0.18f)));
-            g.fillAll();
-        }
+            if (!t.active) continue;
+            t.z -= t.speed;
+            if (t.z < kZNear) { t.active = false; continue; }
 
-        // ── Pool maintenance: keep ~400 active stars ──────────────────
-        {
-            int active = 0;
-            for (auto& s : stars_) if (s.active) ++active;
-            while (active < 400)
+            const float progress = 1.f - (t.z / kZFar);
+
+            // Doppler colour: energy=0→blue (hue 0.65), energy=1→red (hue 0.0)
+            const float hue  = 0.65f * (1.f - t.energy);
+            const float sat  = 0.75f + t.energy * 0.25f;
+            const float bri  = 0.55f + progress * 0.45f;
+            const float alph = 0.25f + progress * 0.70f;
+            const juce::Colour col = juce::Colour::fromHSV (hue, sat, bri,
+                                                             juce::jmin (1.f, alph));
+
+            // Draw trail (back to front so main tile is on top)
+            for (int step = kTrailSteps; step >= 0; --step)
             {
-                spawnStar (false);
-                ++active;
+                const float tz = t.z + step * t.speed * kTrailSpacing;
+                if (tz > kZFar + 0.1f) continue;
+
+                const float tsx = cx + (t.x / tz) * scale;
+                const float tsy = cy + (t.y / tz) * scale;
+                const float tw  = tileWorldW / tz * scale;
+                const float th  = kTileWorldH / tz * scale;
+
+                if (tsx + tw * 0.5f < 0.f || tsx - tw * 0.5f > bounds.getWidth() ||
+                    tsy + th * 0.5f < 0.f || tsy - th * 0.5f > bounds.getHeight())
+                    continue;
+
+                const float trailAlpha = (step == 0) ? 1.f
+                                                      : (1.f - step * 0.22f);
+                g.setColour (col.withAlpha (col.getFloatAlpha() * trailAlpha));
+
+                // Rounded rect for main tile, plain rect for trail
+                if (step == 0)
+                    g.fillRoundedRectangle (tsx - tw * 0.5f, tsy - th * 0.5f,
+                                            tw, th, th * 0.25f);
+                else
+                    g.fillRect (tsx - tw * 0.5f, tsy - th * 0.5f, tw, th);
+
+                // Bright highlight on leading edge of main tile
+                if (step == 0 && tw > 4.f)
+                {
+                    g.setColour (juce::Colours::white.withAlpha (
+                        col.getFloatAlpha() * 0.35f));
+                    g.fillRoundedRectangle (tsx - tw * 0.5f, tsy - th * 0.5f,
+                                            tw, th * 0.22f, th * 0.22f);
+                }
             }
         }
     }
@@ -221,33 +245,55 @@ public:
 
 private:
     // ── State ─────────────────────────────────────────────────────────
-    IAudioSource*           source_       = nullptr;
-    std::array<Star, kMaxStars> stars_    {};
-    std::mt19937            rng_;
-    float                   bassSmooth_   = 0.f;
-    float                   trebleSmooth_ = 0.f;
-    float                   flashAlpha_   = 0.f;
+    IAudioSource* source_ = nullptr;
 
-    // ── Helper: spawn one star into an inactive slot ───────────────────
-    // scattered=false → distribute z evenly across full depth range
-    // scattered=true  → start at far end (z near kZFar) for burst effect
-    void spawnStar (bool burst)
+    std::array<Dot,  kMaxDots>   dots_  {};
+    std::array<Tile, kMaxTiles>  tiles_ {};
+
+    std::array<float, kRawBins>   smoothed_    {};
+    std::array<float, kBands>     bands_       {};
+    std::array<int,   kBands + 1> bandBounds_  {};
+    std::array<int,   kBands>     tileTimers_  {};
+
+    std::mt19937 rng_;
+    int          dotTimer_ = 0;
+
+    // ── Spawn helpers ─────────────────────────────────────────────────
+
+    void spawnDot (bool scatter)
     {
-        std::uniform_real_distribution<float> xyDist (-1.f, 1.f);
-        std::uniform_real_distribution<float> zScattered (0.15f, kZFar);
-        std::uniform_real_distribution<float> zBurst (0.75f, kZFar);
-        std::uniform_real_distribution<float> sizeDist (0.8f, 2.8f);
-        std::uniform_real_distribution<float> hueDist (-0.05f, 0.05f);
+        std::uniform_real_distribution<float> xyDist (-0.08f, 0.08f);   // near centre
+        std::uniform_real_distribution<float> zScatter (0.12f, kZFar);
 
-        for (auto& s : stars_)
+        for (auto& d : dots_)
         {
-            if (s.active) continue;
-            s.x          = xyDist (rng_);
-            s.y          = xyDist (rng_);
-            s.z          = burst ? zBurst (rng_) : zScattered (rng_);
-            s.size       = sizeDist (rng_);
-            s.hueOffset  = hueDist (rng_);
-            s.active     = true;
+            if (d.active) continue;
+            d.x      = xyDist (rng_);
+            d.y      = xyDist (rng_);
+            d.z      = scatter ? zScatter (rng_) : kZFar;
+            d.active = true;
+            return;
+        }
+    }
+
+    void spawnTile (int band, float energyNorm, float laneW)
+    {
+        const float bandCentreX = -0.85f + (band + 0.5f) * laneW;
+
+        std::uniform_real_distribution<float> yJitter (-0.03f, 0.03f);
+
+        const float tileSpeed = kTileSpeedMin
+                                + energyNorm * (kTileSpeedMax - kTileSpeedMin);
+
+        for (auto& t : tiles_)
+        {
+            if (t.active) continue;
+            t.x      = bandCentreX;
+            t.y      = yJitter (rng_);
+            t.z      = kZFar;
+            t.speed  = tileSpeed;
+            t.energy = energyNorm;
+            t.active = true;
             return;
         }
     }
