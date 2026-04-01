@@ -5,119 +5,199 @@
 #include "MidiRoutingManager.h"
 #include "AudioEngine.h"
 
-// =====================================================================
-// ProjectSerializer
-//
-// Owns all .lvh project file I/O extracted from LvhProApplication:
-//   - saveProject / loadProject / writeProjectXml
-//   - pending state maps (states, mixer settings, window bounds)
-//   - currentProjectFile
-//
-// Dependencies injected via constructor (all must outlive this object):
-//   bridges, audioEngine, midiRouter, deviceManager, appProperties
-//
-// UI interactions are handled through callbacks set by LvhProApplication.
-// Bridge launching uses the "closure injection" pattern: pending data is
-// consumed at launch time (takePending*), captured in onConnected lambdas,
-// so onConnected never calls back into ProjectSerializer.
-// =====================================================================
+/**
+ * @class ProjectSerializer
+ * @brief Handles saving and loading of `.lvh` project files.
+ *
+ * Owns all project file I/O extracted from LvhProApplication:
+ * - saveProject() / loadProject() / writeProjectXml()
+ * - Pending state maps (plugin states, mixer settings, window bounds)
+ *   consumed via the closure-injection pattern at launch time.
+ * - The currently open project file path.
+ *
+ * **Dependencies** injected via constructor (all must outlive this object):
+ * bridges, audioEngine, midiRouter, deviceManager, appProperties.
+ *
+ * **Closure injection pattern:**
+ * When a project is loaded, plugin data is stored in internal pending maps.
+ * BridgeManager calls takePending*() just before launching each bridge, and
+ * captures the returned data in the onConnected lambda.  This means
+ * onConnected never calls back into ProjectSerializer.
+ *
+ * **loadProject() modes:**
+ * | isGlobal | globalLayerSwitch | Behaviour |
+ * |----------|-------------------|-----------|
+ * | true     | false             | Slot 0: full reset, all bridges marked Global |
+ * | false    | true              | Slot 1+: instrument-only switch, Global layer preserved |
+ * | false    | false             | Direct open: full reset, no Global marking |
+ */
 class ProjectSerializer
 {
 public:
-    // ── Nested types ──────────────────────────────────────────────────────
+    // ── Nested types ──────────────────────────────────────────────────────────
+
+    /**
+     * @brief Per-channel mixer settings stored in a project file.
+     */
     struct MixerSettings
     {
-        float        gain     = 1.f;
-        float        pan      = 0.f;
-        bool         muted    = false;
-        bool         bypassed = false;
-        juce::String customName;
-        juce::Colour customColor { juce::Colours::transparentBlack };
+        float        gain     = 1.f;    ///< Channel gain (linear, 1.0 = 0 dB).
+        float        pan      = 0.f;    ///< Pan position [-1.0, +1.0].
+        bool         muted    = false;  ///< Channel mute state.
+        bool         bypassed = false;  ///< Plugin bypass state.
+        juce::String customName;        ///< User-defined channel label (empty = use plugin name).
+        juce::Colour customColor { juce::Colours::transparentBlack }; ///< User-defined channel colour.
     };
 
-    // ── Construction ──────────────────────────────────────────────────────
+    // ── Construction ──────────────────────────────────────────────────────────
+
+    /**
+     * @brief Constructs a ProjectSerializer.
+     * @param bridges       Application-owned bridge array.  Must outlive this object.
+     * @param audioEngine   The application audio engine.  Must outlive this object.
+     * @param midiRouter    MIDI routing manager.  Must outlive this object.
+     * @param deviceManager JUCE audio device manager.  Must outlive this object.
+     * @param appProperties Persistent application properties store.  Must outlive this object.
+     */
     ProjectSerializer (const juce::OwnedArray<BridgeInstance>& bridges,
                        AudioEngine&                             audioEngine,
                        MidiRoutingManager&                      midiRouter,
                        juce::AudioDeviceManager&                deviceManager,
                        juce::ApplicationProperties&             appProperties);
 
-    // ── Callbacks — wired by LvhProApplication ────────────────────────────
+    // ── Callbacks — wired by LvhProApplication ────────────────────────────────
 
-    // General system message (UI log)
+    /** @brief Called with a human-readable status string for the UI log. */
     std::function<void(const juce::String&)> onMessage;
 
-    // Request LvhProApplication to launch a bridge (avoids circular dependency).
-    // fxParentPath is empty for instruments and master effects; non-empty for per-channel FX.
-    // isGlobal=true when this bridge belongs to a Global project (Stage Set Slot 0).
-    std::function<void(const juce::File&, BridgeInstance::Role, const juce::String& fxParentPath, bool isGlobal)> onLaunchBridge;
+    /**
+     * @brief Request LvhProApplication to launch a bridge subprocess.
+     *
+     * Avoids a circular dependency: ProjectSerializer never holds a reference
+     * to BridgeManager.
+     *
+     * @param file          Plugin file to open.
+     * @param role          Instrument or Effect.
+     * @param fxParentPath  Empty for instruments/master FX; parent path for per-channel FX.
+     * @param isGlobal      true when the bridge belongs to the Global layer.
+     */
+    std::function<void(const juce::File&,
+                       BridgeInstance::Role,
+                       const juce::String& fxParentPath,
+                       bool isGlobal)> onLaunchBridge;
 
-    // Called at the start of loadProject: tear down graph + selectively clear bridges.
-    // keepGlobal=true when switching songs (Slot 1+): Global bridges are preserved.
-    // keepGlobal=false for a full reset (Slot 0 reload, New, direct file open).
+    /**
+     * @brief Called at the start of loadProject() to tear down the current graph.
+     * @param keepGlobal  true = preserve Global-layer bridges (song switch);
+     *                    false = full teardown.
+     */
     std::function<void(bool keepGlobal)> onProjectResetRequired;
 
     // --- Save-time getters ---
-    std::function<double()>               getMasterVolume;       // current master volume
-    std::function<juce::Rectangle<int>()> getCoreWindowBounds;   // main window bounds
-    std::function<bool()>                 getMixerVisible;        // is mixer window visible?
-    std::function<juce::Rectangle<int>()> getMixerWindowBounds;  // mixer window bounds
+    std::function<double()>               getMasterVolume;      ///< Returns the current master volume.
+    std::function<juce::Rectangle<int>()> getCoreWindowBounds;  ///< Returns the main window bounds.
+    std::function<bool()>                 getMixerVisible;       ///< Returns whether the mixer window is visible.
+    std::function<juce::Rectangle<int>()> getMixerWindowBounds; ///< Returns the mixer window bounds.
 
     // --- Load-time setters ---
-    std::function<void(double)>                          onMasterVolumeChanged;   // restore volume
-    std::function<void(juce::Rectangle<int>)>            onCoreWindowBoundsChanged;
-    // visible=true  → show + position mixer window
-    // visible=false → hide mixer window
-    std::function<void(bool, juce::Rectangle<int>)>      onMixerWindowRestored;
-    // bpm, volume, beatsPerBar, clickType (0=Normal 1=Techno)
-    std::function<void(double, float, int, int)>         onMetronomeSettingsRestored;
+    std::function<void(double)>                     onMasterVolumeChanged;       ///< Restore master volume.
+    std::function<void(juce::Rectangle<int>)>       onCoreWindowBoundsChanged;   ///< Restore main window position.
+    std::function<void(bool, juce::Rectangle<int>)> onMixerWindowRestored;       ///< Show/hide + position mixer.
+    /**
+     * @brief Restore metronome settings after a project load.
+     * @param bpm          Tempo in BPM.
+     * @param volume       Click volume [0.0, 1.0].
+     * @param beatsPerBar  Time signature numerator.
+     * @param clickType    0 = Normal, 1 = Techno.
+     */
+    std::function<void(double bpm, float volume, int beatsPerBar, int clickType)> onMetronomeSettingsRestored;
 
-    // ── Public API ────────────────────────────────────────────────────────
+    // ── Public API ────────────────────────────────────────────────────────────
+
+    /**
+     * @brief Save the current session to a `.lvh` project file.
+     *
+     * Collects plugin state from all connected bridges asynchronously,
+     * then writes the XML project file.
+     *
+     * @param file  Destination file path.
+     */
     void saveProject (const juce::File& file);
 
-    // isGlobal=true,  globalLayerSwitch=false → Slot 0: full reset, all bridges marked Global.
-    // isGlobal=false, globalLayerSwitch=true  → Slot 1+: instrument-only switch.
-    //   - Settings (window pos/size, master volume, MIDI routing) are inherited from Slot 0 (skipped).
-    //   - Master-chain FX from Slot 0 are kept; only Instrument bridges (+ per-channel FX) are replaced.
-    //   - Master-chain FX entries in the .lvh are skipped (Slot 0's are already loaded).
-    // isGlobal=false, globalLayerSwitch=false → direct file open: full reset, no Global marking.
-    void loadProject (const juce::File& file, bool isGlobal = false, bool globalLayerSwitch = false);
+    /**
+     * @brief Load a `.lvh` project file and restore the session.
+     *
+     * Behaviour depends on the @p isGlobal and @p globalLayerSwitch flags;
+     * see the class-level documentation table for details.
+     *
+     * @param file               The `.lvh` file to open.
+     * @param isGlobal           true when loading the Global (Slot 0) project.
+     * @param globalLayerSwitch  true when switching songs within a Stage Set (Slot 1+).
+     */
+    void loadProject (const juce::File& file,
+                      bool isGlobal          = false,
+                      bool globalLayerSwitch = false);
 
+    /**
+     * @brief Returns the currently open project file.
+     * @return The file, or an invalid File object if no project is open.
+     */
     juce::File getCurrentProjectFile() const noexcept { return currentProjectFile_; }
-    void       setCurrentProjectFile (const juce::File& f) { currentProjectFile_ = f; }
 
-    // ── Closure-injection helpers ─────────────────────────────────────────
-    // Call these in launchBridgeWithPath BEFORE spawning the bridge.
-    // Each method removes and returns the stored data (take = move + erase).
-    // Returns empty / default-constructed value if no pending data exists.
-    juce::MemoryBlock            takePendingState  (const juce::String& pluginPath);
-    std::optional<MixerSettings> takePendingMixer  (const juce::String& pluginPath);
-    juce::Rectangle<int>         takePendingBounds (const juce::String& pluginPath);
+    /**
+     * @brief Set the current project file path without loading it.
+     * @param f  The new current project file.
+     */
+    void setCurrentProjectFile (const juce::File& f) { currentProjectFile_ = f; }
+
+    // ── Closure-injection helpers ─────────────────────────────────────────────
+
+    /**
+     * @brief Remove and return the pending plugin state for @p pluginPath.
+     *
+     * Call this in BridgeManager::launchBridgeWithPath() *before* spawning the
+     * bridge process.  Returns an empty MemoryBlock if no pending data exists.
+     *
+     * @param pluginPath  Absolute plugin file path used as the key.
+     * @return            The serialized plugin state, or an empty MemoryBlock.
+     */
+    juce::MemoryBlock takePendingState (const juce::String& pluginPath);
+
+    /**
+     * @brief Remove and return the pending mixer settings for @p pluginPath.
+     * @param pluginPath  Absolute plugin file path used as the key.
+     * @return            MixerSettings, or std::nullopt if no data exists.
+     */
+    std::optional<MixerSettings> takePendingMixer (const juce::String& pluginPath);
+
+    /**
+     * @brief Remove and return the pending editor window bounds for @p pluginPath.
+     * @param pluginPath  Absolute plugin file path used as the key.
+     * @return            Window bounds rectangle, or a zero rectangle if no data exists.
+     */
+    juce::Rectangle<int> takePendingBounds (const juce::String& pluginPath);
 
 private:
-    // ── Private helpers ───────────────────────────────────────────────────
     struct BridgeStateEntry
     {
-        BridgeInstance*  bridge   = nullptr;
+        BridgeInstance*   bridge   = nullptr;
         juce::MemoryBlock state;
-        bool             received = false;
+        bool              received = false;
     };
 
     void writeProjectXml (const juce::File& file,
                           const std::vector<BridgeStateEntry>& stateEntries);
 
-    // ── Constructor-injected references ───────────────────────────────────
     const juce::OwnedArray<BridgeInstance>& bridges_;
     AudioEngine&                             audioEngine_;
     MidiRoutingManager&                      midiRouter_;
     juce::AudioDeviceManager&                deviceManager_;
     juce::ApplicationProperties&             appProperties_;
 
-    // ── State ─────────────────────────────────────────────────────────────
-    juce::File                                       currentProjectFile_;
-    std::map<juce::String, juce::MemoryBlock>        pendingPluginStates_;
-    std::map<juce::String, MixerSettings>            pendingMixerSettings_;
-    std::map<juce::String, juce::Rectangle<int>>     pendingWindowBounds_;
+    juce::File                                   currentProjectFile_;
+    std::map<juce::String, juce::MemoryBlock>    pendingPluginStates_;
+    std::map<juce::String, MixerSettings>        pendingMixerSettings_;
+    std::map<juce::String, juce::Rectangle<int>> pendingWindowBounds_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ProjectSerializer)
 };

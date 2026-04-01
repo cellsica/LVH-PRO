@@ -1,18 +1,11 @@
 #pragma once
 
-#include "IAudioSource.h"
+/**
+ * @file IVisualizerPlugin.h
+ * @brief LVH Visualizer SDK — abstract base class for all visualizer plugins.
+ */
 
-// =============================================================================
-// IVisualizerPlugin  — LVH Visualizer SDK  (Phase A)
-//
-// Abstract base class for all LVH visualizer plugins.
-// A DLL exporting createVisualizer() can be dropped into the
-// <LVH.exe dir>/Visualizers/ folder and will be loaded at startup.
-//
-// Minimal compile dependencies:
-//   - IAudioSource.h (this SDK)
-//   - JUCE headers (juce_graphics, juce_opengl) for the render() signature
-// =============================================================================
+#include "IAudioSource.h"
 
 // Forward-declare JUCE types to keep dependency surface minimal when the
 // plugin just needs to compile its own translation unit.
@@ -22,6 +15,29 @@ namespace juce
     class OpenGLContext;
 }
 
+/**
+ * @class IVisualizerPlugin
+ * @brief Abstract interface that every LVH visualizer DLL must implement.
+ *
+ * A DLL placed in the `<LVH.exe dir>/Visualizers/` folder is loaded at
+ * startup by VisualizerManager.  The DLL must export a single C-linkage
+ * factory function:
+ *
+ * @code
+ * extern "C" __declspec(dllexport)
+ * IVisualizerPlugin* createVisualizer();
+ * @endcode
+ *
+ * **Lifecycle:**
+ * 1. Host calls `createVisualizer()` to obtain an instance.
+ * 2. Host calls `initialise()` once with an IAudioSource pointer.
+ * 3. Host calls `render()` on every repaint cycle (message thread).
+ * 4. Host calls `shutdown()` before unloading the DLL.
+ * 5. Host calls `delete` on the instance.
+ *
+ * All methods are called from the message thread unless otherwise noted.
+ * The plugin does **not** own the IAudioSource passed to initialise().
+ */
 class IVisualizerPlugin
 {
 public:
@@ -31,38 +47,61 @@ public:
     // Lifecycle
     // -------------------------------------------------------------------------
 
-    /** Called once after the DLL is loaded.
-        `source` is owned by the host and remains valid until shutdown(). */
+    /**
+     * @brief Called once after the DLL is loaded.
+     *
+     * Plugins should store @p source and use it during render() to query
+     * audio data.  The pointer remains valid until shutdown() is called.
+     *
+     * @param source  Non-owning pointer to the host's IAudioSource.
+     *                Never nullptr when called by the host.
+     */
     virtual void initialise (IAudioSource* source) = 0;
 
-    /** Called on every repaint cycle by VisualizerManager.
-        `g`              — JUCE 2-D graphics context (always valid).
-        `openGLContext`  — pointer to the host's OpenGL context;
-                           may be nullptr if OpenGL is not available. */
+    /**
+     * @brief Called on every repaint cycle to draw the visualizer frame.
+     *
+     * @param g              JUCE 2-D graphics context.  Always valid.
+     *                       The clip region covers the full component bounds.
+     * @param openGLContext  Pointer to the host's OpenGL context, or nullptr
+     *                       if OpenGL is not available.  Plugins that use only
+     *                       the JUCE 2-D API can ignore this parameter.
+     */
     virtual void render (juce::Graphics& g, juce::OpenGLContext* openGLContext) = 0;
 
-    /** Called before the DLL is unloaded.  Release all resources here. */
+    /**
+     * @brief Called before the DLL is unloaded.
+     *
+     * Release all resources here (GPU objects, threads, etc.).
+     * After this call the host will invoke `delete` on the instance.
+     */
     virtual void shutdown() = 0;
 
     // -------------------------------------------------------------------------
     // Preferred window size (optional override)
-    // Return the ideal client-area size for this visualizer.
-    // VisualizerWindow uses this when the window is first created.
-    // Default: 500 x 500 (square, suitable for radial visualizers).
     // -------------------------------------------------------------------------
-    virtual int getPreferredWidth()  const { return 500; }
-    virtual int getPreferredHeight() const { return 500; }
 
+    /**
+     * @brief Returns the preferred client-area width for this visualizer.
+     *
+     * VisualizerWindow uses this value when the window is first created.
+     * Override to request a size suited to your layout.
+     *
+     * @return Width in pixels.  Default: 500.
+     */
+    virtual int getPreferredWidth()  const { return 500; }
+
+    /**
+     * @brief Returns the preferred client-area height for this visualizer.
+     *
+     * @return Height in pixels.  Default: 500.
+     */
+    virtual int getPreferredHeight() const { return 500; }
 };
 
 // =============================================================================
-// DLL entry point
-// Every visualizer DLL must export this symbol with C linkage:
-//
-//   extern "C" __declspec(dllexport)
-//   IVisualizerPlugin* createVisualizer();
-//
-// The host calls createVisualizer() to obtain one plugin instance.
-// The host is responsible for eventually calling shutdown() and delete.
+// DLL entry point type alias
 // =============================================================================
+
+/** @brief Function pointer type for the DLL factory entry point. */
 using CreateVisualizerFunc = IVisualizerPlugin* (*)();

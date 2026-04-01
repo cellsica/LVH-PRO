@@ -14,18 +14,37 @@
 #include "UIManager.h"
 #include "Core/StageManager.h"
 
-// =====================================================================
-// Main Application
-// =====================================================================
+/**
+ * @class LvhProApplication
+ * @brief Top-level JUCE application class — entry point and dependency root.
+ *
+ * Owns and wires together all major subsystems:
+ * - AudioEngine       — JUCE audio graph and FFT analysis.
+ * - BridgeManager     — LVH-Bridge.exe subprocess lifecycle.
+ * - MidiRoutingManager — MIDI dispatch, octave shift, and routing.
+ * - ProjectSerializer — .lvh project file I/O.
+ * - StageManager      — Stage Set slot management.
+ * - UIManager         — All floating windows and UI state.
+ *
+ * **Initialisation order:**
+ * 1. initialise() — creates engine, managers, and the main window.
+ * 2. setMainComponent() — wires MainComponent callbacks after window creation.
+ * 3. restoreStageWindow() — re-opens StageWindow if it was visible last session.
+ *
+ * **Shutdown order:**
+ * 1. UIManager::shutdown() — saves state and closes floating windows.
+ * 2. Main window destruction.
+ * 3. All subsystem destructors (reverse construction order).
+ */
 class LvhProApplication : public JUCEApplication,
-                                public MidiInputCallback,
-                                public MidiKeyboardState::Listener
+                          public MidiInputCallback,
+                          public MidiKeyboardState::Listener
 {
 public:
     LvhProApplication() {}
 
     const String getApplicationName() override    { return "LVH"; }
-    const String getApplicationVersion() override { return "0.8.0"; }
+    const String getApplicationVersion() override { return ProjectInfo::versionString; }
     bool moreThanOneInstanceAllowed() override    { return true; }
 
     // Hardware MIDI input
