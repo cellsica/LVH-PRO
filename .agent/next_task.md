@@ -48,8 +48,6 @@
     - [x] 音量・パン、ソロ・ミュートのロジック実装。
     - [x] LED メーターのリアルタイム表示アニメーション。
     - [x] Core ツールバー ↔ Mixer MASTER の双方向同期。
-
-## 確認済みの未完了タスク 🔜
 - [x] **Mission 020**: ミキサー UI 強化 ＆ カスタマイズ (Phase 3) ✅ (しずく020)
 - [x] **Mission 021**: エフェクト管理 ＆ FX・セクション (Phase 4) ✅ (しずく021)
 - [x] **Mission 022**: リファクタリング設計・フェーズ移行計画の策定 ✅ (022)
@@ -59,46 +57,38 @@
 - [x] **Mission 026**: リファクタリング Phase D (UIManager の抽出) ✅ (しずく026)
 - [x] **Mission 027**: ミキサー主導のプラグイン追加と UI の整理 ✅ (しずく027)
 - [x] **Mission 028**: Stage Performance Mode & Stage Set (.stg) ✅ (しずく028)
-- [x] **Mission 029**: Stage UI の洗練と細部へのこだわり (Phase 5 Polish) 🔜
+- [x] **Mission 029**: Stage UI の洗練と細部へのこだわり (Phase 5 Polish) ✅ (しずく029)
 - [x] **Mission 030**: Stage UI & Core 統合 ＆ 必須修正 (優先度：高) ✅ (しずく030)
 - [x] **Mission 031**: ウィンドウの最前面固定 (Pin) 機能 ✅ (しずく031)
 - [x] **Mission 032**: 032-A: 多言語対応 (i18n) 基盤 ✅ (しずく032)
 - [x] **Mission 033**: 032-B: MIDI リモート制御 (Stage) ✅ (しずく033)
 - [x] **Mission 034**: 032-C: MIDI マッピング基盤 (Mixer) ✅ (しずく034)
-- [x] **Mission 035-A**: 安定性向上 (Bridge クラッシュ現象の究明)
-- [x] **Mission 036**: Settings リフレッシュ & 終了処理の安定化
 - [x] **Mission 037 / 035-C**: Global Layer (Stage Set 拡張) ✅
     - [x] **仕様定義**: Stage Set の Slot 0 を「常駐レイヤー」として扱う設計の実装。
     - [x] **Persistence**: Global ブリッジを曲切り替え時も生存させる `isGlobal` フラグの導入。
     - [x] **Manager 拡張**: `BridgeManager::clearBridges(bool keepGlobal)` 等のライフサイクル管理。
     - [x] **UI 統合**: ミキサー上での Global と Local の視覚的共存（金色ストリップ）。
-- [x] Mission 035-D: メトロノーム機能の指示書作成 (to_shizuku_038.md)
 - [x] Mission 035-D: メトロノーム機能の実装 ✅ (しずく038)
-- [x] Mission 035-E: 究極の VU メーターの指示書作成 (to_shizuku_039.md)
 - [x] Mission 035-E: 究極の VU メーターの実装 ✅ (しずく039)
 - [x] Mission 044: ミキサー入力専用ストリップ (Phase A) ✅
 - [x] Mission 044-B: 入力専用 FX スロット ✅
 - [x] Mission 044-C: LINE 入力の常時有効化 ＆ MONO ボタン ✅
-- [x] **Mission 045: ビジュアライザー拡張 (Visualizer Extension)**
+- [x] **Mission 045: ビジュアライザー拡張 (Visualizer Extension)** ✅
     - [x] Phase A: SDK 基盤 ＆ アーキテクチャ設計 ✅ (しずく045-A)
-        - [x] SDK インターフェース (IVisualizerPlugin / IAudioSource) の定義
-        - [x] VisualizerManager による DLL 動的ロードの実装
-        - [x] AudioEngine からの FFT/音声データ供給パイプラインの構築
-        - [x] OpenGL コンテキストの統合基盤作成
-    - [x] **Phase B: Radial Spectrum Analyzer & UI 統合 ✅ (しずく045-B)**
-        - [x] VisualizerWindow の描画フロー修正 (タイトルバー非表示・ボーダー・×ボタン)
-        - [x] UI 統合 (MainComponent への VIS ボタン追加)
-        - [x] UIManager での VisualizerWindow 管理実装
-        - [x] Radial Spectrum Analyzer (16バンド対数スケール・波紋リング) の実装
-        - [x] 表示データのスムージング (コサイン補間) 処理追加
-    - [x] **Phase C: Starfield Spectrum Visualizer ✅ (しずく045-C)**
-        - [x] 無音時: 1px ドット ~4/秒 ゆっくりワープ飛行
-        - [x] 演奏時: 16バンド円形配置タイルが放射状に飛び出す (接線方向回転)
-        - [x] アタック→ディケイ: life フィールドで出音は明るく・減衰で暗く
-        - [x] 赤方偏移カラー (blue → red) + 軌跡トレイル
-        - [x] 演奏中はドットのスポーン数が増加 (エネルギー連動)
-
+    - [x] Phase B: Radial Spectrum Analyzer & UI 統合 ✅ (しずく045-B)
+    - [x] Phase C: Starfield Spectrum Visualizer ✅ (しずく045-C)
+    - [x] Phase D: プラグイン管理 ＆ オートメーション ✅ (しずく045-D)
+    - [x] Phase E: UI 統合 ＆ 全体最適化 ✅ (しずく045-E)
+- [x] **Mission 047: Doxygen 拡張 ＆ コード品質向上 (Docs Expansion)** ✅ (しずく047)
+- [x] Mission 046: Doxygen 対応 (Documentation) ✅ (しずく046)
 - [x] Mission 040: プラグイン・お気に入り機能 ✅ (Mission 039 から昇格)
+
+## 確認済みの未完了タスク 🔜
+- [ ] **Mission 048: カラーテーマ ＆ ステージ視認性向上 (Dark/Light)**
+    - [ ] **ThemeManager**: テーマ切替マネージャーの実装
+    - [ ] **SVG アイコン**: アイコンの SVG 移行と着色基盤
+    - [ ] **LookAndFeel**: テーマ対応した共通デザインコンポーネント (Mission 048 用に新設)
+- [ ] **Mission 049: 独立ビジュアライザーアプリ (VisualizerApp)**
 
 ## 直近の作業ログ 📝
 - [2026-03-17] かえで：Bridge プロトタイプの最小構成ソースコードを実装。
@@ -160,4 +150,7 @@
 - [2026-03-30] しずく：Mission 044-C 完了！LINE 入力の常時有効化、MONO 切り替え。
 - [2026-03-31] しずく：Mission 045 Phase A 完了！Visualizer SDK (IAudioSource/IVisualizerPlugin)、VisualizerManager DLL ロード基盤、FFT パイプライン (1024pt Hann窓)、OpenGL 統合ウィンドウ、TestVisualizer DLL を実装。
 - [2026-03-31] しずく：Mission 045 Phase B 完了！RadialVisualizer (16バンド対数・波紋リング・コサイン補間)・VIS ボタン UI 統合・タイトルバー非表示モード実装。
-- [2026-03-31] しずく：Mission 045 Phase C 完了！StarfieldVisualizer (16バンド円形タイル・赤方偏移・life アタック/ディケイ・エネルギー連動ドット増加) 実装。
+- [2026-03-31] しずく：Mission 045 Phase E 完了！設定永続化・再スキャン・不透明度・v0.9.0 へのバンプを実装。
+- [2026-04-01] しずく：Mission 046 完了！Doxygen 基盤構築と主要クラス・SDK ドキュメント化を達成。
+- [2026-04-01] しずく：Mission 047 完了！AudioEngine / BridgeInstance / StageManager の深部までドキュメント化。
+- [2026-04-01] かえで：Mission 048 のタスクを策定。
