@@ -2,6 +2,20 @@ cmake_minimum_required(VERSION 3.22)
 
 project(LVH VERSION 0.9.0 LANGUAGES CXX)
 
+# =============================================================================
+# Optional Doxygen documentation target
+#   cmake --build build --target doc
+# =============================================================================
+find_package(Doxygen OPTIONAL_COMPONENTS dot)
+if(DOXYGEN_FOUND)
+    add_custom_target(doc
+        COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Doxyfile
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Generating HTML documentation with Doxygen"
+        VERBATIM
+    )
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 

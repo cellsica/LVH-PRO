@@ -5,7 +5,7 @@
 #include "ProjectSerializer.h"
 #include "MidiRoutingManager.h"
 #include "StageManager.h"
-#include "MixerWindow.h"      // full definition needed for MixerParam + learn/apply methods
+#include "MixerWindow.h"
 #include "../MetronomeWindow.h"
 #include "../VUMeterWindow.h"
 #include "VisualizerManager.h"
@@ -17,123 +17,252 @@ class SettingsWindow;
 class StageWindow;
 class PluginPickerComponent;
 
-// =====================================================================
-// UIManager
-//
-// Owns all UI/window management extracted from LvhProApplication:
-//   - MixerWindow lifecycle (toggleMixerWindow)
-//   - SettingsWindow lifecycle (openSettings)
-//   - Logo right-click popup menu (showMainMenu)
-//   - Bridge file choosers (launchBridgeFileChooser)
-//   - Volume/speaker button wiring (wired in setMainComponent)
-//   - masterVolume_ state
-//   - Mixer MIDI mappings (handleMidiRemote / MIDI Learn)
-//
-// Dependencies injected via constructor:
-//   audioEngine, bridgeManager, projectSerializer, midiRouter,
-//   deviceManager, appProperties, knownPlugins
-//
-// MainComponent* is set post-construction via setMainComponent()
-// (called from LvhProApplication::initialise after mainWindow is created).
-// shutdown() must be called before mainWindow is destroyed.
-// =====================================================================
+/**
+ * @class UIManager
+ * @brief Owns and coordinates all floating windows and UI state.
+ *
+ * Responsibilities:
+ * - Lifecycle management for MixerWindow, SettingsWindow, StageWindow,
+ *   MetronomeWindow, VUMeterWindow, and VisualizerWindow.
+ * - Master volume state (owned here; queried by ProjectSerializer via callbacks).
+ * - Plugin favourites list (persisted in ApplicationProperties).
+ * - Mixer MIDI Learn / CC mapping.
+ * - Logo right-click main menu.
+ * - Bridge file chooser dialogs.
+ *
+ * **Construction order:**
+ * 1. Construct UIManager (injects all dependencies).
+ * 2. Create the main window and MainComponent.
+ * 3. Call setMainComponent() to wire volume/menu/launch callbacks.
+ * 4. Call restoreStageWindow() to show the StageWindow if it was open last session.
+ *
+ * **Shutdown order:**
+ * Call shutdown() *before* destroying the main window, so that floating
+ * windows can be closed safely while the message loop is still running.
+ *
+ * **Thread safety:** All public methods must be called from the message thread.
+ */
 class UIManager
 {
 public:
-    // ── Construction ──────────────────────────────────────────────────────
-    UIManager (AudioEngine&                  audioEngine,
-               BridgeManager&                bridgeManager,
-               ProjectSerializer&            projectSerializer,
-               MidiRoutingManager&           midiRouter,
-               juce::AudioDeviceManager&     deviceManager,
-               juce::ApplicationProperties&  appProperties,
-               juce::KnownPluginList&        knownPlugins,
-               StageManager&                 stageManager);
+    /**
+     * @brief Constructs a UIManager.
+     * @param audioEngine       The application audio engine.
+     * @param bridgeManager     Bridge lifecycle manager.
+     * @param projectSerializer Project file I/O handler.
+     * @param midiRouter        MIDI routing and transpose manager.
+     * @param deviceManager     JUCE audio device manager.
+     * @param appProperties     Persistent application properties store.
+     * @param knownPlugins      JUCE plugin list (for the plugin picker).
+     * @param stageManager      Stage Set lifecycle manager.
+     *
+     * All references must outlive this object.
+     */
+    UIManager (AudioEngine&                 audioEngine,
+               BridgeManager&               bridgeManager,
+               ProjectSerializer&           projectSerializer,
+               MidiRoutingManager&          midiRouter,
+               juce::AudioDeviceManager&    deviceManager,
+               juce::ApplicationProperties& appProperties,
+               juce::KnownPluginList&       knownPlugins,
+               StageManager&                stageManager);
 
     ~UIManager();
 
-    // ── Callbacks — wired by LvhProApplication ────────────────────────────
+    // ── Callbacks — wired by LvhProApplication ────────────────────────────────
 
-    // Trigger plugin scan (still managed by LvhProApplication)
+    /** @brief Fired when the user requests a plugin scan via the main menu. */
     std::function<void()> onStartPluginScan;
 
-    // ── Lifecycle ─────────────────────────────────────────────────────────
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
 
-    // Call after mainWindow is created. Wires volume/menu/mixer/launch callbacks.
+    /**
+     * @brief Complete post-construction wiring once the main window exists.
+     *
+     * Wires volume slider, logo menu, and bridge-launch callbacks on MainComponent.
+     * Must be called after the main window and MainComponent are created.
+     *
+     * @param mc  Pointer to the application's MainComponent.  Must not be nullptr.
+     */
     void setMainComponent (MainComponent* mc);
 
-    // Call at start of LvhProApplication::shutdown() before mainWindow.reset().
+    /**
+     * @brief Prepare for application shutdown.
+     *
+     * Saves window state to ApplicationProperties and closes all floating windows.
+     * Must be called at the start of LvhProApplication::shutdown(), before the
+     * main window is destroyed.
+     */
     void shutdown();
 
-    // ── Window management ─────────────────────────────────────────────────
-    void toggleMixerWindow      (bool show);
-    void toggleStageWindow      (bool show);
-    void toggleMetronomeWindow  (bool show);
-    void toggleVuMeterWindow    (bool show);
+    // ── Window management ─────────────────────────────────────────────────────
+
+    /**
+     * @brief Show or hide the Mixer Console window.
+     * @param show  true to show, false to hide.
+     */
+    void toggleMixerWindow (bool show);
+
+    /**
+     * @brief Show or hide the Stage Set window.
+     * @param show  true to show, false to hide.
+     */
+    void toggleStageWindow (bool show);
+
+    /**
+     * @brief Show or hide the Metronome window.
+     * @param show  true to show, false to hide.
+     */
+    void toggleMetronomeWindow (bool show);
+
+    /**
+     * @brief Show or hide the VU Meter window.
+     * @param show  true to show, false to hide.
+     */
+    void toggleVuMeterWindow (bool show);
+
+    /**
+     * @brief Show or hide the Visualizer window.
+     *
+     * On first show, scans the Visualizers/ directory for DLLs and restores
+     * the last-used plugin, auto-switch mode, and opacity from ApplicationProperties.
+     *
+     * @param show  true to show, false to hide.
+     */
     void toggleVisualizerWindow (bool show);
+
+    /** @brief Open the Settings window (audio device, language, theme). */
     void openSettings();
 
-    // Restore StageWindow state (visibility + bounds) from ApplicationProperties.
-    // Call once during app initialise, after all callbacks are wired.
+    /**
+     * @brief Restore the StageWindow visibility and bounds from ApplicationProperties.
+     *
+     * Call once during application initialise, after all callbacks are wired.
+     */
     void restoreStageWindow();
 
-    // ── Mixer bridge list (called from BridgeManager::onGraphRebuilt) ─────
+    // ── Mixer bridge list ─────────────────────────────────────────────────────
+
+    /**
+     * @brief Update the Mixer Console with a new bridge layout.
+     *
+     * Called from BridgeManager::onGraphRebuilt after the audio graph changes.
+     *
+     * @param instruments  Bridges with the Instrument role.
+     * @param effects      Bridges with the Effect (master chain) role.
+     */
     void updateMixerBridges (juce::Array<BridgeInstance*> instruments,
                              juce::Array<BridgeInstance*> effects);
 
-    // ── Volume state (owned here; serializer queries via callbacks) ────────
+    // ── Master volume ─────────────────────────────────────────────────────────
+
+    /**
+     * @brief Returns the current master output volume.
+     * @return Linear gain value (1.0 = unity, 0.0 = silence).
+     */
     double getMasterVolume() const noexcept { return masterVolume_; }
-    void   setMasterVolume (double vol);   // also updates engine, slider, mixer fader
 
-    // ── Mixer window state queries (for ProjectSerializer callbacks) ───────
-    bool                 isMixerWindowVisible()  const noexcept;
-    juce::Rectangle<int> getMixerWindowBounds()  const noexcept;
+    /**
+     * @brief Set the master output volume and synchronise all UI elements.
+     *
+     * Updates the AudioEngine gain, the toolbar volume slider, and the Mixer
+     * Console master fader simultaneously.
+     *
+     * @param vol  Linear gain value [0.0, 1.0].
+     */
+    void setMasterVolume (double vol);
 
-    // Restore mixer window visibility + position from project load
+    // ── Mixer window state ────────────────────────────────────────────────────
+
+    /**
+     * @brief Returns whether the Mixer Console window is currently visible.
+     * @return true if the window exists and is visible.
+     */
+    bool isMixerWindowVisible() const noexcept;
+
+    /**
+     * @brief Returns the current screen bounds of the Mixer Console window.
+     * @return Rectangle in screen coordinates, or an empty rectangle if hidden.
+     */
+    juce::Rectangle<int> getMixerWindowBounds() const noexcept;
+
+    /**
+     * @brief Restore the Mixer Console visibility and position from a project load.
+     * @param visible  true to show the window.
+     * @param bounds   Screen position and size to apply.
+     */
     void restoreMixerWindow (bool visible, juce::Rectangle<int> bounds);
 
-    // Sync MetronomeWindow UI from current AudioEngine state (call after project load)
+    /**
+     * @brief Synchronise the MetronomeWindow UI from the current AudioEngine state.
+     *
+     * Call this after loadProject() completes so that tempo, time signature,
+     * and click volume reflect the restored values.
+     */
     void syncMetronomeWindowFromEngine();
 
-    // Refresh all open windows after a language change
+    /**
+     * @brief Refresh all open windows after a language change.
+     *
+     * Re-creates window content so that all localised strings are updated.
+     */
     void refreshAllWindows();
 
-    // ── Plugin favorites ──────────────────────────────────────────────────
+    // ── Plugin favourites ─────────────────────────────────────────────────────
+
+    /**
+     * @brief Toggle the favourite state of a plugin.
+     * @param pluginId  The plugin's unique identifier string.
+     */
     void toggleFavorite (const juce::String& pluginId);
-    bool isFavorite     (const juce::String& pluginId) const;
+
+    /**
+     * @brief Returns whether a plugin is marked as a favourite.
+     * @param pluginId  The plugin's unique identifier string.
+     * @return true if the plugin is in the favourites list.
+     */
+    bool isFavorite (const juce::String& pluginId) const;
+
+    /**
+     * @brief Returns the list of all favourite plugin identifiers.
+     * @return StringArray of plugin ID strings.
+     */
     const juce::StringArray& getFavoriteIds() const noexcept { return favoriteIds_; }
 
-    // Process incoming MIDI for remote control (Master Volume + Stage + Mixer).
-    // Call from the message thread (e.g. via MessageManager::callAsync).
+    /**
+     * @brief Process an incoming MIDI message for remote control.
+     *
+     * Handles master volume CC, stage-slot selection, and mixer channel CC
+     * (based on the MIDI Learn mappings).  Must be called from the message thread.
+     *
+     * @param msg  The MIDI message to process.
+     */
     void handleMidiRemote (const juce::MidiMessage& msg);
 
-    // ── Bridge file choosers ───────────────────────────────────────────────
+    // ── Bridge file choosers ───────────────────────────────────────────────────
+
+    /**
+     * @brief Open a native file chooser and launch a bridge for the selected plugin.
+     * @param role  The role (Instrument or Effect) to assign to the launched bridge.
+     */
     void launchBridgeFileChooser (BridgeInstance::Role role = BridgeInstance::Role::Instrument);
 
 private:
-    // ── Private helpers ───────────────────────────────────────────────────
     void showMainMenu();
     void showPluginPicker (BridgeInstance::Role fixedRole, BridgeInstance* parentInstrument = nullptr);
     void showPluginPicker (BridgeInstance::Role fixedRole, const juce::String& parentPath);
     juce::File getBridgeStartDir() const;
-
-    // Check isDirty(); if clean, run action() immediately.
-    // If dirty, show Yes/No/Cancel dialog:
-    //   Yes    → save the current set via FileChooser, then run action()
-    //   No     → discard changes, run action()
-    //   Cancel → abort
     void executeSafeSetOperation (std::function<void()> action);
 
-    // ── Mixer MIDI mapping ────────────────────────────────────────────────
+    // ── Mixer MIDI mapping ────────────────────────────────────────────────────
     struct MixerMidiMapping
     {
-        int ccFader = -1;   // -1 = not mapped
-        int ccPan   = -1;
-        int ccMute  = -1;
-        int ccSolo  = -1;
+        int ccFader = -1;  ///< CC number for fader (-1 = not mapped).
+        int ccPan   = -1;  ///< CC number for pan.
+        int ccMute  = -1;  ///< CC number for mute toggle.
+        int ccSolo  = -1;  ///< CC number for solo toggle.
     };
 
-    // Learn state (only one target active at a time)
     struct LearnState
     {
         BridgeInstance* bridge = nullptr;
@@ -141,13 +270,13 @@ private:
         bool            active = false;
     };
 
-    void startMidiLearn  (BridgeInstance* b, MixerParam p);
+    void startMidiLearn   (BridgeInstance* b, MixerParam p);
     void clearMidiMapping (BridgeInstance* b, MixerParam p);
     void saveMixerMappings();
     void loadMixerMappings();
     BridgeInstance* findBridgeByPath (const juce::String& path) const;
 
-    // ── Constructor-injected references ───────────────────────────────────
+    // ── Constructor-injected references ───────────────────────────────────────
     AudioEngine&                 audioEngine_;
     BridgeManager&               bridgeManager_;
     ProjectSerializer&           projectSerializer_;
@@ -157,21 +286,21 @@ private:
     juce::KnownPluginList&       knownPlugins_;
     StageManager&                stageManager_;
 
-    // ── State ─────────────────────────────────────────────────────────────
-    MainComponent*                   mc_               = nullptr;
-    juce::StringArray                favoriteIds_;
-    double                           masterVolume_     = 1.0;
-    std::unique_ptr<MixerWindow>         mixerWindow_;
-    std::unique_ptr<MetronomeWindow>     metronomeWindow_;
-    std::unique_ptr<SettingsWindow>      settingsWindow_;
-    std::unique_ptr<StageWindow>         stageWindow_;
-    std::unique_ptr<VUPhysicsEngine>     vuPhysicsEngine_;
-    std::unique_ptr<VUMeterWindow>       vuMeterWindow_;
-    std::unique_ptr<VisualizerManager>   visualizerManager_;
-    std::unique_ptr<VisualizerWindow>    visualizerWindow_;
+    // ── State ─────────────────────────────────────────────────────────────────
+    MainComponent*                        mc_             = nullptr;
+    juce::StringArray                     favoriteIds_;
+    double                                masterVolume_   = 1.0;
+
+    std::unique_ptr<MixerWindow>          mixerWindow_;
+    std::unique_ptr<MetronomeWindow>      metronomeWindow_;
+    std::unique_ptr<SettingsWindow>       settingsWindow_;
+    std::unique_ptr<StageWindow>          stageWindow_;
+    std::unique_ptr<VUPhysicsEngine>      vuPhysicsEngine_;
+    std::unique_ptr<VUMeterWindow>        vuMeterWindow_;
+    std::unique_ptr<VisualizerManager>    visualizerManager_;
+    std::unique_ptr<VisualizerWindow>     visualizerWindow_;
     std::unique_ptr<juce::DocumentWindow> pluginPickerWindow_;
 
-    // Mixer MIDI mapping state
     LearnState                               learnState_;
     std::map<juce::String, MixerMidiMapping> mixerMappings_;
 
