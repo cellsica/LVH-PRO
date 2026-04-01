@@ -14,12 +14,27 @@
 
 using namespace juce;
 
-// =========================================================================
-// GainAndMeterProcessor
-// Inserted as a graph node just before the AudioOutput node.
-// Applies master output gain and captures peak L/R levels — all on the
-// audio thread using only atomic operations (no locks needed).
-// =========================================================================
+/**
+ * @class GainAndMeterProcessor
+ * @brief Audio graph node that applies master output gain and measures levels.
+ *
+ * Inserted as the last processing node before the AudioOutput node in every
+ * graph configuration.  Performs three tasks on the audio thread:
+ *
+ * 1. **Gain** — applies a linear master output gain (atomic, set from the message thread).
+ * 2. **Peak / RMS metering** — captures per-channel peak and IIR-smoothed RMS,
+ *    published via atomics for the VU meter timer on the message thread.
+ * 3. **FFT + waveform capture** — accumulates the mono-summed signal into a
+ *    1024-sample ring buffer, applies a Hann window, computes a 512-bin FFT,
+ *    and publishes the magnitudes under a SpinLock for the VisualizerManager.
+ *
+ * **Thread safety:**
+ * - processBlock() runs on the audio thread and writes atomics / SpinLock-protected buffers.
+ * - exchangePeak(), exchangeRms(), readFFTMagnitudes(), readWaveform() are called
+ *   from the message thread.  readFFTMagnitudes() / readWaveform() use a try-lock and return 0
+ *   without blocking if the audio thread is mid-write.
+ * - setGain() is atomic and safe to call from any thread.
+ */
 class GainAndMeterProcessor : public AudioProcessor
 {
 public:
@@ -104,9 +119,16 @@ public:
         }
     }
 
-    // ── FFT / Waveform read (message thread or plugin render thread) ─────
-    // Try-lock: if the audio thread is mid-write, returns without blocking.
-    // Returns the number of bins/samples actually written (may be < size).
+    /**
+     * @brief Read the latest FFT magnitude spectrum into @p buf.
+     *
+     * Uses a try-lock: if the audio thread is mid-write, returns 0 immediately
+     * without blocking.  Called from the message thread (VisualizerManager).
+     *
+     * @param buf   Caller-allocated output buffer.
+     * @param size  Maximum number of bins to copy.
+     * @return      Number of bins written, or 0 if the lock could not be acquired.
+     */
     int readFFTMagnitudes (float* buf, int size) const
     {
         juce::SpinLock::ScopedTryLockType tryLock (fftPubLock_);
@@ -116,6 +138,16 @@ public:
         return n;
     }
 
+    /**
+     * @brief Read the latest mono waveform block into @p buf.
+     *
+     * Uses a try-lock — returns 0 without blocking if the audio thread is writing.
+     * Called from the message thread (VisualizerManager).
+     *
+     * @param buf   Caller-allocated output buffer.
+     * @param size  Maximum number of samples to copy.
+     * @return      Number of samples written, or 0 if the lock could not be acquired.
+     */
     int readWaveform (float* buf, int size) const
     {
         juce::SpinLock::ScopedTryLockType tryLock (fftPubLock_);
@@ -126,25 +158,44 @@ public:
     }
 
     static constexpr int fftOrder_ = 10;
-    static constexpr int fftSize_  = 1 << fftOrder_;  // 1024 samples
-    static constexpr int fftBins_  = fftSize_ / 2;    // 512 magnitude bins
+    static constexpr int fftSize_  = 1 << fftOrder_;  ///< FFT window size: 1024 samples.
+    static constexpr int fftBins_  = fftSize_ / 2;    ///< Number of magnitude bins: 512.
 
-    // Call from the message thread only — returns peak since last call and resets.
+    /**
+     * @brief Atomically read and reset the output peak for channel @p ch.
+     *
+     * Call from the message thread only (e.g. a repaint timer).
+     * @param ch  0 = Left, 1 = Right.
+     * @return    Peak magnitude since the last call.
+     */
     float exchangePeak (int ch)
     {
         if (ch < 0 || ch > 1) return 0.f;
         return peaks[ch].exchange (0.f, std::memory_order_relaxed);
     }
 
-    // Call from the message thread only — returns latest smoothed RMS.
-    // Uses load (not exchange) so the physics engine always sees the current
-    // IIR-smoothed value regardless of timer/audio-block timing.
+    /**
+     * @brief Read the latest IIR-smoothed RMS for channel @p ch.
+     *
+     * Uses load (not exchange) so the VU physics engine always sees the
+     * current value regardless of timer / audio-block timing.
+     * Call from the message thread only.
+     *
+     * @param ch  0 = Left, 1 = Right.
+     * @return    Smoothed RMS value.
+     */
     float exchangeRms (int ch)
     {
         if (ch < 0 || ch > 1) return 0.f;
         return rms[ch].load (std::memory_order_relaxed);
     }
 
+    /**
+     * @brief Set the master output gain.
+     *
+     * Atomic — safe to call from any thread.
+     * @param g  Linear gain value (1.0 = unity, 0.0 = silence).
+     */
     void setGain (float g) noexcept { gain.store (g, std::memory_order_relaxed); }
 
     // AudioProcessor boilerplate
@@ -166,32 +217,42 @@ private:
     std::atomic<float> gain;
     std::atomic<float> peaks[2];
 
-    // RMS (VU meter)
     std::atomic<float> rms[2];
-    float rmsSmoothed[2] = {};  // IIR state — audio thread only
+    float rmsSmoothed[2] = {};  ///< IIR state — audio thread only.
     float rmsAlpha       = 0.1f;
 
-    // ── FFT pipeline (audio thread writes, message thread reads) ─────────
+    // ── FFT pipeline ──────────────────────────────────────────────────────────
+    // Audio thread writes; message thread reads via try-lock SpinLock.
     juce::dsp::FFT                      fft_    { fftOrder_ };
     juce::dsp::WindowingFunction<float> window_ { (size_t)fftSize_,
                                                    juce::dsp::WindowingFunction<float>::hann };
-    // Accumulation (audio thread only)
-    std::array<float, fftSize_>         fftAccum_ {};
-    std::array<float, fftSize_ * 2>     fftWork_  {};  // interleaved for FFT
-    int                                 fftPos_   = 0;
-    // Published data (protected by fftPubLock_)
-    mutable juce::SpinLock             fftPubLock_;
-    std::array<float, fftBins_>         fftMag_      {};
-    std::array<float, fftSize_>         waveformPub_ {};
+    std::array<float, fftSize_>         fftAccum_ {};       ///< Accumulation ring — audio thread only.
+    std::array<float, fftSize_ * 2>     fftWork_  {};       ///< Interleaved FFT work buffer.
+    int                                 fftPos_   = 0;      ///< Write position in fftAccum_.
+    mutable juce::SpinLock             fftPubLock_;         ///< Protects fftMag_ and waveformPub_.
+    std::array<float, fftBins_>         fftMag_      {};    ///< Published FFT magnitudes.
+    std::array<float, fftSize_>         waveformPub_ {};    ///< Published waveform snapshot.
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GainAndMeterProcessor)
 };
 
-// =========================================================================
-// InputGainProcessor
-// Inserted between audioInputNode and the first master FX (or gain/meter).
-// Applies input gain and captures peak L/R levels — audio thread only.
-// =========================================================================
+// =============================================================================
+
+/**
+ * @class InputGainProcessor
+ * @brief Audio graph node for physical audio input gain, mute, and mono-fold.
+ *
+ * Inserted between the audioInputNode and the first master FX node (or the
+ * GainAndMeterProcessor when no master FX are loaded).  Provides:
+ *
+ * - **Input gain** — linear scalar applied to both channels (atomic).
+ * - **Mute** — zeroes both channels when enabled (atomic).
+ * - **Mono fold** — sums L+R to mono and copies to both outputs (atomic).
+ * - **Input peak metering** — per-channel peak captured for the input meter.
+ *
+ * **Thread safety:** All setters are atomic and safe to call from the message thread
+ * while processBlock() runs on the audio thread.
+ */
 class InputGainProcessor : public AudioProcessor
 {
 public:
@@ -240,14 +301,23 @@ public:
         }
     }
 
+    /**
+     * @brief Atomically read and reset the input peak for channel @p ch.
+     * Call from the message thread only.
+     * @param ch  0 = Left, 1 = Right.
+     * @return    Peak magnitude since the last call.
+     */
     float exchangePeak (int ch)
     {
         if (ch < 0 || ch > 1) return 0.f;
         return peaks[ch].exchange (0.f, std::memory_order_relaxed);
     }
 
-    void setGain (float g) noexcept { gain_.store (g, std::memory_order_relaxed); }
-    void setMonoMode (bool m) noexcept { mono_.store (m, std::memory_order_relaxed); }
+    /** @brief Set the input gain. Atomic — safe from any thread. @param g Linear gain. */
+    void setGain     (float g) noexcept { gain_.store (g, std::memory_order_relaxed); }
+
+    /** @brief Enable or disable mono fold. Atomic — safe from any thread. @param m true = mono. */
+    void setMonoMode (bool m)  noexcept { mono_.store (m, std::memory_order_relaxed); }
 
     const String getName() const override                { return "LVH Input Gain"; }
     double getTailLengthSeconds() const override         { return 0.0; }
@@ -270,33 +340,81 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (InputGainProcessor)
 };
 
-// =========================================================================
-// AudioEngine
-// =========================================================================
+// =============================================================================
+
+/**
+ * @class AudioEngine
+ * @brief Owns the JUCE AudioProcessorGraph and all audio subsystems.
+ *
+ * AudioEngine is the central audio hub of LVH-PRO.  It manages:
+ * - The JUCE AudioProcessorGraph that routes audio between nodes.
+ * - Graph configuration switching (Bridge-sync, multi-instrument, sine-wave, direct plugin).
+ * - Master output gain and metering (via GainAndMeterProcessor).
+ * - Physical audio input gain, mute, and mono fold (via InputGainProcessor).
+ * - FFT magnitude and waveform capture for the VisualizerManager.
+ * - MIDI keyboard injection and transposition (via MidiInjectionsProcessor).
+ * - Metronome click generation (via MetronomeProcessor).
+ * - Tap-tempo calculation.
+ *
+ * **Graph configurations:**
+ * | Method | When used |
+ * |--------|-----------|
+ * | rebuildBridgeGraph() | Normal operation — one or more Bridge subprocesses active |
+ * | buildGraphWithBridgeSync() | Legacy single-bridge mode (BridgeSyncProcessor) |
+ * | buildGraphWithSineWave() | No plugin loaded; PC keyboard plays a sine-wave tone |
+ * | loadPlugin() | Direct JUCE plugin load (no Bridge subprocess) |
+ *
+ * **Signal path (rebuildBridgeGraph):**
+ * @code
+ * [Instruments (parallel + per-chan FX)] ─┐
+ *                                          ├─→ [Master FX 1] → ... → [Gain/Meter] → [Out]
+ * [PhysIn] → [InputGain] → [Input FX] ───┘
+ * @endcode
+ *
+ * **Thread safety:**
+ * - All public methods must be called from the message thread,
+ *   unless explicitly documented otherwise.
+ * - processBlock() runs on the audio thread; it communicates with the
+ *   message thread only through atomics and SpinLock-protected buffers.
+ * - Pending-state members (pendingGain_, pendingTranspose_, etc.) bridge
+ *   the gap between graph rebuilds: values set on the message thread are
+ *   applied to the new nodes when the graph is rebuilt.
+ */
 class AudioEngine
 {
 public:
+    /**
+     * @brief Constructs an AudioEngine.
+     * @param kbState  The application's MIDI keyboard state.  Must outlive this object.
+     */
     explicit AudioEngine (MidiKeyboardState& kbState) : keyboardState (kbState)
     {
         formatManager.addDefaultFormats();
     }
 
+    /**
+     * @brief Connect the engine to the audio device and build the initial graph.
+     *
+     * Registers the AudioProcessorPlayer as the device callback and builds an
+     * initial rebuildBridgeGraph() with empty bridge lists so that the physical
+     * audio input (LINE IN) is active from startup.
+     *
+     * @param deviceManager  The application's AudioDeviceManager.
+     */
     void initialise (AudioDeviceManager& deviceManager)
     {
         audioProcessorPlayer.setProcessor (&audioGraph);
-        deviceManager.addAudioCallback (&audioProcessorPlayer);  // single callback — no mixing issues
-
-        // Cache the device's sample rate and buffer size so buildGraphWithSineWave() can
-        // call prepareToPlay even when no PluginDescription is available.
+        deviceManager.addAudioCallback (&audioProcessorPlayer);
         auto& setup = deviceManager.getAudioDeviceSetup();
         lastSampleRate = setup.sampleRate > 0.0 ? setup.sampleRate : 44100.0;
         lastBufferSize = setup.bufferSize > 0   ? setup.bufferSize : 512;
-
-        // Build initial graph so the physical input (LINE) is active from startup,
-        // even before any Bridge is launched.
         rebuildBridgeGraph ({}, {});
     }
 
+    /**
+     * @brief Disconnect from the audio device and release all graph resources.
+     * @param deviceManager  The application's AudioDeviceManager.
+     */
     void shutdown (AudioDeviceManager& deviceManager)
     {
         for (auto* slot : slots)
@@ -305,22 +423,45 @@ public:
         audioProcessorPlayer.setProcessor (nullptr);
     }
 
+    /** @brief Returns the JUCE plugin format manager (for plugin scanning). */
     AudioPluginFormatManager& getFormatManager() { return formatManager; }
-    AudioProcessorPlayer& getPlayer()             { return audioProcessorPlayer; }
 
-    // Peak levels — call from message thread only.
+    /** @brief Returns the AudioProcessorPlayer (for MIDI injection). */
+    AudioProcessorPlayer& getPlayer() { return audioProcessorPlayer; }
+
+    // ── Level metering (message thread only) ─────────────────────────────────
+
+    /**
+     * @brief Atomically read and reset the master output peak for channel @p ch.
+     * @param ch  0 = Left, 1 = Right.
+     * @return    Peak magnitude since the last call, or 0 if not available.
+     */
     float exchangePeak (int ch)
     {
         return meterGainProcessor ? meterGainProcessor->exchangePeak (ch) : 0.f;
     }
 
-    // RMS levels for VU meter — call from message thread only.
+    /**
+     * @brief Read the latest IIR-smoothed master output RMS for channel @p ch.
+     * @param ch  0 = Left, 1 = Right.
+     * @return    Smoothed RMS value, or 0 if not available.
+     */
     float exchangeRms (int ch)
     {
         return meterGainProcessor ? meterGainProcessor->exchangeRms (ch) : 0.f;
     }
 
-    // ── FFT / Waveform data for VisualizerManager (IAudioSource) ────────
+    // ── FFT / Waveform (message thread or visualizer render thread) ───────────
+
+    /**
+     * @brief Fill @p buf with the latest FFT magnitude spectrum.
+     *
+     * Delegates to GainAndMeterProcessor::readFFTMagnitudes().
+     * Returns zeroes if no meter processor is active.
+     *
+     * @param buf   Output buffer (at least @p size floats).
+     * @param size  Number of bins to read (typically 512).
+     */
     void readFFTData (float* buf, int size)
     {
         if (meterGainProcessor != nullptr)
@@ -329,6 +470,14 @@ public:
             std::fill_n (buf, size, 0.f);
     }
 
+    /**
+     * @brief Fill @p buf with the latest time-domain waveform samples.
+     *
+     * Delegates to GainAndMeterProcessor::readWaveform().
+     *
+     * @param buf   Output buffer (at least @p size floats).
+     * @param size  Number of samples to read (typically 1024).
+     */
     void readWaveformData (float* buf, int size)
     {
         if (meterGainProcessor != nullptr)
@@ -337,18 +486,32 @@ public:
             std::fill_n (buf, size, 0.f);
     }
 
-    static constexpr int kFFTBins = GainAndMeterProcessor::fftBins_;  // 512
+    static constexpr int kFFTBins = GainAndMeterProcessor::fftBins_;  ///< 512 magnitude bins.
 
-    // Master output gain — thread-safe.
+    /**
+     * @brief Set the master output gain.
+     *
+     * Thread-safe — can be called from the message thread at any time.
+     * The value is also stored as pendingGain so it survives graph rebuilds.
+     *
+     * @param g  Linear gain (1.0 = unity, 0.0 = silence).
+     */
     void setOutputGain (float g)
     {
         pendingGain = g;
         if (meterGainProcessor) meterGainProcessor->setGain (g);
     }
 
-    /** Switch Core's audio graph to Bridge-sync mode.
-        The supplied processor (BridgeSyncProcessor) replaces the local plugin.
-        Call this when the Bridge process connects and is ready. */
+    // ── Graph configuration ───────────────────────────────────────────────────
+
+    /**
+     * @brief Switch to Bridge-sync mode for a single bridge subprocess.
+     *
+     * Replaces the current graph with: [BridgeSyncProc] → [Gain/Meter] → [Out].
+     * Used for legacy single-plugin configurations (BridgeSyncProcessor).
+     *
+     * @param bridgeProc  The BridgeSyncProcessor created by BridgeInstance::createSyncProcessor().
+     */
     void buildGraphWithBridgeSync (std::unique_ptr<AudioProcessor> bridgeProc)
     {
         kbProcessor         = nullptr;
@@ -375,14 +538,25 @@ public:
             audioGraph.prepareToPlay (lastSampleRate, lastBufferSize);
     }
 
-    /** Rebuild Core's audio graph for serial effect-chain routing.
-        Instruments are processed in parallel (MultiSourceBridgeProcessor), each with
-        its own per-channel FX chain (perChannelFxMap), then the mixed output is fed
-        through each master effect bridge in order.
-        inputFxChain: serial FX applied to physical audio input before it merges into the master chain.
-        Physical input is always active — LINE works even with no instrument bridges loaded.
-        Graph: [Instr(parallel+per-chan FX)] → [MasterFX1] → ... → [Gain/Meter] → [Out]
-               [PhysIn] → [InputGain] → [InputFX...] ↗ */
+    /**
+     * @brief Rebuild the audio graph for the current set of active bridges.
+     *
+     * Constructs the full production signal path:
+     * - Instrument bridges are mixed in parallel by MultiSourceBridgeProcessor,
+     *   each with an optional per-channel FX chain.
+     * - Master effect bridges are chained serially after the instrument mix.
+     * - Physical audio input passes through InputGainProcessor and an optional
+     *   serial input FX chain before merging into the master chain.
+     * - GainAndMeterProcessor is always the final node before audio output.
+     *
+     * All pending state (gain, input gain, metronome, etc.) is applied to the
+     * newly-created nodes so settings survive graph rebuilds.
+     *
+     * @param instrumentBridges  Bridges with Role::Instrument (mixed in parallel).
+     * @param masterEffects      Bridges with Role::Effect in the master chain (serial).
+     * @param perChannelFxMap    Per-instrument FX chains (key = instrument bridge).
+     * @param inputFxChain       Serial FX applied to physical audio input.
+     */
     void rebuildBridgeGraph (
         const juce::Array<BridgeInstance*>& instrumentBridges,
         const juce::Array<BridgeInstance*>& masterEffects,
@@ -405,7 +579,6 @@ public:
         auto mgNode    = audioGraph.addNode (std::unique_ptr<GainAndMeterProcessor> (mgProc));
         auto metroNode = addMetronomeNode();
 
-        // Build signal chain: instruments (parallel mix + per-chan FX) → master effects (serial) → gain/meter
         AudioProcessorGraph::Node::Ptr lastNode;
 
         if (! instrumentBridges.isEmpty())
@@ -441,8 +614,6 @@ public:
             for (int ch = 0; ch < 2; ++ch)
                 audioGraph.addConnection ({{lastNode->nodeID, ch}, {mgNode->nodeID, ch}});
 
-        // Physical audio input — InputGainProcessor for gain/mute/metering,
-        // followed by optional serial Input FX chain, then summed into master chain.
         {
             inputGainProcessor_ = nullptr;
             auto inNode = audioGraph.addNode (
@@ -456,7 +627,6 @@ public:
             for (int ch = 0; ch < 2; ++ch)
                 audioGraph.addConnection ({{inNode->nodeID, ch}, {igNode->nodeID, ch}});
 
-            // Build serial Input FX chain after InputGainProcessor
             AudioProcessorGraph::Node::Ptr inputLastNode = igNode;
             for (auto* b : inputFxChain)
             {
@@ -479,6 +649,12 @@ public:
             audioGraph.prepareToPlay (lastSampleRate, lastBufferSize);
     }
 
+    /**
+     * @brief Build a minimal graph with a SineWaveProcessor for testing.
+     *
+     * Used when no plugin is loaded.  The PC keyboard plays a sine-wave tone
+     * through the MIDI keyboard state.
+     */
     void buildGraphWithSineWave()
     {
         kbProcessor         = nullptr;
@@ -508,6 +684,18 @@ public:
             audioGraph.prepareToPlay (lastSampleRate, lastBufferSize);
     }
 
+    /**
+     * @brief Load a JUCE plugin directly (no Bridge subprocess).
+     *
+     * Asynchronously creates a plugin instance via the format manager.
+     * On success, builds a graph: [MidiIn] → [MidiInject] → [Plugin] → [Gain/Meter] → [Out].
+     * On failure, falls back to buildGraphWithSineWave().
+     *
+     * @param desc        Plugin description from the KnownPluginList.
+     * @param sampleRate  Current device sample rate.
+     * @param bufferSize  Current device buffer size.
+     * @param callback    Called on the message thread with (success, nameOrError).
+     */
     void loadPlugin (const PluginDescription& desc, double sampleRate, int bufferSize,
                      std::function<void(bool success, const String& nameOrError)> callback)
     {
@@ -564,19 +752,26 @@ public:
             });
     }
 
+    /** @brief Unload the directly loaded plugin and fall back to the sine-wave graph. */
     void unloadPlugin()
     {
         getOrCreateSlot().detach();
         buildGraphWithSineWave();
     }
 
+    /** @brief Returns true if a plugin is loaded in the direct (non-Bridge) slot. */
     bool isPluginLoaded() const { return ! slots.isEmpty() && slots[0]->isLoaded(); }
 
+    /**
+     * @brief Returns the PluginSlot at @p index, or nullptr if out of range.
+     * @param index  Zero-based slot index.
+     */
     PluginSlot* getSlot (int index = 0)
     {
         return slots.size() > index ? slots[index] : nullptr;
     }
 
+    /** @brief Returns the total graph latency in samples (sum of all slots). */
     int calculateTotalLatency() const
     {
         int total = 0;
@@ -584,6 +779,13 @@ public:
         return total;
     }
 
+    /**
+     * @brief Send All Notes Off / All Sound Off to all MIDI channels.
+     *
+     * Clears the keyboard state, sets panic mode on the MIDI injections processor,
+     * and sends CC 120 (All Sound Off), CC 123 (All Notes Off), CC 121 (Reset All
+     * Controllers), and CC 64 (Sustain Off) on all 16 MIDI channels.
+     */
     void allNotesOff()
     {
         keyboardState.allNotesOff (0);
@@ -597,18 +799,35 @@ public:
         }
     }
 
+    /**
+     * @brief Update the cached sample rate and buffer size after a device change.
+     * @param sr  New sample rate (ignored if <= 0).
+     * @param bs  New buffer size (ignored if <= 0).
+     */
     void updateConfig (double sr, int bs)
     {
         if (sr > 0.0) lastSampleRate = sr;
         if (bs > 0)   lastBufferSize  = bs;
     }
 
-    // ── Physical input control (message thread) ───────────────────────
+    // ── Physical input control (message thread) ───────────────────────────────
+
+    /**
+     * @brief Atomically read and reset the physical input peak for channel @p ch.
+     * @param ch  0 = Left, 1 = Right.
+     * @return    Peak magnitude since the last call, or 0 if unavailable.
+     */
     float exchangeInputPeak (int ch)
     {
         return inputGainProcessor_ ? inputGainProcessor_->exchangePeak (ch) : 0.f;
     }
 
+    /**
+     * @brief Set the physical audio input gain.
+     *
+     * Has no effect when input is muted (mute takes priority).
+     * @param g  Linear gain value.
+     */
     void setInputGain (float g)
     {
         pendingInputGain_ = g;
@@ -616,6 +835,10 @@ public:
             inputGainProcessor_->setGain (g);
     }
 
+    /**
+     * @brief Mute or unmute the physical audio input.
+     * @param muted  true to silence the input.
+     */
     void setInputMuted (bool muted)
     {
         pendingInputMuted_ = muted;
@@ -623,30 +846,46 @@ public:
             inputGainProcessor_->setGain (muted ? 0.f : pendingInputGain_);
     }
 
+    /**
+     * @brief Enable or disable mono fold for the physical audio input.
+     * @param mono  true to sum L+R to mono.
+     */
     void setInputMono (bool mono)
     {
         pendingInputMono_ = mono;
         if (inputGainProcessor_) inputGainProcessor_->setMonoMode (mono);
     }
 
+    /** @brief Returns the current physical input gain. */
     float getInputGain()  const noexcept { return pendingInputGain_; }
+    /** @brief Returns true if the physical input is muted. */
     bool  isInputMuted()  const noexcept { return pendingInputMuted_; }
+    /** @brief Returns true if the physical input is in mono fold mode. */
     bool  isInputMono()   const noexcept { return pendingInputMono_; }
 
+    /**
+     * @brief Set the MIDI transpose amount applied to all keyboard input.
+     * @param semitones  Number of semitones to shift (positive = up).
+     */
     void setTranspose (int semitones)
     {
         pendingTranspose = semitones;
         if (kbProcessor != nullptr) kbProcessor->setTranspose (semitones);
     }
 
+    /**
+     * @brief Filter MIDI input to a single channel (0 = all channels pass).
+     * @param channel  MIDI channel 1–16, or 0 for omni.
+     */
     void setChannelFilter (int channel)
     {
         pendingChannel = channel;
         if (kbProcessor != nullptr) kbProcessor->setChannelFilter (channel);
     }
 
-    // ── Metronome API (message thread) ────────────────────────────────────
+    // ── Metronome API (message thread) ────────────────────────────────────────
 
+    /** @brief Start or stop the metronome click. @param p true = playing. */
     void setMetronomePlaying (bool p)
     {
         pendingMetroPlaying_ = p;
@@ -654,6 +893,7 @@ public:
             metronomeProcessor_->setPlaying (p);
     }
 
+    /** @brief Set the metronome tempo. @param bpm Beats per minute. */
     void setMetronomeBpm (double bpm)
     {
         pendingMetroBpm_ = bpm;
@@ -661,6 +901,7 @@ public:
             metronomeProcessor_->setBpm (bpm);
     }
 
+    /** @brief Set the metronome click volume. @param v Linear volume [0.0, 1.0]. */
     void setMetronomeVolume (float v)
     {
         pendingMetroVolume_ = v;
@@ -668,6 +909,7 @@ public:
             metronomeProcessor_->setVolume (v);
     }
 
+    /** @brief Set the time signature numerator. @param b Beats per bar (e.g. 4). */
     void setMetronomeBeatsPerBar (int b)
     {
         pendingMetroBeatsPerBar_ = b;
@@ -675,6 +917,7 @@ public:
             metronomeProcessor_->setBeatsPerBar (b);
     }
 
+    /** @brief Set the click sound style. @param t Normal or Techno. */
     void setMetronomeClickType (MetronomeProcessor::ClickType t)
     {
         pendingMetroClickType_ = t;
@@ -682,13 +925,25 @@ public:
             metronomeProcessor_->setClickType (t);
     }
 
-    bool   isMetronomePlaying()   const noexcept { return pendingMetroPlaying_; }
-    double getMetronomeBpm()      const noexcept { return pendingMetroBpm_; }
-    float  getMetronomeVolume()   const noexcept { return pendingMetroVolume_; }
-    int    getMetronomeBeatsPerBar()    const noexcept { return pendingMetroBeatsPerBar_; }
+    /** @brief Returns true if the metronome is currently playing. */
+    bool   isMetronomePlaying()      const noexcept { return pendingMetroPlaying_; }
+    /** @brief Returns the current metronome tempo in BPM. */
+    double getMetronomeBpm()         const noexcept { return pendingMetroBpm_; }
+    /** @brief Returns the metronome click volume. */
+    float  getMetronomeVolume()      const noexcept { return pendingMetroVolume_; }
+    /** @brief Returns the beats-per-bar setting. */
+    int    getMetronomeBeatsPerBar() const noexcept { return pendingMetroBeatsPerBar_; }
+    /** @brief Returns the click sound style. */
     MetronomeProcessor::ClickType getMetronomeClickType() const noexcept { return pendingMetroClickType_; }
 
-    // Wire the beat callback. Called by MetronomeManager after construction.
+    /**
+     * @brief Wire the beat callback fired on each metronome click.
+     *
+     * Called by MetronomeManager after construction.  Also applied to the
+     * current MetronomeProcessor node if one exists.
+     *
+     * @param cb  Callback receiving the beat number within the bar (1-based).
+     */
     void setMetronomeOnBeat (std::function<void(int)> cb)
     {
         metroOnBeat_ = std::move (cb);
@@ -696,7 +951,12 @@ public:
             metronomeProcessor_->onBeat = metroOnBeat_;
     }
 
-    // Tap tempo: call on every tap; updates BPM from average interval.
+    /**
+     * @brief Register a tap and update the BPM from the average tap interval.
+     *
+     * Keeps up to 8 taps within a 3-second window.  Requires at least 2 taps
+     * before updating the BPM.  Clamps output to [40, 240] BPM.
+     */
     void tapMetronomeTempo()
     {
         const juce::int64 now = juce::Time::currentTimeMillis();
@@ -718,8 +978,7 @@ private:
         return *slots[index];
     }
 
-    // Create a MetronomeProcessor node, apply pending state, and return it.
-    // Also stores the raw ptr in metronomeProcessor_.
+    /// Create a MetronomeProcessor node, apply all pending metronome state, and return it.
     AudioProcessorGraph::Node::Ptr addMetronomeNode()
     {
         auto* mp = new MetronomeProcessor();
@@ -733,7 +992,7 @@ private:
         return audioGraph.addNode (std::unique_ptr<MetronomeProcessor> (mp));
     }
 
-    // Connect fromNode → [metroNode] → outNode for both stereo channels.
+    /// Connect fromNode → metroNode → outNode for both stereo channels.
     void connectToOutput (AudioProcessorGraph::Node::Ptr fromNode,
                           AudioProcessorGraph::Node::Ptr outNode,
                           AudioProcessorGraph::Node::Ptr metroNode)
@@ -745,16 +1004,19 @@ private:
         }
     }
 
-    MidiKeyboardState& keyboardState;
-    AudioProcessorGraph audioGraph;
-    AudioProcessorPlayer audioProcessorPlayer;
-    AudioPluginFormatManager formatManager;
-    OwnedArray<PluginSlot> slots;
-    MidiInjectionsProcessor*  kbProcessor         = nullptr; // raw ptr; owned by audioGraph
-    GainAndMeterProcessor*    meterGainProcessor   = nullptr; // raw ptr; owned by audioGraph
-    MetronomeProcessor*       metronomeProcessor_  = nullptr; // raw ptr; owned by audioGraph
-    InputGainProcessor*       inputGainProcessor_  = nullptr; // raw ptr; owned by audioGraph
+    MidiKeyboardState&        keyboardState;
+    AudioProcessorGraph       audioGraph;
+    AudioProcessorPlayer      audioProcessorPlayer;
+    AudioPluginFormatManager  formatManager;
+    OwnedArray<PluginSlot>    slots;
 
+    /// Raw pointers into nodes owned by audioGraph.  Invalidated on every graph rebuild.
+    MidiInjectionsProcessor* kbProcessor        = nullptr;
+    GainAndMeterProcessor*   meterGainProcessor  = nullptr;
+    MetronomeProcessor*      metronomeProcessor_ = nullptr;
+    InputGainProcessor*      inputGainProcessor_ = nullptr;
+
+    // Pending state — survives graph rebuilds and is applied to new nodes.
     float  pendingGain        = 1.0f;
     int    pendingTranspose    = 0;
     int    pendingChannel      = 0;
@@ -764,14 +1026,13 @@ private:
     bool   pendingInputMuted_  = false;
     bool   pendingInputMono_   = false;
 
-    // Metronome pending state (survives graph rebuilds)
     bool   pendingMetroPlaying_     = false;
     double pendingMetroBpm_         = 120.0;
     float  pendingMetroVolume_      = 0.7f;
     int    pendingMetroBeatsPerBar_ = 4;
     MetronomeProcessor::ClickType pendingMetroClickType_ = MetronomeProcessor::ClickType::Normal;
-    std::function<void(int)>    metroOnBeat_;
-    std::deque<juce::int64>     tapTimes_;     // tap tempo history
+    std::function<void(int)> metroOnBeat_;
+    std::deque<juce::int64>  tapTimes_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioEngine)
 };
