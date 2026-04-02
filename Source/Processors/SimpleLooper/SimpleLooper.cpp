@@ -4,7 +4,10 @@
  *
  * Demonstrates the Processor SDK with a self-contained Win32 UI.
  * Supports REC / PLAY / OVERDUB / CLEAR via buttons and configurable
- * global hotkeys (A-Z, 0-9) suitable for USB foot switch assignment.
+ * global hotkeys (F1-F12, A-Z, 0-9) suitable for USB foot switch assignment.
+ *
+ * Default hotkeys are F1-F4 to avoid conflicts with LVH's virtual keyboard
+ * (which uses Z/S/X/D/C/V/G/B/H/N/J/M for MIDI note input).
  *
  * No JUCE dependency — pure Win32 + standard C++17.
  */
@@ -65,6 +68,11 @@ static constexpr UINT WM_UPDATE_STATE = WM_APP + 1;  ///< Posted from audio thre
  *               Press PLAY to stop.
  * - OVERDUBBING: buffer plays back and input is mixed (clamped to ±1) into it.
  *               Press OVERDUB again to return to PLAYING.
+ *
+ * **Hotkey defaults: F1=REC, F2=PLAY, F3=OVERDUB, F4=CLEAR**
+ * Function keys are used by default to avoid conflicts with LVH's virtual
+ * keyboard (Z/S/X/D/C/V/G/B/H/N/J/M) and general text input.
+ * Users may reassign to A-Z or 0-9, but those keys will be captured globally.
  *
  * **Thread safety:**
  * - processBlock() runs on the audio thread; all shared state uses std::atomic.
@@ -288,17 +296,45 @@ private:
     HWND editOverdub_ = nullptr;
     HWND editClear_   = nullptr;
 
-    char hotkeys_[4] = { 'R', 'P', 'O', 'C' };
+    // Hotkey strings: "F1"-"F12", "A"-"Z", "0"-"9".
+    // Default F1-F4 to avoid conflicts with LVH virtual keyboard (Z/X/C/V/... rows).
+    char hotkeys_[4][4] = { "F1", "F2", "F3", "F4" };
 
     // =========================================================================
     // Win32 helpers
     // =========================================================================
 
-    static UINT charToVK (char c) noexcept
+    /**
+     * @brief Convert a hotkey string to a Win32 virtual key code.
+     *
+     * Accepts:
+     *  - "F1" – "F12" → VK_F1 – VK_F12
+     *  - Single letter "A" – "Z" (or lowercase) → VK for that letter
+     *  - Single digit  "0" – "9"                → VK for that digit
+     *
+     * @return Virtual key code, or 0 if the string is not recognised.
+     */
+    static UINT strToVK (const char* s) noexcept
     {
+        if (!s || !s[0]) return 0;
+
+        // F-key: "F1" – "F12"
+        if (s[0] == 'F' || s[0] == 'f')
+        {
+            int n = 0;
+            for (int i = 1; s[i] >= '0' && s[i] <= '9'; ++i)
+                n = n * 10 + (s[i] - '0');
+            if (n >= 1 && n <= 12)
+                return static_cast<UINT> (VK_F1 + (n - 1));
+            return 0;
+        }
+
+        // Single letter or digit
+        char c = s[0];
         if (c >= 'a' && c <= 'z') c = static_cast<char> (c - 'a' + 'A');
         if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))
             return static_cast<UINT> (static_cast<unsigned char> (c));
+
         return 0;
     }
 
@@ -318,9 +354,9 @@ private:
     {
         if (!hwnd_) return;
         for (int i = 1; i <= 4; ++i) UnregisterHotKey (hwnd_, i);
-        auto reg = [&](int id, int idx)
+        auto reg = [&] (int id, int idx)
         {
-            UINT vk = charToVK (hotkeys_[idx]);
+            UINT vk = strToVK (hotkeys_[idx]);
             if (vk) RegisterHotKey (hwnd_, id, MOD_NOREPEAT, vk);
         };
         reg (HK_REC, 0); reg (HK_PLAY, 1); reg (HK_OVERDUB, 2); reg (HK_CLEAR, 3);
@@ -339,7 +375,7 @@ private:
 
         hwnd_ = CreateWindowExA (0, kWndClass, "Simple Looper",
                                  WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-                                 CW_USEDEFAULT, CW_USEDEFAULT, 392, 190,
+                                 CW_USEDEFAULT, CW_USEDEFAULT, 400, 200,
                                  nullptr, nullptr, g_hInst, this);
 
         if (hwnd_) { ShowWindow (hwnd_, SW_SHOW); UpdateWindow (hwnd_); }
@@ -347,12 +383,12 @@ private:
 
     void buildControls (HWND hwnd)
     {
-        const int pad = 12, btnW = 78, btnH = 30, gap = 6;
+        const int pad = 12, btnW = 78, btnH = 30, gap = 8;
 
         // State label
         lblState_ = CreateWindowExA (0, "STATIC", "State: IDLE",
                                      WS_CHILD | WS_VISIBLE | SS_CENTER,
-                                     pad, 10, 392 - pad * 2 - 16, 18,
+                                     pad, 10, 400 - pad * 2 - 16, 18,
                                      hwnd, nullptr, g_hInst, nullptr);
 
         // Buttons  y = 38
@@ -373,36 +409,36 @@ private:
         makeBtn ("CLEAR",   ID_BTN_CLEAR);
 
         // Hotkey label  y = 78
-        CreateWindowExA (0, "STATIC", "Hotkeys (A-Z / 0-9):",
+        CreateWindowExA (0, "STATIC", "Hotkeys (F1-F12 / A-Z / 0-9):",
                          WS_CHILD | WS_VISIBLE,
-                         pad, 78, 160, 16,
+                         pad, 78, 200, 16,
                          hwnd, nullptr, g_hInst, nullptr);
 
         // Edit boxes  y = 98, centred under each button
-        const int editY = 98, editW = 36, editH = 22;
+        // Width 44 to fit "F12"; limit 3 chars.
+        const int editY = 98, editW = 44, editH = 22;
         int ex = pad;
-        auto makeEdit = [&] (int id, char def, HWND& out)
+        auto makeEdit = [&] (int id, const char* def, HWND& out)
         {
-            char s[2] = { def, '\0' };
-            out = CreateWindowExA (WS_EX_CLIENTEDGE, "EDIT", s,
+            out = CreateWindowExA (WS_EX_CLIENTEDGE, "EDIT", def,
                                    WS_CHILD | WS_VISIBLE | ES_CENTER | ES_UPPERCASE,
                                    ex + (btnW - editW) / 2, editY, editW, editH,
                                    hwnd,
                                    reinterpret_cast<HMENU> (static_cast<intptr_t> (id)),
                                    g_hInst, nullptr);
-            SendMessageA (out, EM_LIMITTEXT, 1, 0);
+            SendMessageA (out, EM_LIMITTEXT, 3, 0);
             ex += btnW + gap;
         };
-        makeEdit (ID_EDIT_REC,     'R', editRec_);
-        makeEdit (ID_EDIT_PLAY,    'P', editPlay_);
-        makeEdit (ID_EDIT_OVERDUB, 'O', editOverdub_);
-        makeEdit (ID_EDIT_CLEAR,   'C', editClear_);
+        makeEdit (ID_EDIT_REC,     "F1", editRec_);
+        makeEdit (ID_EDIT_PLAY,    "F2", editPlay_);
+        makeEdit (ID_EDIT_OVERDUB, "F3", editOverdub_);
+        makeEdit (ID_EDIT_CLEAR,   "F4", editClear_);
 
         // Footer hint  y = 132
         CreateWindowExA (0, "STATIC",
                          "REC twice to stop & play.  X hides window (looper keeps running).",
                          WS_CHILD | WS_VISIBLE | SS_CENTER,
-                         pad, 132, 392 - pad * 2 - 16, 28,
+                         pad, 140, 400 - pad * 2 - 16, 28,
                          hwnd, nullptr, g_hInst, nullptr);
     }
 
@@ -419,7 +455,19 @@ private:
         }
         char buf[4]{};
         GetWindowTextA (edit, buf, sizeof (buf));
-        if (buf[0]) { hotkeys_[idx] = buf[0]; registerHotkeys(); }
+        if (buf[0])
+        {
+            buf[3] = '\0';
+            for (int i = 0; i < 3 && buf[i]; ++i)
+                if (buf[i] >= 'a' && buf[i] <= 'z')
+                    buf[i] = static_cast<char> (buf[i] - 'a' + 'A');
+            // Only store if it resolves to a valid VK
+            if (strToVK (buf))
+            {
+                for (int i = 0; i < 4; ++i) hotkeys_[idx][i] = buf[i];
+                registerHotkeys();
+            }
+        }
     }
 
     // =========================================================================
