@@ -71,6 +71,15 @@ public:
         for (int ch = 0; ch < numChannels; ++ch)
             buffer.copyFrom (ch, 0, tempOutput_, ch, 0, numSamples);
 
+        // Apply mixer gain / mute (audio thread — atomic reads).
+        {
+            const float g = mixerMuted.load (std::memory_order_relaxed)
+                                ? 0.f
+                                : mixerGain.load (std::memory_order_relaxed);
+            if (g != 1.0f)
+                buffer.applyGain (g);
+        }
+
         // Update peak atomics (audio thread → message thread).
         for (int ch = 0; ch < numChannels; ++ch)
         {
@@ -80,6 +89,11 @@ public:
                 peaks_[ch].store (p, std::memory_order_relaxed);
         }
     }
+
+    // ── Mixer control (set from message thread, read on audio thread) ─────────
+
+    std::atomic<float> mixerGain  { 1.0f };  ///< Output gain [0.0, 1.5]. Applied after processBlock.
+    std::atomic<bool>  mixerMuted { false };  ///< Mute flag — overrides mixerGain when true.
 
     // ── Peak metering (message thread) ────────────────────────────────────────
 

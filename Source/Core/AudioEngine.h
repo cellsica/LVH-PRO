@@ -647,9 +647,19 @@ public:
             // Insert ProcessorPlugin nodes in parallel with the instrument mix.
             // Each plugin receives the post-input-FX physical audio signal and
             // sums its output into the same targetNode.
-            for (auto* plugin : pendingProcessorPlugins_)
+            for (int pi = 0; pi < (int)pendingProcessorPlugins_.size(); ++pi)
             {
-                auto* rawNode = new ProcessorPluginNode (plugin);
+                auto* rawNode = new ProcessorPluginNode (pendingProcessorPlugins_[(size_t)pi]);
+
+                // Restore pending mixer state so settings survive graph rebuilds.
+                if (pi < (int)processorMixerStates_.size())
+                {
+                    rawNode->mixerGain.store  (processorMixerStates_[(size_t)pi].gain,
+                                               std::memory_order_relaxed);
+                    rawNode->mixerMuted.store (processorMixerStates_[(size_t)pi].muted,
+                                               std::memory_order_relaxed);
+                }
+
                 auto  procNode = audioGraph.addNode (
                     std::unique_ptr<ProcessorPluginNode> (rawNode));
                 activeProcessorNodes_.push_back (rawNode);
@@ -799,8 +809,37 @@ public:
      */
     void setProcessorPlugins (std::vector<IProcessorPlugin*> plugins)
     {
+        processorMixerStates_.resize (plugins.size());  // preserves existing values, fills new with defaults
         pendingProcessorPlugins_ = std::move (plugins);
         rebuildBridgeGraph ({}, {});
+    }
+
+    /**
+     * @brief Set the output gain for a processor plugin strip.
+     * @param idx   Index into the processor plugin list (same order as setProcessorPlugins).
+     * @param gain  Linear gain value [0.0, 1.5].
+     */
+    void setProcessorGain (int idx, float gain)
+    {
+        if (idx >= 0 && idx < (int)processorMixerStates_.size())
+            processorMixerStates_[(size_t)idx].gain = gain;
+        if (idx >= 0 && idx < (int)activeProcessorNodes_.size())
+            if (auto* n = activeProcessorNodes_[(size_t)idx])
+                n->mixerGain.store (gain, std::memory_order_relaxed);
+    }
+
+    /**
+     * @brief Mute or unmute a processor plugin strip.
+     * @param idx    Index into the processor plugin list.
+     * @param muted  true to silence the output.
+     */
+    void setProcessorMuted (int idx, bool muted)
+    {
+        if (idx >= 0 && idx < (int)processorMixerStates_.size())
+            processorMixerStates_[(size_t)idx].muted = muted;
+        if (idx >= 0 && idx < (int)activeProcessorNodes_.size())
+            if (auto* n = activeProcessorNodes_[(size_t)idx])
+                n->mixerMuted.store (muted, std::memory_order_relaxed);
     }
 
     /**
@@ -1081,6 +1120,9 @@ private:
 
     // Pending state — survives graph rebuilds and is applied to new nodes.
     std::vector<IProcessorPlugin*> pendingProcessorPlugins_;   ///< Set via setProcessorPlugins().
+
+    struct ProcessorMixerState { float gain = 1.0f; bool muted = false; };
+    std::vector<ProcessorMixerState> processorMixerStates_;    ///< Per-plugin mixer state (parallel to pendingProcessorPlugins_).
 
     float  pendingGain        = 1.0f;
     int    pendingTranspose    = 0;

@@ -89,6 +89,7 @@ void UIManager::setMainComponent (MainComponent* mc)
                                  .getChildFile ("Processors");
         processorManager_->scanAndLoad (procDir);
         audioEngine_.setProcessorPlugins (processorManager_->getPluginInstances());
+        updateMixerProcessorStrips();
     }
 
     // Speaker mute button + volume slider (share savedGain)
@@ -322,6 +323,9 @@ void UIManager::toggleMixerWindow (bool show)
                 if (absTarget >= 0)
                     bridgeManager_.moveBridge (fx, absTarget);
             };
+
+            // Wire processor plugin strip callbacks and populate strips
+            updateMixerProcessorStrips();
         }
 
         // Restore pin state
@@ -1012,6 +1016,39 @@ void UIManager::loadMixerMappings()
             }
         }
     }
+}
+
+// ── Processor strip update ────────────────────────────────────────────────
+
+void UIManager::updateMixerProcessorStrips()
+{
+    if (mixerWindow_ == nullptr || processorManager_ == nullptr)
+        return;
+
+    juce::Array<ProcessorStripInfo> infos;
+    for (auto* plugin : processorManager_->getPluginInstances())
+    {
+        ProcessorStripInfo info;
+        info.name         = juce::String (plugin->getName());
+        info.accentColour = juce::Colour (plugin->getAccentColour());
+        infos.add (info);
+    }
+
+    mixerWindow_->updateProcessorStrips (infos);
+
+    mixerWindow_->getProcessorPeaks = [this] (int idx) -> std::pair<float,float>
+    {
+        return { audioEngine_.exchangeProcessorPeak (idx, 0),
+                 audioEngine_.exchangeProcessorPeak (idx, 1) };
+    };
+    mixerWindow_->onProcessorGainChange = [this] (int idx, float v)
+    {
+        audioEngine_.setProcessorGain (idx, v);
+    };
+    mixerWindow_->onProcessorMuteChange = [this] (int idx, bool m)
+    {
+        audioEngine_.setProcessorMuted (idx, m);
+    };
 }
 
 // ── Plugin favorites ──────────────────────────────────────────────────────

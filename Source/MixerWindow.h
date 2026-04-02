@@ -755,6 +755,15 @@ private:
 };
 
 // =====================================================================
+// ProcessorStripInfo — display metadata for a virtual processor strip
+// =====================================================================
+struct ProcessorStripInfo
+{
+    juce::String name;
+    juce::Colour accentColour { juce::Colour (0xff556688) };
+};
+
+// =====================================================================
 // MixerContentComponent
 // =====================================================================
 class MixerContentComponent : public Component,
@@ -831,6 +840,37 @@ public:
     std::function<std::pair<float,float>()>           getInputPeaks;
     std::function<void()>                             onAddInputFx;     // fired when INPUT strip + slot clicked
     std::function<void(bool)>                         onInputMonoChange; // fired when MONO button toggled
+
+    // Processor plugin strip callbacks
+    std::function<void(int, float)>                   onProcessorGainChange;
+    std::function<void(int, bool)>                    onProcessorMuteChange;
+    std::function<std::pair<float,float>(int)>        getProcessorPeaks;
+
+    // Rebuild the processor plugin strip section.
+    // Called by UIManager after ProcessorManager finishes scanning.
+    void updateProcessorStrips (const juce::Array<ProcessorStripInfo>& processors)
+    {
+        processorStrips_.clear();
+        bool metersOn = meterBtn->getToggleState();
+
+        for (int i = 0; i < processors.size(); ++i)
+        {
+            const auto& info = processors[i];
+            auto* strip = processorStrips_.add (new MixerStrip (info.name, info.accentColour));
+            strip->setMeterVisible (metersOn);
+            addAndMakeVisible (*strip);
+
+            const int idx = i;
+            strip->onFaderChange = [this, idx] (float v) {
+                if (onProcessorGainChange) onProcessorGainChange (idx, v);
+            };
+            strip->onMuteChange = [this, idx] (bool m) {
+                if (onProcessorMuteChange) onProcessorMuteChange (idx, m);
+            };
+        }
+
+        resized();
+    }
 
     // Called by UIManager to highlight/remove learn indicator on a strip.
     // b == nullptr targets the Master strip.
@@ -1084,6 +1124,14 @@ public:
         const int stripW = 80;
         for (auto* s : strips)
             s->setBounds (area.removeFromLeft (stripW).reduced (2));
+
+        // Processor strips — separated by a small gap from the bridge strips.
+        if (! processorStrips_.isEmpty())
+        {
+            area.removeFromLeft (8);
+            for (auto* s : processorStrips_)
+                s->setBounds (area.removeFromLeft (stripW).reduced (2));
+        }
     }
 
 private:
@@ -1099,6 +1147,14 @@ private:
             auto [l, r] = getInputPeaks();
             inputStrip_->updateMeter (l, r);
         }
+        if (getProcessorPeaks)
+        {
+            for (int i = 0; i < processorStrips_.size(); ++i)
+            {
+                auto [l, r] = getProcessorPeaks (i);
+                processorStrips_[i]->updateMeter (l, r);
+            }
+        }
     }
 
     void applyMeterVisibility()
@@ -1107,6 +1163,7 @@ private:
         for (auto* s : strips) s->setMeterVisible (v);
         if (inputStrip_) inputStrip_->setMeterVisible (v);
         masterStrip->setMeterVisible (v);
+        for (auto* s : processorStrips_) s->setMeterVisible (v);
 
         // Stop the timer when meters are hidden to save CPU
         if (v) startTimer (kMeterIntervalMs);
@@ -1132,7 +1189,8 @@ private:
     juce::OwnedArray<MixerStrip>     strips;
     std::unique_ptr<MixerStrip>      inputStrip_;
     std::unique_ptr<MixerStrip>      masterStrip;
-    juce::Array<BridgeInstance*>     bridges_;   // parallel to strips[]
+    juce::Array<BridgeInstance*>     bridges_;        // parallel to strips[]
+    juce::OwnedArray<MixerStrip>     processorStrips_; // virtual processor plugin strips
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MixerContentComponent)
 };
@@ -1184,6 +1242,16 @@ public:
         content->onInputMonoChange = [this] (bool mono) {
             if (onInputMonoChange) onInputMonoChange (mono);
         };
+        content->onProcessorGainChange = [this] (int idx, float v) {
+            if (onProcessorGainChange) onProcessorGainChange (idx, v);
+        };
+        content->onProcessorMuteChange = [this] (int idx, bool m) {
+            if (onProcessorMuteChange) onProcessorMuteChange (idx, m);
+        };
+        content->getProcessorPeaks = [this] (int idx) -> std::pair<float,float> {
+            return getProcessorPeaks ? getProcessorPeaks (idx)
+                                     : std::make_pair (0.f, 0.f);
+        };
         setContentOwned (content, true);
         setResizable (true, false);
         centreWithSize (720, 480);
@@ -1205,6 +1273,12 @@ public:
     {
         if (content != nullptr)
             content->updateBridges (instrumentBridges, effectBridges);
+    }
+
+    void updateProcessorStrips (const juce::Array<ProcessorStripInfo>& processors)
+    {
+        if (content != nullptr)
+            content->updateProcessorStrips (processors);
     }
 
     // Sync MASTER fader from Core slider (no callback loop)
@@ -1230,6 +1304,9 @@ public:
     std::function<std::pair<float,float>()>          getInputPeaks;
     std::function<void()>                            onAddInputFx;
     std::function<void(bool)>                        onInputMonoChange;
+    std::function<void(int, float)>                  onProcessorGainChange;
+    std::function<void(int, bool)>                   onProcessorMuteChange;
+    std::function<std::pair<float,float>(int)>       getProcessorPeaks;
 
     void setInputStripValues (float gain, bool muted, bool mono = false)
     {

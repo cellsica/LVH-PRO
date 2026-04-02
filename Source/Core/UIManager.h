@@ -273,6 +273,7 @@ private:
     void showMainMenu();
     void showPluginPicker (BridgeInstance::Role fixedRole, BridgeInstance* parentInstrument = nullptr);
     void showPluginPicker (BridgeInstance::Role fixedRole, const juce::String& parentPath);
+    void updateMixerProcessorStrips();
     juce::File getBridgeStartDir() const;
     void executeSafeSetOperation (std::function<void()> action);
 
