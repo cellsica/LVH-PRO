@@ -80,6 +80,7 @@ target_sources(LVH
         Source/Core/PluginPickerComponent.cpp
         Source/Core/StageManager.cpp
         Source/Core/VisualizerManager.cpp
+        Source/Core/ProcessorManager.cpp
         Source/MetronomeManager.cpp
         Source/VUMeterWindow.cpp
         Source/VisualizerWindow.cpp

@@ -16,6 +16,7 @@ class MainComponent;
 class SettingsWindow;
 class StageWindow;
 class PluginPickerComponent;
+class ProcessorManager;
 
 /**
  * @class UIManager
@@ -272,6 +273,16 @@ private:
     void showMainMenu();
     void showPluginPicker (BridgeInstance::Role fixedRole, BridgeInstance* parentInstrument = nullptr);
     void showPluginPicker (BridgeInstance::Role fixedRole, const juce::String& parentPath);
+    /** @brief Rebuild MixerWindow processor strips and (re)wire their callbacks.
+     *
+     *  Reads the current plugin list from processorManager_, builds
+     *  ProcessorStripInfo entries, and calls MixerWindow::updateProcessorStrips().
+     *  Also wires getProcessorPeaks / onProcessorGainChange / onProcessorMuteChange
+     *  on the window to the corresponding AudioEngine methods.
+     *
+     *  Safe to call when mixerWindow_ is nullptr (no-op).
+     */
+    void updateMixerProcessorStrips();
     juce::File getBridgeStartDir() const;
     void executeSafeSetOperation (std::function<void()> action);
 
@@ -322,6 +333,7 @@ private:
     std::unique_ptr<VisualizerManager>    visualizerManager_;
     std::unique_ptr<VisualizerWindow>     visualizerWindow_;
     std::unique_ptr<juce::DocumentWindow> pluginPickerWindow_;
+    std::unique_ptr<ProcessorManager>     processorManager_;
 
     LearnState                               learnState_;
     std::map<juce::String, MixerMidiMapping> mixerMappings_;

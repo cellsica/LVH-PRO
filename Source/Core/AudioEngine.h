@@ -11,6 +11,7 @@
 #include "MidiInjectionsProcessor.h"
 #include "../BridgeProcessors.h"
 #include "../MetronomeManager.h"
+#include "ProcessorPluginNode.h"
 
 using namespace juce;
 
@@ -566,6 +567,7 @@ public:
         kbProcessor         = nullptr;
         meterGainProcessor  = nullptr;
         metronomeProcessor_ = nullptr;
+        activeProcessorNodes_.clear();
         getOrCreateSlot().detach();
         audioGraph.clear();
 
@@ -641,6 +643,34 @@ public:
             auto& targetNode = (firstMasterFxNode != nullptr) ? firstMasterFxNode : mgNode;
             for (int ch = 0; ch < 2; ++ch)
                 audioGraph.addConnection ({{inputLastNode->nodeID, ch}, {targetNode->nodeID, ch}});
+
+            // Insert ProcessorPlugin nodes in parallel with the instrument mix.
+            // Each plugin receives the post-input-FX physical audio signal and
+            // sums its output into the same targetNode.
+            for (int pi = 0; pi < (int)pendingProcessorPlugins_.size(); ++pi)
+            {
+                auto* rawNode = new ProcessorPluginNode (pendingProcessorPlugins_[(size_t)pi]);
+
+                // Restore pending mixer state so settings survive graph rebuilds.
+                if (pi < (int)processorMixerStates_.size())
+                {
+                    rawNode->mixerGain.store  (processorMixerStates_[(size_t)pi].gain,
+                                               std::memory_order_relaxed);
+                    rawNode->mixerMuted.store (processorMixerStates_[(size_t)pi].muted,
+                                               std::memory_order_relaxed);
+                }
+
+                auto  procNode = audioGraph.addNode (
+                    std::unique_ptr<ProcessorPluginNode> (rawNode));
+                activeProcessorNodes_.push_back (rawNode);
+
+                for (int ch = 0; ch < 2; ++ch)
+                    audioGraph.addConnection ({{inputLastNode->nodeID, ch},
+                                               {procNode->nodeID,     ch}});
+                for (int ch = 0; ch < 2; ++ch)
+                    audioGraph.addConnection ({{procNode->nodeID,  ch},
+                                               {targetNode->nodeID, ch}});
+            }
         }
 
         connectToOutput (mgNode, outNode, metroNode);
@@ -761,6 +791,77 @@ public:
 
     /** @brief Returns true if a plugin is loaded in the direct (non-Bridge) slot. */
     bool isPluginLoaded() const { return ! slots.isEmpty() && slots[0]->isLoaded(); }
+
+    // ── Processor plugins (message thread) ───────────────────────────────────
+
+    /**
+     * @brief Set the list of processor plugins to include in every subsequent
+     *        rebuildBridgeGraph() call.
+     *
+     * Each plugin is wrapped in a ProcessorPluginNode and inserted into the
+     * audio graph.  The pointers must remain valid for the lifetime of the
+     * engine (ProcessorManager owns them).
+     *
+     * Triggers an immediate rebuildBridgeGraph() with empty bridge lists so
+     * that the plugins are active before any bridge connects.
+     *
+     * @param plugins  Raw pointers to loaded IProcessorPlugin instances.
+     */
+    void setProcessorPlugins (std::vector<IProcessorPlugin*> plugins)
+    {
+        processorMixerStates_.resize (plugins.size());  // preserves existing values, fills new with defaults
+        pendingProcessorPlugins_ = std::move (plugins);
+        rebuildBridgeGraph ({}, {});
+    }
+
+    /**
+     * @brief Set the output gain for a processor plugin strip.
+     * @param idx   Index into the processor plugin list (same order as setProcessorPlugins).
+     * @param gain  Linear gain value [0.0, 1.5].
+     */
+    void setProcessorGain (int idx, float gain)
+    {
+        if (idx >= 0 && idx < (int)processorMixerStates_.size())
+            processorMixerStates_[(size_t)idx].gain = gain;
+        if (idx >= 0 && idx < (int)activeProcessorNodes_.size())
+            if (auto* n = activeProcessorNodes_[(size_t)idx])
+                n->mixerGain.store (gain, std::memory_order_relaxed);
+    }
+
+    /**
+     * @brief Mute or unmute a processor plugin strip.
+     * @param idx    Index into the processor plugin list.
+     * @param muted  true to silence the output.
+     */
+    void setProcessorMuted (int idx, bool muted)
+    {
+        if (idx >= 0 && idx < (int)processorMixerStates_.size())
+            processorMixerStates_[(size_t)idx].muted = muted;
+        if (idx >= 0 && idx < (int)activeProcessorNodes_.size())
+            if (auto* n = activeProcessorNodes_[(size_t)idx])
+                n->mixerMuted.store (muted, std::memory_order_relaxed);
+    }
+
+    /**
+     * @brief Atomically read and reset the output peak for a processor plugin.
+     *
+     * @param processorIdx  Index into the last-built processor node list.
+     * @param ch            0 = Left, 1 = Right.
+     * @return              Peak magnitude since the last call, or 0 if unavailable.
+     */
+    float exchangeProcessorPeak (int processorIdx, int ch) noexcept
+    {
+        if (processorIdx >= 0 && processorIdx < (int)activeProcessorNodes_.size())
+            if (auto* node = activeProcessorNodes_[(size_t)processorIdx])
+                return node->exchangePeak (ch);
+        return 0.f;
+    }
+
+    /** @brief Returns the number of processor plugin nodes in the current graph. */
+    int getNumActiveProcessorNodes() const noexcept
+    {
+        return (int)activeProcessorNodes_.size();
+    }
 
     /**
      * @brief Returns the PluginSlot at @p index, or nullptr if out of range.
@@ -1011,12 +1112,18 @@ private:
     OwnedArray<PluginSlot>    slots;
 
     /// Raw pointers into nodes owned by audioGraph.  Invalidated on every graph rebuild.
-    MidiInjectionsProcessor* kbProcessor        = nullptr;
-    GainAndMeterProcessor*   meterGainProcessor  = nullptr;
-    MetronomeProcessor*      metronomeProcessor_ = nullptr;
-    InputGainProcessor*      inputGainProcessor_ = nullptr;
+    MidiInjectionsProcessor*         kbProcessor          = nullptr;
+    GainAndMeterProcessor*           meterGainProcessor   = nullptr;
+    MetronomeProcessor*              metronomeProcessor_  = nullptr;
+    InputGainProcessor*              inputGainProcessor_  = nullptr;
+    std::vector<ProcessorPluginNode*> activeProcessorNodes_;   ///< Parallel to pendingProcessorPlugins_.
 
     // Pending state — survives graph rebuilds and is applied to new nodes.
+    std::vector<IProcessorPlugin*> pendingProcessorPlugins_;   ///< Set via setProcessorPlugins().
+
+    struct ProcessorMixerState { float gain = 1.0f; bool muted = false; };
+    std::vector<ProcessorMixerState> processorMixerStates_;    ///< Per-plugin mixer state (parallel to pendingProcessorPlugins_).
+
     float  pendingGain        = 1.0f;
     int    pendingTranspose    = 0;
     int    pendingChannel      = 0;
