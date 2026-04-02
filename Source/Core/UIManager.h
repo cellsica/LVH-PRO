@@ -273,6 +273,15 @@ private:
     void showMainMenu();
     void showPluginPicker (BridgeInstance::Role fixedRole, BridgeInstance* parentInstrument = nullptr);
     void showPluginPicker (BridgeInstance::Role fixedRole, const juce::String& parentPath);
+    /** @brief Rebuild MixerWindow processor strips and (re)wire their callbacks.
+     *
+     *  Reads the current plugin list from processorManager_, builds
+     *  ProcessorStripInfo entries, and calls MixerWindow::updateProcessorStrips().
+     *  Also wires getProcessorPeaks / onProcessorGainChange / onProcessorMuteChange
+     *  on the window to the corresponding AudioEngine methods.
+     *
+     *  Safe to call when mixerWindow_ is nullptr (no-op).
+     */
     void updateMixerProcessorStrips();
     juce::File getBridgeStartDir() const;
     void executeSafeSetOperation (std::function<void()> action);

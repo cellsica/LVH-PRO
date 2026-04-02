@@ -1,5 +1,11 @@
 #pragma once
 
+/**
+ * @file ProcessorManager.h
+ * @brief Lifecycle manager for IProcessorPlugin DLL plugins loaded from the
+ *        `<exe dir>/Processors/` directory.
+ */
+
 #include <JuceHeader.h>
 #include "../ProcessorSDK/IProcessorPlugin.h"
 #include <vector>
@@ -26,7 +32,10 @@
 class ProcessorManager
 {
 public:
+    /** @brief Default constructor.  No plugins are loaded until scanAndLoad() is called. */
     ProcessorManager();
+
+    /** @brief Calls unloadAll() to ensure every plugin receives shutdown() before destruction. */
     ~ProcessorManager();
 
     // ── Plugin management ─────────────────────────────────────────────────────
@@ -73,11 +82,21 @@ public:
     std::vector<IProcessorPlugin*> getPluginInstances() const;
 
 private:
+    /**
+     * @struct LoadedProcessor
+     * @brief Owns one successfully loaded DLL and its IProcessorPlugin instance.
+     *
+     * Destruction order is critical: the instance must be shut down and deleted
+     * **before** the DynamicLibrary handle is released, so that the DLL's code
+     * remains mapped while the destructor runs.  The member declaration order
+     * (library first, instance second, but deleted in reverse) combined with the
+     * explicit destructor guarantees this.
+     */
     struct LoadedProcessor
     {
-        std::unique_ptr<juce::DynamicLibrary> library;
-        IProcessorPlugin* instance = nullptr;
-        juce::String      name;
+        std::unique_ptr<juce::DynamicLibrary> library;   ///< Keeps the DLL mapped.
+        IProcessorPlugin* instance = nullptr;             ///< Plugin object allocated inside the DLL.
+        juce::String      name;                           ///< DLL filename without extension.
 
         ~LoadedProcessor()
         {
@@ -91,10 +110,10 @@ private:
         }
     };
 
-    std::vector<std::unique_ptr<LoadedProcessor>> processors_;
-    juce::File processorsDir_;
-    double lastSampleRate_ = 44100.0;
-    int    lastBufferSize_ = 512;
+    std::vector<std::unique_ptr<LoadedProcessor>> processors_; ///< All successfully loaded plugins.
+    juce::File processorsDir_;       ///< Directory last passed to scanAndLoad(); used by rescan.
+    double lastSampleRate_ = 44100.0; ///< Cached sample rate applied on load and prepareAll().
+    int    lastBufferSize_ = 512;     ///< Cached buffer size applied on load and prepareAll().
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ProcessorManager)
 };

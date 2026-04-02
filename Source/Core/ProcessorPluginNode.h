@@ -1,5 +1,11 @@
 #pragma once
 
+/**
+ * @file ProcessorPluginNode.h
+ * @brief JUCE AudioProcessor wrapper that adapts an IProcessorPlugin for use
+ *        in the AudioProcessorGraph.
+ */
+
 #include <JuceHeader.h>
 #include "../ProcessorSDK/IProcessorPlugin.h"
 #include <array>
@@ -25,6 +31,11 @@
 class ProcessorPluginNode : public juce::AudioProcessor
 {
 public:
+    /**
+     * @brief Constructs the node with a non-owning pointer to the plugin.
+     * @param plugin  IProcessorPlugin instance managed by ProcessorManager.
+     *                Must remain valid for the lifetime of this node.
+     */
     explicit ProcessorPluginNode (IProcessorPlugin* plugin)
         : juce::AudioProcessor (BusesProperties()
               .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
@@ -37,6 +48,15 @@ public:
 
     // ── AudioProcessor ────────────────────────────────────────────────────────
 
+    /**
+     * @brief Allocates internal buffers and calls IProcessorPlugin::initialise().
+     *
+     * Called by the AudioProcessorGraph whenever the audio device configuration
+     * changes (sample rate, buffer size).  Resets peak atomics.
+     *
+     * @param sampleRate    Current device sample rate in Hz.
+     * @param maxBufferSize Maximum buffer size that will be passed to processBlock().
+     */
     void prepareToPlay (double sampleRate, int maxBufferSize) override
     {
         peaks_[0].store (0.f);
@@ -48,8 +68,22 @@ public:
             plugin_->initialise (sampleRate, maxBufferSize);
     }
 
+    /** @brief No-op — resources are released in IProcessorPlugin::shutdown(). */
     void releaseResources() override {}
 
+    /**
+     * @brief Routes one audio block through the IProcessorPlugin, then applies
+     *        mixer gain/mute and updates peak meters.
+     *
+     * Called from the audio thread.  Steps performed in order:
+     * 1. Build `const float**` / `float**` pointer views of @p buffer.
+     * 2. Call IProcessorPlugin::processBlock() with those views.
+     * 3. Copy the plugin output back into @p buffer.
+     * 4. Apply mixerGain / mixerMuted (atomic reads; no blocking).
+     * 5. Update peaks_ atomics for the message-thread meter display.
+     *
+     * @param buffer   Stereo input/output buffer.  Contents are replaced on return.
+     */
     void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
     {
         if (plugin_ == nullptr) return;
@@ -92,8 +126,13 @@ public:
 
     // ── Mixer control (set from message thread, read on audio thread) ─────────
 
-    std::atomic<float> mixerGain  { 1.0f };  ///< Output gain [0.0, 1.5]. Applied after processBlock.
-    std::atomic<bool>  mixerMuted { false };  ///< Mute flag — overrides mixerGain when true.
+    /** @brief Linear output gain applied after processBlock().  Range [0.0, 1.5].
+     *         Written on the message thread by AudioEngine::setProcessorGain(). */
+    std::atomic<float> mixerGain  { 1.0f };
+
+    /** @brief When true the output is silenced regardless of mixerGain.
+     *         Written on the message thread by AudioEngine::setProcessorMuted(). */
+    std::atomic<bool>  mixerMuted { false };
 
     // ── Peak metering (message thread) ────────────────────────────────────────
 

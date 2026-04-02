@@ -755,12 +755,22 @@ private:
 };
 
 // =====================================================================
-// ProcessorStripInfo — display metadata for a virtual processor strip
+// ProcessorStripInfo
 // =====================================================================
+
+/**
+ * @struct ProcessorStripInfo
+ * @brief Display metadata used to create one virtual processor strip in
+ *        the Mixer Console.
+ *
+ * Built by UIManager::updateMixerProcessorStrips() from the loaded
+ * IProcessorPlugin instances and passed to
+ * MixerContentComponent::updateProcessorStrips().
+ */
 struct ProcessorStripInfo
 {
-    juce::String name;
-    juce::Colour accentColour { juce::Colour (0xff556688) };
+    juce::String name;                                      ///< Strip label (IProcessorPlugin::getName()).
+    juce::Colour accentColour { juce::Colour (0xff556688) }; ///< Header accent colour (IProcessorPlugin::getAccentColour()).
 };
 
 // =====================================================================
@@ -841,13 +851,29 @@ public:
     std::function<void()>                             onAddInputFx;     // fired when INPUT strip + slot clicked
     std::function<void(bool)>                         onInputMonoChange; // fired when MONO button toggled
 
-    // Processor plugin strip callbacks
+    // ── Processor plugin strip callbacks ──────────────────────────────────────
+
+    /** @brief Fired when a processor strip fader moves.
+     *         @p first  = processor index, @p second = linear gain [0.0, 1.5]. */
     std::function<void(int, float)>                   onProcessorGainChange;
+
+    /** @brief Fired when a processor strip mute button is toggled.
+     *         @p first  = processor index, @p second = muted state. */
     std::function<void(int, bool)>                    onProcessorMuteChange;
+
+    /** @brief Called each meter-refresh tick to obtain peak levels for strip @p idx.
+     *         Returns {peakL, peakR}. */
     std::function<std::pair<float,float>(int)>        getProcessorPeaks;
 
-    // Rebuild the processor plugin strip section.
-    // Called by UIManager after ProcessorManager finishes scanning.
+    /**
+     * @brief Rebuild the processor plugin strip section.
+     *
+     * Replaces all existing processor strips with new MixerStrip instances
+     * built from @p processors.  Bridge strips are not affected.
+     * Called by UIManager after ProcessorManager::scanAndLoad() completes.
+     *
+     * @param processors  Ordered list of display metadata — one entry per plugin.
+     */
     void updateProcessorStrips (const juce::Array<ProcessorStripInfo>& processors)
     {
         processorStrips_.clear();
@@ -1275,6 +1301,14 @@ public:
             content->updateBridges (instrumentBridges, effectBridges);
     }
 
+    /**
+     * @brief Rebuild the processor plugin strip section inside the Mixer Console.
+     *
+     * Delegates to MixerContentComponent::updateProcessorStrips().
+     * Bridge strips are not affected.
+     *
+     * @param processors  Ordered list of display metadata.
+     */
     void updateProcessorStrips (const juce::Array<ProcessorStripInfo>& processors)
     {
         if (content != nullptr)
@@ -1304,8 +1338,11 @@ public:
     std::function<std::pair<float,float>()>          getInputPeaks;
     std::function<void()>                            onAddInputFx;
     std::function<void(bool)>                        onInputMonoChange;
+    /** @brief Fired when a processor strip fader moves (idx, linear gain). */
     std::function<void(int, float)>                  onProcessorGainChange;
+    /** @brief Fired when a processor strip mute button toggles (idx, muted). */
     std::function<void(int, bool)>                   onProcessorMuteChange;
+    /** @brief Queried each meter tick; returns {peakL, peakR} for strip @p idx. */
     std::function<std::pair<float,float>(int)>       getProcessorPeaks;
 
     void setInputStripValues (float gain, bool muted, bool mono = false)
