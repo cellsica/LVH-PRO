@@ -50,7 +50,7 @@ static constexpr int  HK_REC          = 1;
 static constexpr int  HK_PLAY         = 2;
 static constexpr int  HK_OVERDUB      = 3;
 static constexpr int  HK_CLEAR        = 4;
-static constexpr UINT WM_UPDATE_STATE = WM_APP + 1;  ///< Posted from audio thread to update state label.
+static constexpr UINT TIMER_UI        = 1;   ///< 100 ms UI refresh timer.
 
 // =============================================================================
 // SimpleLooper
@@ -77,7 +77,7 @@ static constexpr UINT WM_UPDATE_STATE = WM_APP + 1;  ///< Posted from audio thre
  * **Thread safety:**
  * - processBlock() runs on the audio thread; all shared state uses std::atomic.
  * - Action methods (doRec, doPlay, doOverdub, doClear) run on the message thread.
- * - PostMessageA is used to update the UI label from the audio thread.
+ * - UI label is refreshed by a 100 ms WM_TIMER on the message thread.
  */
 class SimpleLooper : public IProcessorPlugin
 {
@@ -118,6 +118,7 @@ public:
 
         if (hwnd_ != nullptr)
         {
+            KillTimer (hwnd_, TIMER_UI);
             for (int i = 1; i <= 4; ++i)
                 UnregisterHotKey (hwnd_, i);
             DestroyWindow (hwnd_);
@@ -191,13 +192,6 @@ public:
             }
             }
         }
-
-        // Notify UI on state change (PostMessageA is safe cross-thread)
-        if (st != lastPostedState_)
-        {
-            lastPostedState_ = st;
-            if (hwnd_) PostMessageA (hwnd_, WM_UPDATE_STATE, static_cast<WPARAM> (st), 0);
-        }
     }
 
     const char*  getName()         const override { return "Simple Looper"; }
@@ -212,7 +206,6 @@ public:
         const LooperState st = state_.load();
         if (st == LooperState::Idle)
         {
-            // Clear buffer then start recording
             for (int c = 0; c < 2; ++c)
                 std::fill (buf_[c].begin(), buf_[c].end(), 0.0f);
             loopLen_ .store (0); writePos_.store (0); readPos_.store (0);
@@ -257,7 +250,6 @@ public:
 
     void doClear()
     {
-        // Set IDLE first so the audio thread stops accessing the buffer
         state_.store (LooperState::Idle, std::memory_order_release);
         for (int c = 0; c < 2; ++c)
             std::fill (buf_[c].begin(), buf_[c].end(), 0.0f);
@@ -268,7 +260,7 @@ private:
     // =========================================================================
     // Constants
     // =========================================================================
-    static constexpr double kMaxSeconds = 300.0;           ///< Maximum loop length (5 minutes).
+    static constexpr double kMaxSeconds = 300.0;
     static constexpr LPCSTR kWndClass   = "LVH_SimpleLooper_v1";
 
     // =========================================================================
@@ -284,8 +276,6 @@ private:
     std::atomic<size_t>      readPos_  { 0 };
     std::atomic<size_t>      loopLen_  { 0 };
 
-    LooperState lastPostedState_ { LooperState::Idle };  ///< Audio thread only — no atomic needed.
-
     // =========================================================================
     // UI state
     // =========================================================================
@@ -296,29 +286,85 @@ private:
     HWND editOverdub_ = nullptr;
     HWND editClear_   = nullptr;
 
-    // Hotkey strings: "F1"-"F12", "A"-"Z", "0"-"9".
-    // Default F1-F4 to avoid conflicts with LVH virtual keyboard (Z/X/C/V/... rows).
+    // Original EDIT class WndProc, stored once and reused for all 4 edit boxes.
+    static WNDPROC s_origEditProc;
+
     char hotkeys_[4][4] = { "F1", "F2", "F3", "F4" };
+
+    // =========================================================================
+    // UI helpers
+    // =========================================================================
+
+    /** @brief Format elapsed seconds as MM:SS into buf (must be >= 6 bytes). */
+    static void fmtTime (char* buf, int totalSec)
+    {
+        buf[0] = '0' + (totalSec / 60 / 10) % 10;
+        buf[1] = '0' + (totalSec / 60) % 10;
+        buf[2] = ':';
+        buf[3] = '0' + (totalSec % 60 / 10);
+        buf[4] = '0' + (totalSec % 60 % 10);
+        buf[5] = '\0';
+    }
+
+    /**
+     * @brief Refresh the state label (called every 100 ms from WM_TIMER).
+     *
+     * - RECORDING   : "State: RECORDING   00:12"
+     * - PLAYING     : "State: PLAYING   [00:12]"
+     * - OVERDUBBING : "State: OVERDUBBING   [00:12]"
+     * - IDLE        : "State: IDLE"
+     */
+    void updateStateLabel()
+    {
+        if (!lblState_) return;
+
+        const LooperState st      = state_  .load (std::memory_order_acquire);
+        const size_t      loopLen = loopLen_.load (std::memory_order_relaxed);
+        char buf[64]{};
+        char timeBuf[8]{};
+
+        switch (st)
+        {
+        case LooperState::Recording:
+        {
+            const size_t wp  = writePos_.load (std::memory_order_relaxed);
+            const int    sec = (sampleRate_ > 0) ? static_cast<int> (wp / sampleRate_) : 0;
+            fmtTime (timeBuf, sec);
+            wsprintfA (buf, "State: RECORDING   %s", timeBuf);
+            break;
+        }
+        case LooperState::Playing:
+        {
+            const int sec = (sampleRate_ > 0 && loopLen > 0)
+                                ? static_cast<int> (loopLen / sampleRate_) : 0;
+            fmtTime (timeBuf, sec);
+            wsprintfA (buf, "State: PLAYING   [%s]", timeBuf);
+            break;
+        }
+        case LooperState::Overdubbing:
+        {
+            const int sec = (sampleRate_ > 0 && loopLen > 0)
+                                ? static_cast<int> (loopLen / sampleRate_) : 0;
+            fmtTime (timeBuf, sec);
+            wsprintfA (buf, "State: OVERDUBBING   [%s]", timeBuf);
+            break;
+        }
+        default:
+            lstrcpyA (buf, "State: IDLE");
+            break;
+        }
+
+        SetWindowTextA (lblState_, buf);
+    }
 
     // =========================================================================
     // Win32 helpers
     // =========================================================================
 
-    /**
-     * @brief Convert a hotkey string to a Win32 virtual key code.
-     *
-     * Accepts:
-     *  - "F1" – "F12" → VK_F1 – VK_F12
-     *  - Single letter "A" – "Z" (or lowercase) → VK for that letter
-     *  - Single digit  "0" – "9"                → VK for that digit
-     *
-     * @return Virtual key code, or 0 if the string is not recognised.
-     */
     static UINT strToVK (const char* s) noexcept
     {
         if (!s || !s[0]) return 0;
 
-        // F-key: "F1" – "F12"
         if (s[0] == 'F' || s[0] == 'f')
         {
             int n = 0;
@@ -329,25 +375,12 @@ private:
             return 0;
         }
 
-        // Single letter or digit
         char c = s[0];
         if (c >= 'a' && c <= 'z') c = static_cast<char> (c - 'a' + 'A');
         if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))
             return static_cast<UINT> (static_cast<unsigned char> (c));
 
         return 0;
-    }
-
-    static const char* stateStr (LooperState st) noexcept
-    {
-        switch (st)
-        {
-        case LooperState::Idle:        return "State: IDLE";
-        case LooperState::Recording:   return "State: RECORDING  [press REC to stop]";
-        case LooperState::Playing:     return "State: PLAYING";
-        case LooperState::Overdubbing: return "State: OVERDUBBING";
-        }
-        return "State: ?";
     }
 
     void registerHotkeys()
@@ -371,7 +404,7 @@ private:
         wc.hCursor       = LoadCursor (nullptr, IDC_ARROW);
         wc.hbrBackground = reinterpret_cast<HBRUSH> (COLOR_BTNFACE + 1);
         wc.lpszClassName = kWndClass;
-        RegisterClassExA (&wc);  // ok if already registered
+        RegisterClassExA (&wc);
 
         hwnd_ = CreateWindowExA (0, kWndClass, "Simple Looper",
                                  WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
@@ -385,13 +418,11 @@ private:
     {
         const int pad = 12, btnW = 78, btnH = 30, gap = 8;
 
-        // State label
         lblState_ = CreateWindowExA (0, "STATIC", "State: IDLE",
                                      WS_CHILD | WS_VISIBLE | SS_CENTER,
                                      pad, 10, 400 - pad * 2 - 16, 18,
                                      hwnd, nullptr, g_hInst, nullptr);
 
-        // Buttons  y = 38
         int bx = pad;
         auto makeBtn = [&] (LPCSTR lbl, int id)
         {
@@ -408,14 +439,11 @@ private:
         makeBtn ("OVERDUB", ID_BTN_OVERDUB);
         makeBtn ("CLEAR",   ID_BTN_CLEAR);
 
-        // Hotkey label  y = 78
         CreateWindowExA (0, "STATIC", "Hotkeys (F1-F12 / A-Z / 0-9):",
                          WS_CHILD | WS_VISIBLE,
                          pad, 78, 200, 16,
                          hwnd, nullptr, g_hInst, nullptr);
 
-        // Edit boxes  y = 98, centred under each button
-        // Width 44 to fit "F12"; limit 3 chars.
         const int editY = 98, editW = 44, editH = 22;
         int ex = pad;
         auto makeEdit = [&] (int id, const char* def, HWND& out)
@@ -427,6 +455,13 @@ private:
                                    reinterpret_cast<HMENU> (static_cast<intptr_t> (id)),
                                    g_hInst, nullptr);
             SendMessageA (out, EM_LIMITTEXT, 3, 0);
+
+            // Subclass to intercept Enter key → move focus to parent window.
+            WNDPROC prev = reinterpret_cast<WNDPROC> (
+                SetWindowLongPtrA (out, GWLP_WNDPROC,
+                                   reinterpret_cast<LONG_PTR> (EditSubclassProc)));
+            if (!s_origEditProc) s_origEditProc = prev;  // store once; same for all EDIT controls
+
             ex += btnW + gap;
         };
         makeEdit (ID_EDIT_REC,     "F1", editRec_);
@@ -434,7 +469,6 @@ private:
         makeEdit (ID_EDIT_OVERDUB, "F3", editOverdub_);
         makeEdit (ID_EDIT_CLEAR,   "F4", editClear_);
 
-        // Footer hint  y = 132
         CreateWindowExA (0, "STATIC",
                          "REC twice to stop & play.  X hides window (looper keeps running).",
                          WS_CHILD | WS_VISIBLE | SS_CENTER,
@@ -461,13 +495,26 @@ private:
             for (int i = 0; i < 3 && buf[i]; ++i)
                 if (buf[i] >= 'a' && buf[i] <= 'z')
                     buf[i] = static_cast<char> (buf[i] - 'a' + 'A');
-            // Only store if it resolves to a valid VK
             if (strToVK (buf))
             {
                 for (int i = 0; i < 4; ++i) hotkeys_[idx][i] = buf[i];
                 registerHotkeys();
             }
         }
+    }
+
+    // =========================================================================
+    // Edit subclass procedure — intercepts Enter to defocus
+    // =========================================================================
+
+    static LRESULT CALLBACK EditSubclassProc (HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
+    {
+        if (msg == WM_KEYDOWN && wp == VK_RETURN)
+        {
+            SetFocus (GetParent (hwnd));
+            return 0;
+        }
+        return CallWindowProcA (s_origEditProc, hwnd, msg, wp, lp);
     }
 
     // =========================================================================
@@ -483,7 +530,7 @@ private:
             self = reinterpret_cast<SimpleLooper*> (
                 reinterpret_cast<CREATESTRUCTA*> (lp)->lpCreateParams);
             SetWindowLongPtrA (hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR> (self));
-            self->hwnd_ = hwnd;  // set early so WM_CREATE can call registerHotkeys
+            self->hwnd_ = hwnd;
         }
         else
         {
@@ -497,6 +544,11 @@ private:
         case WM_CREATE:
             self->buildControls (hwnd);
             self->registerHotkeys();
+            SetTimer (hwnd, TIMER_UI, 100, nullptr);
+            return 0;
+
+        case WM_TIMER:
+            if (wp == TIMER_UI) self->updateStateLabel();
             return 0;
 
         case WM_COMMAND:
@@ -522,24 +574,20 @@ private:
             }
             return 0;
 
-        case WM_UPDATE_STATE:
-            if (self->lblState_)
-                SetWindowTextA (self->lblState_,
-                                stateStr (static_cast<LooperState> (wp)));
-            return 0;
-
         case WM_CLOSE:
-            // Hide instead of destroying — looper keeps running in the background.
             ShowWindow (hwnd, SW_HIDE);
             return 0;
 
         case WM_DESTROY:
+            KillTimer (hwnd, TIMER_UI);
             return 0;
         }
 
         return DefWindowProcA (hwnd, msg, wp, lp);
     }
 };
+
+WNDPROC SimpleLooper::s_origEditProc = nullptr;
 
 // =============================================================================
 // DLL entry point
