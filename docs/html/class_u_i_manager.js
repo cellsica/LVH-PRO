@@ -1,0 +1,27 @@
+var class_u_i_manager =
+[
+    [ "UIManager", "class_u_i_manager.html#af328383d2b784cde47cd0c064ba66f4a", null ],
+    [ "getFavoriteIds", "class_u_i_manager.html#a003e1bcd60ba28035140810ef489294d", null ],
+    [ "getMasterVolume", "class_u_i_manager.html#a23ffbd58e061036bd412a67461d8576b", null ],
+    [ "getMixerWindowBounds", "class_u_i_manager.html#a9a9e13452b798445c97e9117fd73106e", null ],
+    [ "handleMidiRemote", "class_u_i_manager.html#ae6cf445fc92d96a6c6c5eb6f9b75ce58", null ],
+    [ "isFavorite", "class_u_i_manager.html#a219048bb3c3c934fbdea4e84fa90171a", null ],
+    [ "isMixerWindowVisible", "class_u_i_manager.html#a041fdda1d1ecfe386aa8fc421d52f7b9", null ],
+    [ "launchBridgeFileChooser", "class_u_i_manager.html#a4c8402da2c3cebd2a064186bb2b3b055", null ],
+    [ "openSettings", "class_u_i_manager.html#a5c283b0534197ef1abbf4cfba7898ad1", null ],
+    [ "refreshAllWindows", "class_u_i_manager.html#a3f4330c93da6dd80bfbddc4f4573b3dc", null ],
+    [ "restoreMixerWindow", "class_u_i_manager.html#a66bb3d9791675cd76a43fce0311b9ca4", null ],
+    [ "restoreStageWindow", "class_u_i_manager.html#a092d047633442c197f4907c2506f5cbd", null ],
+    [ "setMainComponent", "class_u_i_manager.html#a42e8a03b749ca3a7bfd006eb6e89591f", null ],
+    [ "setMasterVolume", "class_u_i_manager.html#abae29b2a722ac017426c5653acb2cb65", null ],
+    [ "shutdown", "class_u_i_manager.html#acc5dcb8b57952b097bcb254db9ad56a5", null ],
+    [ "syncMetronomeWindowFromEngine", "class_u_i_manager.html#a272337b575e36028bb235fea6d7f6495", null ],
+    [ "toggleFavorite", "class_u_i_manager.html#a12b99b0d01a94c797eb80d505ed7926d", null ],
+    [ "toggleMetronomeWindow", "class_u_i_manager.html#aa209e4e5a94cca991a1460fb5cc115b5", null ],
+    [ "toggleMixerWindow", "class_u_i_manager.html#a21e5b27f981d5645b721c729ad813f7d", null ],
+    [ "toggleStageWindow", "class_u_i_manager.html#a2989ab89ee0fa7b9b23842266f12ffce", null ],
+    [ "toggleVisualizerWindow", "class_u_i_manager.html#a9b8af877c8af0103b97ac578a065feab", null ],
+    [ "toggleVuMeterWindow", "class_u_i_manager.html#af277761a302b184b40995ce3bd7933a5", null ],
+    [ "updateMixerBridges", "class_u_i_manager.html#a47e4d5a49948bda3b6ff7defd50f4886", null ],
+    [ "onStartPluginScan", "class_u_i_manager.html#a81d9bca874c3daf8763a9b4aa81ee278", null ]
+];

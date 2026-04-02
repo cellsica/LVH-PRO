@@ -82,13 +82,16 @@
 - [x] **Mission 047: Doxygen 拡張 ＆ コード品質向上 (Docs Expansion)** ✅ (しずく047)
 - [x] Mission 046: Doxygen 対応 (Documentation) ✅ (しずく046)
 - [x] Mission 040: プラグイン・お気に入り機能 ✅ (Mission 039 から昇格)
+- [x] **Mission 048: プラグイン非表示 (Disable) 機能** ✅ (しずく048)
+    - [x] **Disable Menu**: 右クリックでプラグインを「非表示」にする機能実装
+    - [x] **Disabled List (Settings)**: Plugins サブメニュー内の非表示リスト実装
+    - [x] **Restore**: リストからの復帰機能実装
+    - [x] **Exclusion**: 再スキャン時の除外処理実装
 
 ## 確認済みの未完了タスク 🔜
-- [ ] **Mission 048: カラーテーマ ＆ ステージ視認性向上 (Dark/Light)**
-    - [ ] **ThemeManager**: テーマ切替マネージャーの実装
-    - [ ] **SVG アイコン**: アイコンの SVG 移行と着色基盤
-    - [ ] **LookAndFeel**: テーマ対応した共通デザインコンポーネント (Mission 048 用に新設)
-- [ ] **Mission 049: 独立ビジュアライザーアプリ (VisualizerApp)**
+- [ ] **Mission 049: Processor Plugin 基盤 (SDK)**
+- [ ] **Mission 050: カラーテーマ ＆ ステージ視認性向上 (Dark/Light)**
+- [ ] **Mission 051: 独立ビジュアライザーアプリ (VisualizerApp)**
 
 ## 直近の作業ログ 📝
 - [2026-03-17] かえで：Bridge プロトタイプの最小構成ソースコードを実装。
@@ -154,3 +157,4 @@
 - [2026-04-01] しずく：Mission 046 完了！Doxygen 基盤構築と主要クラス・SDK ドキュメント化を達成。
 - [2026-04-01] しずく：Mission 047 完了！AudioEngine / BridgeInstance / StageManager の深部までドキュメント化。
 - [2026-04-01] かえで：Mission 048 のタスクを策定。
+- [2026-04-02] しずく：Mission 048 完了！右クリックでのプラグイン非表示と設定画面からの復元機能を実装。Ver 0.10.0-alpha。

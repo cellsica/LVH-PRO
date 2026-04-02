@@ -69,7 +69,18 @@
       "Bash(grep -E \"\\\\.\\(md|json|xml|cmake|txt\\)$\")",
       "Bash(git push:*)",
       "Bash(git checkout:*)",
-      "Bash(git merge:*)"
+      "Bash(git merge:*)",
+      "Bash(tasklist)",
+      "Bash(grep -v \"^$\")",
+      "Bash(git branch:*)",
+      "Bash(git rebase:*)",
+      "Bash(git stash:*)",
+      "Bash(doxygen --version)",
+      "Bash(\"/c/Program Files/doxygen/bin/doxygen\" --version)",
+      "Bash(grep -E \"\\\\.\\(h|cpp\\)$\")",
+      "Bash(doxygen Doxyfile)",
+      "Bash(\"/c/Program Files/doxygen/bin/doxygen\" C:/Projects/LVH-PRO/Doxyfile)",
+      "Bash(iconv -f cp932 -t utf-8)"
     ]
   }
 }

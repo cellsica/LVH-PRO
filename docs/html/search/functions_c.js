@@ -1,0 +1,23 @@
+var searchData=
+[
+  ['saveproject_0',['saveProject',['../class_project_serializer.html#a3abb2e98b0a0e4cf200a74a680adf506',1,'ProjectSerializer']]],
+  ['scanandload_1',['scanAndLoad',['../class_visualizer_manager.html#a2a9c83743fb9b0496fff0dc48eb20819',1,'VisualizerManager']]],
+  ['sendheartbeat_2',['sendHeartbeat',['../class_bridge_ipc_client.html#a232e3f395c77350f615f3888cb13669d',1,'BridgeIpcClient']]],
+  ['sendmidi_3',['sendMidi',['../class_midi_routing_manager.html#a44e0e84399892e28df1e4d32d126f464',1,'MidiRoutingManager::sendMidi()'],['../class_core_ipc_manager.html#a4e478c514eb64b20527fe42517ae9991',1,'CoreIpcManager::sendMidi()']]],
+  ['setcurrentplugin_4',['setCurrentPlugin',['../class_visualizer_manager.html#a3e7cdad27b7f7cc1a1435b975cf98ce1',1,'VisualizerManager']]],
+  ['setcurrentprojectfile_5',['setCurrentProjectFile',['../class_project_serializer.html#a064787694a8d406fe3dd826025e388d8',1,'ProjectSerializer']]],
+  ['setmaincomponent_6',['setMainComponent',['../class_u_i_manager.html#a42e8a03b749ca3a7bfd006eb6e89591f',1,'UIManager']]],
+  ['setmastervolume_7',['setMasterVolume',['../class_u_i_manager.html#abae29b2a722ac017426c5653acb2cb65',1,'UIManager']]],
+  ['setopacity_8',['setOpacity',['../class_visualizer_window.html#ae8850134cdd3ae240cbb746aedcc26cc',1,'VisualizerWindow']]],
+  ['setpendingtarget_9',['setPendingTarget',['../class_midi_routing_manager.html#a5995bfef789e9ecc4c02c05155bd3e6d',1,'MidiRoutingManager']]],
+  ['setroutetoall_10',['setRouteToAll',['../class_midi_routing_manager.html#a6631e3caf5ad65e5ce1d75745738d013',1,'MidiRoutingManager']]],
+  ['setroutetotarget_11',['setRouteToTarget',['../class_midi_routing_manager.html#a352f5299cf8dbd8f226cb11bc3e19a58',1,'MidiRoutingManager']]],
+  ['setswitchinterval_12',['setSwitchInterval',['../class_visualizer_manager.html#ac043da33b2719de61e6fa79936f011d9',1,'VisualizerManager']]],
+  ['setswitchmode_13',['setSwitchMode',['../class_visualizer_manager.html#a68c55cc47bc2cbe1152ffb8581c002a7',1,'VisualizerManager']]],
+  ['show_14',['show',['../class_visualizer_window.html#a62c3de8c1d352083776e61c7dfbe592f',1,'VisualizerWindow']]],
+  ['shutdown_15',['shutdown',['../class_u_i_manager.html#acc5dcb8b57952b097bcb254db9ad56a5',1,'UIManager::shutdown()'],['../class_radial_visualizer.html#a7d67726766b582ab8f496aedf7a9ee43',1,'RadialVisualizer::shutdown()'],['../class_starfield_visualizer.html#af730952787674cbe6046dcc02043a16f',1,'StarfieldVisualizer::shutdown()'],['../class_test_visualizer.html#ae85af5606397d24619f3aebe65ef0b7a',1,'TestVisualizer::shutdown()'],['../class_i_visualizer_plugin.html#a7ff5967789f4c8a35b7b222d3fc0c9ad',1,'IVisualizerPlugin::shutdown()']]],
+  ['signaldone_16',['signalDone',['../class_sync_events.html#a77a5f0cec85d14c99ad026da04758b4a',1,'SyncEvents']]],
+  ['signalrequest_17',['signalRequest',['../class_sync_events.html#a19f510d78a82da29df8bf9a9ddc80746',1,'SyncEvents']]],
+  ['startpipe_18',['startPipe',['../class_core_ipc_manager.html#ad29b524e57ed97dd58f8eafe309ca49b',1,'CoreIpcManager']]],
+  ['syncmetronomewindowfromengine_19',['syncMetronomeWindowFromEngine',['../class_u_i_manager.html#a272337b575e36028bb235fea6d7f6495',1,'UIManager']]]
+];

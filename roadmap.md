@@ -202,20 +202,34 @@ Live-ready (ライブ演奏特化) な堅牢性を守りつつ、シンセとエ
 - [x] **ソースコード・コメントの整備**: 主要なクラス・関数へのヘッダコメント（doxygen 形式）の徹底。
 - [x] **SDK ドキュメント統合**: Visualizer SDK だけでなく、本体の内部 API も含めた自動ドキュメント生成。
 
-##### Mission 047: Doxygen 拡張 ＆ コード品質向上 (Docs Expansion)
-- [ ] **全クラスの完全ドキュメント化**: `AudioEngine`, `BridgeInstance`, `StageManager`, `LookAndFeel` 等、046 で対象外だった全クラスへの Doxygen コメント付与。
-- [ ] **コード品質の統一**: 主要な内部データ構造やスレッド安全性に関する詳細記述。
+##### Mission 047: Doxygen 拡張 ＆ コード品質向上 (Docs Expansion) ✅
+- [x] **全クラスの完全ドキュメント化**: `AudioEngine`, `BridgeInstance`, `StageManager` 等の全主要クラスをドキュメント化。
+- [x] **コード品質の統一**: スレッド安全性、信号経路、IPC シーケンスを Doxygen 上で詳細に記述。
 
-##### Mission 048: カラーテーマ ＆ ステージ視認性向上 (Dark/Light)
+#### Mission 048: プラグイン非表示 (Disable) 機能 ✅ (しずく048)
+- [x] **Disable Menu**: 右クリックでプラグインを「非表示（Disable）」に設定。
+- [x] **Disabled List (Settings)**: Settings 内の Plugins サブメニューにて、非表示中のプラグインをリスト表示。
+- [x] **Restore Interface**: リストからの Restore 操作で選択メニューへ復帰させる仕組み。
+- [x] **Exclusion Logic**: 再スキャン時にも非表示リスト内のものを除外するフィルタリング処理。
+
+#### Mission 049: Processor Plugin 基盤 (SDK) 🔜
+- [ ] **IProcessorPlugin**: Instrument / Line 入力をプラグインに渡し、加工結果を仮想チャンネルとして Mixer に返す基盤。
+- [ ] **非同期リターン設計**: Looper、MP3録音、エフェクト等を想定した非同期処理。
+- [ ] **Processor SDK**: Visualizer SDK と並行した外部開発用 SDK の整備。
+
+#### Mission 050: カラーテーマ ＆ ステージ視認性向上 (Dark/Light)
 - [ ] **ThemeManager の新設**: 背景、文字、アクセントの基調色を一括管理・動的変更する機構。
 - [ ] **マルチテーマ実装**: 暗いステージ用の「Dark Mode (Default)」と、視認性を重視した「High Contrast Light Mode」。
 - [ ] **アイコンのカラー同期**: SVG 化によるテーマカラーとの動的な着色連携。
 
-#### Mission 049: 独立ビジュアライザーアプリ (VisualizerApp)
-- [ ] **サブプロジェクト構築**: `VisualizerApp/` を LVH リポジトリ内のサブプロジェクトとして追加。CMake の `add_subdirectory` で一括ビルド可能な構成。
-- [ ] **WASAPI Loopback 音声取得**: Windows の音声出力を丸ごとキャプチャする `WasapiLoopbackSource` の実装。YouTube・CD 再生等あらゆる音声に対応。
-- [ ] **再生タイトル取得**: `FindWindow` + `GetWindowText` により Chrome 等のウィンドウタイトルから再生中の曲名・動画タイトルを取得してオーバーレイ表示。
-- [ ] **ウィンドウ磁石吸着**: 対象ウィンドウ（Chrome 等）の位置・サイズを追跡し、全体・中央・右下・左下・右上等の指定位置にビジュアライザーをスナップ表示。対象ウィンドウの移動・最小化に追従。
+#### Mission 051: 独立ビジュアライザーアプリ (VisualizerApp)
+- [ ] **サブプロジェクト構築**: `VisualizerApp/` を LVH リポジトリ内に作成。
+- [ ] **WASAPI Loopback 音声取得**: Windows の音声出力を丸ごとキャプチャ。
+- [ ] **再生タイトル取得**: ウィンドウタイトルから曲名を取得してオーバーレイ。
+- [ ] **ウィンドウ磁石吸着**: 指定ウィンドウの位置・サイズを追跡し追従。
+
+### 将来的な拡張 (優先度：高)
+- **リソースカスタマイズ**: 外部からの画像/リソース読み込み、およびボタンデザインの全面刷新（リプレース）。
 
 ### 将来的な拡張 (優先度：低)
 - **リソースカスタマイズ**: 外部からの画像/リソース読み込み、およびボタンデザインの全面刷新（リプレース）。

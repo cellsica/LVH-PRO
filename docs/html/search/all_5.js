@@ -1,0 +1,28 @@
+var searchData=
+[
+  ['gain_0',['gain',['../struct_project_serializer_1_1_mixer_settings.html#aa33a219f9c22d9eb6ad01f933fba95f1',1,'ProjectSerializer::MixerSettings']]],
+  ['gainandmeterprocessor_1',['GainAndMeterProcessor',['../class_gain_and_meter_processor.html',1,'']]],
+  ['generalsettingspage_2',['GeneralSettingsPage',['../class_general_settings_page.html',1,'']]],
+  ['generatename_3',['generateName',['../class_shared_memory_buffer.html#a80daa80bb513412f5d7f4f2d3380339b',1,'SharedMemoryBuffer']]],
+  ['getbpm_4',['getBPM',['../class_visualizer_manager.html#addae1df4a6c86c7eea9573186523149a',1,'VisualizerManager::getBPM()'],['../class_i_audio_source.html#a9180514ea1f79b5299e5f1c45799d892',1,'IAudioSource::getBPM()']]],
+  ['getbridges_5',['getBridges',['../class_bridge_manager.html#a9c95c984d993136e23da5c215dc20c93',1,'BridgeManager']]],
+  ['getcorewindowbounds_6',['getCoreWindowBounds',['../class_project_serializer.html#a22372350c5d55f12e8a08c111b4e7423',1,'ProjectSerializer']]],
+  ['getcurrentpluginindex_7',['getCurrentPluginIndex',['../class_visualizer_manager.html#a772e3a31c314743670e89b2631bf45fe',1,'VisualizerManager']]],
+  ['getcurrentprojectfile_8',['getCurrentProjectFile',['../class_project_serializer.html#a88010e89e381efefd129501d1cdb4947',1,'ProjectSerializer']]],
+  ['getfavoriteids_9',['getFavoriteIds',['../class_u_i_manager.html#a003e1bcd60ba28035140810ef489294d',1,'UIManager']]],
+  ['getfftdata_10',['getFFTData',['../class_visualizer_manager.html#a697b9780333466586266a135fdddf177',1,'VisualizerManager::getFFTData()'],['../class_i_audio_source.html#a65dfbb33d8d1c740a0949fa343b28b23',1,'IAudioSource::getFFTData()']]],
+  ['getlayout_11',['getLayout',['../class_shared_memory_buffer.html#a6a68a0f822848d82ec2fd42da5667222',1,'SharedMemoryBuffer']]],
+  ['getmastervolume_12',['getMasterVolume',['../class_project_serializer.html#a48fb3b690e0000979ef7a7d2375a7a39',1,'ProjectSerializer::getMasterVolume'],['../class_u_i_manager.html#a23ffbd58e061036bd412a67461d8576b',1,'UIManager::getMasterVolume()']]],
+  ['getmixervisible_13',['getMixerVisible',['../class_project_serializer.html#af62663dfd8fed49a43598663a0386036',1,'ProjectSerializer']]],
+  ['getmixerwindowbounds_14',['getMixerWindowBounds',['../class_project_serializer.html#ad4bb09cb3f7262afc80155f5b0c973cd',1,'ProjectSerializer::getMixerWindowBounds'],['../class_u_i_manager.html#a9a9e13452b798445c97e9117fd73106e',1,'UIManager::getMixerWindowBounds()']]],
+  ['getnumplugins_15',['getNumPlugins',['../class_visualizer_manager.html#a2583520e634e970a047c55994ec1fd83',1,'VisualizerManager']]],
+  ['getoctaveoffset_16',['getOctaveOffset',['../class_midi_routing_manager.html#a85fe071dcaddc735382d8cf37c34a28e',1,'MidiRoutingManager']]],
+  ['getpluginnames_17',['getPluginNames',['../class_visualizer_manager.html#a8eaa7a8df6f43dfa7883028522de3485',1,'VisualizerManager']]],
+  ['getpreferredheight_18',['getPreferredHeight',['../class_radial_visualizer.html#a4b1c08a6ba4ddae5b7167146534cf684',1,'RadialVisualizer::getPreferredHeight()'],['../class_starfield_visualizer.html#a7f17d8d1e215ec8820f312c0e54fb7e8',1,'StarfieldVisualizer::getPreferredHeight()'],['../class_i_visualizer_plugin.html#acf0561d238787dea510165785d4e16ba',1,'IVisualizerPlugin::getPreferredHeight()']]],
+  ['getpreferredsize_19',['getPreferredSize',['../class_visualizer_manager.html#ab8fe02b04984cf05d994b4644e661532',1,'VisualizerManager']]],
+  ['getpreferredwidth_20',['getPreferredWidth',['../class_radial_visualizer.html#a964a0649ff55342bb35dfdf319cc5d60',1,'RadialVisualizer::getPreferredWidth()'],['../class_starfield_visualizer.html#aa2cf80cb6bba3144dc3c4233403dc706',1,'StarfieldVisualizer::getPreferredWidth()'],['../class_i_visualizer_plugin.html#af2561cbfec4266e6afd744c121e31109',1,'IVisualizerPlugin::getPreferredWidth()']]],
+  ['getrecentbridgefiles_21',['getRecentBridgeFiles',['../class_bridge_manager.html#a741fa9ce63c598b65e9e43e112011e1a',1,'BridgeManager']]],
+  ['getsamplerate_22',['getSampleRate',['../class_visualizer_manager.html#ac30ab2b3f844b027a467321bb0b1bc9f',1,'VisualizerManager::getSampleRate()'],['../class_i_audio_source.html#aca57f80192b38f37f9069f8a420c7b89',1,'IAudioSource::getSampleRate()']]],
+  ['gettarget_23',['getTarget',['../class_midi_routing_manager.html#aadedadef132b2e557840a37ddc566ac4',1,'MidiRoutingManager']]],
+  ['getwaveformdata_24',['getWaveformData',['../class_visualizer_manager.html#aae0fdcf159e2c384bbe61d7cdb8f329f',1,'VisualizerManager::getWaveformData()'],['../class_i_audio_source.html#ad0092f4bf6ccebd8710f9136fdecdbe3',1,'IAudioSource::getWaveformData()']]]
+];
