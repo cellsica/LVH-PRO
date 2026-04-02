@@ -71,6 +71,14 @@ void UIManager::setMainComponent (MainComponent* mc)
             favoriteIds_.addTokens (saved, "|", "");
     }
 
+    // Load persisted disabled plugins
+    if (auto* prefs = appProperties_.getUserSettings())
+    {
+        juce::String saved = prefs->getValue ("pluginDisabled", "");
+        if (saved.isNotEmpty())
+            disabledIds_.addTokens (saved, "|", "");
+    }
+
     // Speaker mute button + volume slider (share savedGain)
     auto savedGain = std::make_shared<double> (1.0);
 
@@ -783,6 +791,12 @@ void UIManager::openSettings()
             if (vuMeterWindow_ != nullptr)
                 vuMeterWindow_->setOpacity (v / 100.f);
         };
+        cbs.onGetDisabledPlugins = [this] () -> juce::StringArray {
+            return getDisabledIds();
+        };
+        cbs.onRestorePlugin = [this] (const juce::String& id) {
+            toggleDisabled (id);  // removes from disabled list
+        };
         settingsWindow_ = std::make_unique<SettingsWindow> (
             deviceManager_, appProperties_.getUserSettings(), cbs);
     }
@@ -1009,6 +1023,27 @@ bool UIManager::isFavorite (const juce::String& pluginId) const
     return favoriteIds_.contains (pluginId);
 }
 
+// ── Plugin disabled ───────────────────────────────────────────────────────
+
+void UIManager::toggleDisabled (const juce::String& pluginId)
+{
+    if (disabledIds_.contains (pluginId))
+        disabledIds_.removeString (pluginId);
+    else
+        disabledIds_.add (pluginId);
+
+    if (auto* prefs = appProperties_.getUserSettings())
+    {
+        prefs->setValue ("pluginDisabled", disabledIds_.joinIntoString ("|"));
+        prefs->saveIfNeeded();
+    }
+}
+
+bool UIManager::isDisabled (const juce::String& pluginId) const
+{
+    return disabledIds_.contains (pluginId);
+}
+
 BridgeInstance* UIManager::findBridgeByPath (const juce::String& path) const
 {
     for (auto* b : bridgeManager_.getBridges())
@@ -1102,7 +1137,9 @@ void UIManager::showPluginPicker (BridgeInstance::Role fixedRole, const juce::St
     auto* picker = new PluginPickerComponent (
         filteredTypes,
         [this] (const juce::String& id) { return isFavorite (id); },
-        [this] (const juce::String& id) { toggleFavorite (id); });
+        [this] (const juce::String& id) { toggleFavorite (id); },
+        [this] (const juce::String& id) { return isDisabled (id); },
+        [this] (const juce::String& id) { toggleDisabled (id); });
 
     picker->onPluginSelected = [this, fixedRole, parentPath] (const juce::PluginDescription& desc)
     {

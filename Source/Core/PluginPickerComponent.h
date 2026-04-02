@@ -30,7 +30,9 @@ public:
     PluginPickerComponent (
         const juce::Array<juce::PluginDescription>& allPlugins,
         std::function<bool(const juce::String&)>    isFavFn,
-        std::function<void(const juce::String&)>    toggleFavFn);
+        std::function<void(const juce::String&)>    toggleFavFn,
+        std::function<bool(const juce::String&)>    isDisabledFn,
+        std::function<void(const juce::String&)>    toggleDisabledFn);
 
     ~PluginPickerComponent() override = default;
 
@@ -58,6 +60,8 @@ private:
     juce::Array<juce::PluginDescription>    filtered_;
     std::function<bool(const juce::String&)>  isFav_;
     std::function<void(const juce::String&)>  toggleFav_;
+    std::function<bool(const juce::String&)>  isDisabled_;
+    std::function<void(const juce::String&)>  toggleDisabled_;
 
     // ── UI widgets ────────────────────────────────────────────────────────
     juce::TextEditor  searchBox_;
@@ -74,6 +78,7 @@ private:
     public:
         std::function<void(int)> onFavToggle;
         std::function<void(int)> onPluginClicked;
+        std::function<void(int)> onRightClicked;
 
         PluginRowComponent();
         void update (const juce::String& name, bool isFav, int rowIndex, bool selected);

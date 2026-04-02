@@ -118,6 +118,32 @@ private:
 };
 
 // =====================================================================
+// DisabledPluginsPage
+// =====================================================================
+class DisabledPluginsPage : public Component, public ListBoxModel
+{
+public:
+    std::function<StringArray()>          onGetDisabledPlugins;
+    std::function<void(const String&)>    onRestorePlugin;
+
+    DisabledPluginsPage();
+    void resized() override;
+    void refresh();
+
+    // ListBoxModel
+    int  getNumRows() override;
+    void paintListBoxItem (int row, Graphics& g, int width, int height, bool selected) override;
+    Component* refreshComponentForRow (int row, bool isSelected, Component* existing) override;
+
+private:
+    Label     headerLabel_;
+    ListBox   listBox_ { {}, this };
+    StringArray items_;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DisabledPluginsPage)
+};
+
+// =====================================================================
 // SettingsWindow — flat left-nav + right content pane
 // =====================================================================
 class SettingsWindow : public DocumentWindow
@@ -125,13 +151,15 @@ class SettingsWindow : public DocumentWindow
 public:
     struct Callbacks
     {
-        std::function<void(bool)>         onShowLevelMeter, onShowMidiMonitor, onShowInfoMonitor;
-        std::function<void(int)>          onTransposeChange, onChannelFilterChange;
-        std::function<void()>             onPluginPathsChanged;
-        std::function<void(juce::String)> onLanguageChanged;
-        std::function<void(int)>          onMetronomeClickTypeChanged;
-        std::function<void(int)>          onVuThemeChanged;
-        std::function<void(int)>          onVuOpacityChanged;
+        std::function<void(bool)>              onShowLevelMeter, onShowMidiMonitor, onShowInfoMonitor;
+        std::function<void(int)>               onTransposeChange, onChannelFilterChange;
+        std::function<void()>                  onPluginPathsChanged;
+        std::function<void(juce::String)>      onLanguageChanged;
+        std::function<void(int)>               onMetronomeClickTypeChanged;
+        std::function<void(int)>               onVuThemeChanged;
+        std::function<void(int)>               onVuOpacityChanged;
+        std::function<juce::StringArray()>     onGetDisabledPlugins;
+        std::function<void(const juce::String&)> onRestorePlugin;
     };
 
     SettingsWindow (AudioDeviceManager& dm, PropertiesFile* prefs, Callbacks cbs);
@@ -162,6 +190,7 @@ private:
         MidiSettingsPage*         midiPage_     = nullptr;
         PluginPathsPage*          pathsPage_    = nullptr;
         VisualizerSettingsPage*   visualPage_   = nullptr;
+        DisabledPluginsPage*      pluginsPage_  = nullptr;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Content)
     };

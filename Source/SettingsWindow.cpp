@@ -545,6 +545,130 @@ void VisualizerSettingsPage::resized()
 }
 
 // =====================================================================
+// DisabledPluginsPage
+// =====================================================================
+
+namespace {
+
+class RestoreRowComponent : public Component
+{
+public:
+    std::function<void()> onRestore;
+
+    RestoreRowComponent()
+    {
+        restoreBtn_.setButtonText (LvhStr ("STR_PLUGIN_RESTORE"));
+        restoreBtn_.setColour (TextButton::buttonColourId,  Colour (0xff2a4a7a));
+        restoreBtn_.setColour (TextButton::textColourOffId, Colours::white);
+        restoreBtn_.onClick = [this] { if (onRestore) onRestore(); };
+        addAndMakeVisible (restoreBtn_);
+    }
+
+    void update (const String& name)
+    {
+        nameLabel_.setText (name, dontSendNotification);
+        repaint();
+    }
+
+    void resized() override
+    {
+        auto b = getLocalBounds().reduced (4, 2);
+        restoreBtn_.setBounds (b.removeFromRight (80));
+        b.removeFromRight (6);
+        nameLabel_.setBounds (b);
+    }
+
+    void paint (Graphics& g) override
+    {
+        g.setColour (Colours::white);
+        g.setFont (Font (13.f));
+        g.drawText (nameLabel_.getText(), getLocalBounds().reduced (8, 0).withTrimmedRight (90),
+                    Justification::centredLeft);
+    }
+
+private:
+    Label      nameLabel_;
+    TextButton restoreBtn_;
+};
+
+} // namespace
+
+DisabledPluginsPage::DisabledPluginsPage()
+{
+    headerLabel_.setText (LvhStr ("STR_DISABLED_PLUGINS"), dontSendNotification);
+    headerLabel_.setColour (Label::textColourId, Colour (0xffaaaacc));
+    headerLabel_.setFont (Font (13.f, Font::bold));
+    addAndMakeVisible (headerLabel_);
+
+    listBox_.setColour (ListBox::backgroundColourId, Colour (0xff161626));
+    listBox_.setColour (ListBox::outlineColourId,    Colour (0xff3a3a4a));
+    listBox_.setRowHeight (34);
+    listBox_.setOutlineThickness (1);
+    addAndMakeVisible (listBox_);
+}
+
+void DisabledPluginsPage::resized()
+{
+    auto b = getLocalBounds().reduced (16);
+    headerLabel_.setBounds (b.removeFromTop (24));
+    b.removeFromTop (6);
+    listBox_.setBounds (b);
+}
+
+void DisabledPluginsPage::refresh()
+{
+    items_.clear();
+    if (onGetDisabledPlugins)
+        items_ = onGetDisabledPlugins();
+    listBox_.updateContent();
+    listBox_.repaint();
+}
+
+int DisabledPluginsPage::getNumRows()
+{
+    return items_.isEmpty() ? 1 : items_.size();
+}
+
+void DisabledPluginsPage::paintListBoxItem (int row, Graphics& g,
+                                             int w, int h, bool /*sel*/)
+{
+    if (items_.isEmpty() && row == 0)
+    {
+        g.setColour (Colour (0xff666677));
+        g.setFont (Font (12.f, Font::italic));
+        g.drawText (LvhStr ("STR_NO_DISABLED_PLUGINS"), 0, 0, w, h,
+                    Justification::centred);
+    }
+}
+
+Component* DisabledPluginsPage::refreshComponentForRow (int row, bool /*selected*/, Component* existing)
+{
+    if (items_.isEmpty())
+    {
+        delete existing;
+        return nullptr;
+    }
+
+    auto* comp = dynamic_cast<RestoreRowComponent*> (existing);
+    if (comp == nullptr)
+        comp = new RestoreRowComponent();
+
+    if (row >= 0 && row < items_.size())
+    {
+        const String id = items_[row];
+        String displayName = File (id).getFileNameWithoutExtension();
+        if (displayName.isEmpty()) displayName = id;
+        comp->update (displayName);
+        comp->onRestore = [this, id]
+        {
+            if (onRestorePlugin) onRestorePlugin (id);
+            refresh();
+        };
+    }
+    return comp;
+}
+
+// =====================================================================
 // SettingsWindow
 // =====================================================================
 SettingsWindow::SettingsWindow (AudioDeviceManager& dm, PropertiesFile* prefs, Callbacks cbs)
@@ -599,6 +723,11 @@ SettingsWindow::Content::Content (AudioDeviceManager& dm, PropertiesFile* prefs,
     visualPage_->onVuOpacityChanged = cbs.onVuOpacityChanged;
     addPage (LvhStr ("STR_NAV_VISUALIZER"), visualPage_);
 
+    pluginsPage_ = new DisabledPluginsPage();
+    pluginsPage_->onGetDisabledPlugins = cbs.onGetDisabledPlugins;
+    pluginsPage_->onRestorePlugin      = cbs.onRestorePlugin;
+    addPage (LvhStr ("STR_NAV_PLUGINS"), pluginsPage_);
+
     selectPage (0);
     setSize (700, 450);
 }
@@ -606,21 +735,23 @@ SettingsWindow::Content::Content (AudioDeviceManager& dm, PropertiesFile* prefs,
 void SettingsWindow::Content::refresh()
 {
     // Update nav labels
-    if (names.size() == 5)
+    if (names.size() == 6)
     {
         names.set (0, LvhStr ("STR_NAV_GENERAL"));
         names.set (1, LvhStr ("STR_NAV_AUDIO_MIDI"));
         names.set (2, LvhStr ("STR_NAV_PLUGIN_PATHS"));
         names.set (3, LvhStr ("STR_NAV_MIDI_SETTINGS"));
         names.set (4, LvhStr ("STR_NAV_VISUALIZER"));
+        names.set (5, LvhStr ("STR_NAV_PLUGINS"));
     }
     repaint();
 
     // Refresh each page's text content
-    if (genPage_)    genPage_   ->refreshLanguage();
-    if (midiPage_)   midiPage_  ->refreshLanguage();
-    if (pathsPage_)  pathsPage_ ->refreshLanguage();
-    if (visualPage_) visualPage_->refreshLanguage();
+    if (genPage_)     genPage_    ->refreshLanguage();
+    if (midiPage_)    midiPage_   ->refreshLanguage();
+    if (pathsPage_)   pathsPage_  ->refreshLanguage();
+    if (visualPage_)  visualPage_ ->refreshLanguage();
+    if (pluginsPage_) pluginsPage_->refresh();
 }
 
 void SettingsWindow::Content::paint (Graphics& g)
@@ -684,6 +815,10 @@ void SettingsWindow::Content::selectPage (int idx)
         pages[currentIdx]->setVisible (false);
     currentIdx = idx;
     if (idx >= 0 && idx < pages.size())
+    {
         pages[idx]->setVisible (true);
+        if (pluginsPage_ != nullptr && pages[idx] == pluginsPage_)
+            pluginsPage_->refresh();
+    }
     repaint();
 }

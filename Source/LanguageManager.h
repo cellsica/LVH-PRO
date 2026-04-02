@@ -89,6 +89,7 @@ public:
             { "STR_NAV_PLUGIN_PATHS",    "Plugin Paths",                       "プラグインパス"              },
             { "STR_NAV_MIDI_SETTINGS",   "MIDI Settings",                      "MIDI設定"                    },
             { "STR_NAV_VISUALIZER",      "Visualizer",                         "ビジュアライザー"            },
+            { "STR_NAV_PLUGINS",         "Plugins",                            "プラグイン"                  },
             // ── Settings — Visualizer page ──────────────────────────────
             { "STR_VIS_VU_HEADER",       "VU Meter",                           "VUメーター"                  },
             { "STR_VIS_VU_THEME",        "Backlight Theme:",                   "バックライトテーマ："        },
@@ -138,6 +139,10 @@ public:
             { "STR_FILTER_ALL",          "All",                        "すべて"                      },
             { "STR_FILTER_FAVORITE",     "Favorites",                  "お気に入り"                  },
             { "STR_REFRESH_PLUGINS",     "Refresh Plugin List",        "プラグインリストを更新"      },
+            { "STR_PLUGIN_DISABLE",      "Disable (Hide this plugin)", "非表示にする"                },
+            { "STR_DISABLED_PLUGINS",    "Disabled Plugins",           "非表示プラグイン"            },
+            { "STR_PLUGIN_RESTORE",      "Restore",                    "復元"                        },
+            { "STR_NO_DISABLED_PLUGINS", "(No disabled plugins)",      "（非表示プラグインなし）"    },
             // sentinel
             { nullptr, nullptr, nullptr }
         };

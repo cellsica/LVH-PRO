@@ -51,10 +51,16 @@ void PluginPickerComponent::PluginRowComponent::paint (juce::Graphics& g)
 
 void PluginPickerComponent::PluginRowComponent::mouseUp (const juce::MouseEvent& e)
 {
-    // Fire plugin selection only when clicking the name area (not the fav button)
-    if (! favButton_.getBounds().contains (e.getPosition()))
-        if (onPluginClicked)
-            onPluginClicked (rowIndex_);
+    if (favButton_.getBounds().contains (e.getPosition()))
+        return;
+
+    if (e.mods.isRightButtonDown())
+    {
+        if (onRightClicked) onRightClicked (rowIndex_);
+        return;
+    }
+
+    if (onPluginClicked) onPluginClicked (rowIndex_);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -64,10 +70,14 @@ void PluginPickerComponent::PluginRowComponent::mouseUp (const juce::MouseEvent&
 PluginPickerComponent::PluginPickerComponent (
     const juce::Array<juce::PluginDescription>& allPlugins,
     std::function<bool(const juce::String&)>    isFavFn,
-    std::function<void(const juce::String&)>    toggleFavFn)
-    : allPlugins_ (allPlugins),
-      isFav_       (std::move (isFavFn)),
-      toggleFav_   (std::move (toggleFavFn))
+    std::function<void(const juce::String&)>    toggleFavFn,
+    std::function<bool(const juce::String&)>    isDisabledFn,
+    std::function<void(const juce::String&)>    toggleDisabledFn)
+    : allPlugins_     (allPlugins),
+      isFav_          (std::move (isFavFn)),
+      toggleFav_      (std::move (toggleFavFn)),
+      isDisabled_     (std::move (isDisabledFn)),
+      toggleDisabled_ (std::move (toggleDisabledFn))
 {
     // Search box
     searchBox_.setTextToShowWhenEmpty (LvhStr ("STR_SEARCH_PLUGIN"), juce::Colours::grey);
@@ -187,6 +197,21 @@ juce::Component* PluginPickerComponent::refreshComponentForRow (
         {
             selectPlugin (rowIdx);
         };
+        comp->onRightClicked = [this] (int rowIdx)
+        {
+            if (rowIdx < 0 || rowIdx >= filtered_.size()) return;
+            const auto& desc = filtered_[rowIdx];
+            juce::PopupMenu menu;
+            menu.addItem (1, LvhStr ("STR_PLUGIN_DISABLE"));
+            menu.showMenuAsync (juce::PopupMenu::Options{}, [this, id = desc.fileOrIdentifier] (int result)
+            {
+                if (result == 1)
+                {
+                    toggleDisabled_ (id);
+                    rebuildFilteredList();
+                }
+            });
+        };
     }
 
     if (row >= 0 && row < filtered_.size())
@@ -214,6 +239,8 @@ void PluginPickerComponent::rebuildFilteredList()
     filtered_.clear();
     for (const auto& desc : allPlugins_)
     {
+        if (isDisabled_ && isDisabled_ (desc.fileOrIdentifier))
+            continue;
         if (showFavOnly_ && ! isFav_ (desc.fileOrIdentifier))
             continue;
         if (query.isNotEmpty() && ! desc.name.toLowerCase().contains (query))

@@ -229,6 +229,27 @@ public:
      */
     const juce::StringArray& getFavoriteIds() const noexcept { return favoriteIds_; }
 
+    // ── Plugin disabled (hidden) list ─────────────────────────────────────────
+
+    /**
+     * @brief Toggle the disabled (hidden) state of a plugin.
+     * @param pluginId  The plugin's unique identifier string.
+     */
+    void toggleDisabled (const juce::String& pluginId);
+
+    /**
+     * @brief Returns whether a plugin is disabled (hidden from the picker).
+     * @param pluginId  The plugin's unique identifier string.
+     * @return true if the plugin is in the disabled list.
+     */
+    bool isDisabled (const juce::String& pluginId) const;
+
+    /**
+     * @brief Returns the list of all disabled plugin identifiers.
+     * @return StringArray of plugin ID strings.
+     */
+    const juce::StringArray& getDisabledIds() const noexcept { return disabledIds_; }
+
     /**
      * @brief Process an incoming MIDI message for remote control.
      *
@@ -289,6 +310,7 @@ private:
     // ── State ─────────────────────────────────────────────────────────────────
     MainComponent*                        mc_             = nullptr;
     juce::StringArray                     favoriteIds_;
+    juce::StringArray                     disabledIds_;
     double                                masterVolume_   = 1.0;
 
     std::unique_ptr<MixerWindow>          mixerWindow_;
