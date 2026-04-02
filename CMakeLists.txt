@@ -295,5 +295,38 @@ add_custom_command(TARGET LVH POST_BUILD
         "if ('$<CONFIG>' -eq 'Release') { $r = robocopy '$<TARGET_FILE_DIR:LVH>' '\\\\Storm-pc\\lvhpro' 'LVH.exe' 'LVH-Bridge.exe' /R:2 /W:3 /NP; if ($LASTEXITCODE -le 7) { exit 0 } else { exit 1 } }"
     COMMAND powershell -NonInteractive -Command
         "if ('$<CONFIG>' -eq 'Release') { $src = '$<TARGET_FILE_DIR:LVH>\\Visualizers'; if (Test-Path $src) { $r = robocopy $src '\\\\Storm-pc\\lvhpro\\Visualizers' '*.dll' /R:2 /W:3 /NP; if ($LASTEXITCODE -le 7) { exit 0 } else { exit 1 } } }"
+    COMMAND powershell -NonInteractive -Command
+        "if ('$<CONFIG>' -eq 'Release') { $src = '$<TARGET_FILE_DIR:LVH>\\Processors'; if (Test-Path $src) { $r = robocopy $src '\\\\Storm-pc\\lvhpro\\Processors' '*.dll' /R:2 /W:3 /NP; if ($LASTEXITCODE -le 7) { exit 0 } else { exit 1 } } }"
     COMMENT "Deploying Release build to \\\\Storm-pc\\lvhpro"
+)
+
+# =====================================================================
+# SimpleLooper — Sample Processor Plugin DLL
+# No JUCE dependency: pure Win32 + standard C++17.
+# =====================================================================
+add_library(SimpleLooper SHARED
+    Source/Processors/SimpleLooper/SimpleLooper.cpp
+)
+
+target_include_directories(SimpleLooper PRIVATE
+    Source
+)
+
+target_link_libraries(SimpleLooper
+    PRIVATE
+        user32
+)
+
+if(MSVC)
+    target_compile_options(SimpleLooper PRIVATE /utf-8)
+endif()
+
+# Copy to <LVH.exe>/Processors/ after build
+add_custom_command(TARGET SimpleLooper POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_FILE_DIR:LVH>/Processors"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:SimpleLooper>"
+        "$<TARGET_FILE_DIR:LVH>/Processors/SimpleLooper.dll"
+    COMMENT "Copying SimpleLooper.dll to Processors/ directory"
 )
