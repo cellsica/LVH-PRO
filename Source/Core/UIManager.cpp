@@ -4,6 +4,7 @@
 #include "SettingsWindow.h"
 #include "StageWindow.h"
 #include "PluginPickerComponent.h"
+#include "ProcessorManager.h"
 #include "../LanguageManager.h"
 
 UIManager::UIManager (AudioEngine&                  audioEngine,
@@ -77,6 +78,17 @@ void UIManager::setMainComponent (MainComponent* mc)
         juce::String saved = prefs->getValue ("pluginDisabled", "");
         if (saved.isNotEmpty())
             disabledIds_.addTokens (saved, "|", "");
+    }
+
+    // Scan and load processor plugins from <exe dir>/Processors/
+    processorManager_ = std::make_unique<ProcessorManager>();
+    {
+        juce::File procDir = juce::File::getSpecialLocation (
+                                 juce::File::currentExecutableFile)
+                                 .getParentDirectory()
+                                 .getChildFile ("Processors");
+        processorManager_->scanAndLoad (procDir);
+        audioEngine_.setProcessorPlugins (processorManager_->getPluginInstances());
     }
 
     // Speaker mute button + volume slider (share savedGain)

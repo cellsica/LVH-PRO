@@ -16,6 +16,7 @@ class MainComponent;
 class SettingsWindow;
 class StageWindow;
 class PluginPickerComponent;
+class ProcessorManager;
 
 /**
  * @class UIManager
@@ -322,6 +323,7 @@ private:
     std::unique_ptr<VisualizerManager>    visualizerManager_;
     std::unique_ptr<VisualizerWindow>     visualizerWindow_;
     std::unique_ptr<juce::DocumentWindow> pluginPickerWindow_;
+    std::unique_ptr<ProcessorManager>     processorManager_;
 
     LearnState                               learnState_;
     std::map<juce::String, MixerMidiMapping> mixerMappings_;
