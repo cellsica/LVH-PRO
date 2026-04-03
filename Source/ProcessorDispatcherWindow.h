@@ -193,12 +193,14 @@ public:
     {
         setUsingNativeTitleBar (false);
         setResizable (false, false);
-        // Use false for resizeToFit to avoid a feedback loop where moving the
-        // window triggers resized() → content setBounds → window grows by one
-        // item height each time.  Instead, size the window explicitly.
-        setContentNonOwned (content_.get(), false);
-        centreWithSize (content_->getWidth(),
-                        content_->getHeight() + getTitleBarHeight());
+        // Do NOT use setContentNonOwned/setContentOwned — those register a
+        // ComponentListener that calls resizeToFitContent() whenever the content
+        // changes size, causing a feedback loop (window grows each time it is
+        // moved).  Instead, manage layout manually via addAndMakeVisible +
+        // resized() override.
+        addAndMakeVisible (content_.get());
+        updateWindowSize();
+        centreWithSize (getWidth(), getHeight());
         setVisible (true);
     }
 
@@ -212,15 +214,33 @@ public:
     void refresh()
     {
         content_->rebuild();
-        setContentNonOwned (content_.get(), false);
-        setSize (content_->getWidth(),
-                 content_->getHeight() + getTitleBarHeight());
+        updateWindowSize();
+    }
+
+    void resized() override
+    {
+        juce::DocumentWindow::resized();
+        // Pin the content to its fixed preferred size at (0, titleBarHeight).
+        // This prevents the window's ResizableWindow::resized() from ever
+        // stretching or shrinking the content when the window is moved.
+        if (content_ != nullptr)
+            content_->setBounds (0, getTitleBarHeight(),
+                                 fixedW_, fixedH_);
     }
 
     std::function<void()> onCloseRequest;
 
 private:
+    void updateWindowSize()
+    {
+        fixedW_ = content_->getWidth();
+        fixedH_ = content_->getHeight();
+        setSize (fixedW_, fixedH_ + getTitleBarHeight());
+    }
+
     std::unique_ptr<Content> content_;
+    int fixedW_ = 280;
+    int fixedH_ = 80;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ProcessorDispatcherWindow)
 };
