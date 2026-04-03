@@ -295,6 +295,21 @@ void ThemePalette::setByKey (const juce::String& key, juce::uint32 argb)
     // Unknown key — silently ignore
 }
 
+juce::String ThemePalette::getDisplayName (const juce::File& jsonFile)
+{
+    if (! jsonFile.existsAsFile())
+        return jsonFile.getFileNameWithoutExtension();
+
+    auto parsed = juce::JSON::parse (jsonFile.loadFileAsString());
+    if (auto* obj = parsed.getDynamicObject())
+    {
+        auto prop = obj->getProperties()["_name"];
+        if (prop.isString() && prop.toString().isNotEmpty())
+            return prop.toString();
+    }
+    return jsonFile.getFileNameWithoutExtension();
+}
+
 void ThemePalette::load (const juce::File& jsonFile)
 {
     if (! jsonFile.existsAsFile())

@@ -23,8 +23,9 @@ private:
     Slider       recentCountSlider;
     Label        languageLabel_;
     ComboBox     languageCombo_;
-    Label        themeLabel_;
-    ComboBox     themeCombo_;
+    Label              themeLabel_;
+    ComboBox           themeCombo_;
+    juce::StringArray  themeIds_;   ///< filename stems parallel to themeCombo_ items
     Label        metroClickLabel_;
     ToggleButton metroNormalBtn_, metroTechnoBtn_;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GeneralSettingsPage)

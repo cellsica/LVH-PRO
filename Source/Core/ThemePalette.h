@@ -163,6 +163,17 @@ public:
      */
     static juce::Colour get (ColourId id) noexcept;
 
+    /**
+     * @brief Read the "_name" display-name property from a JSON theme file.
+     *
+     * Falls back to the file's name-without-extension if the key is absent
+     * or the file cannot be parsed.
+     *
+     * @param jsonFile  Path to the JSON theme file.
+     * @return Human-readable theme name suitable for a UI list.
+     */
+    static juce::String getDisplayName (const juce::File& jsonFile);
+
 private:
     ThemePalette();
 

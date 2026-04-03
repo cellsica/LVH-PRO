@@ -82,20 +82,53 @@ GeneralSettingsPage::GeneralSettingsPage (PropertiesFile* prefs)
     themeLabel_.setColour (Label::textColourId, ThemePalette::get (ColourId::TextTertiary));
     addAndMakeVisible (themeLabel_);
 
-    themeCombo_.addItem ("Dark",  1);
-    themeCombo_.addItem ("Light", 2);
-    const int savedTheme = (prefs ? prefs->getIntValue ("colorTheme", 0) : 0);
-    themeCombo_.setSelectedId (savedTheme + 1, dontSendNotification);
+    // Scan themes/ directory and populate the combo dynamically.
+    // Each .json file may have a "_name" key for its display name.
+    {
+        auto themesDir = juce::File::getSpecialLocation (juce::File::currentExecutableFile)
+                             .getParentDirectory().getChildFile ("themes");
+        juce::String savedName = prefs ? prefs->getValue ("themeName", "dark") : "dark";
+        int selectedId = 1;
+
+        auto files = themesDir.findChildFiles (juce::File::findFiles, false, "*.json");
+        files.sort();  // alphabetical order
+
+        for (auto& f : files)
+        {
+            juce::String id = f.getFileNameWithoutExtension();
+            juce::String displayName = ThemePalette::getDisplayName (f);
+            themeIds_.add (id);
+            int itemId = themeIds_.size();  // 1-based
+            themeCombo_.addItem (displayName, itemId);
+            if (id.equalsIgnoreCase (savedName))
+                selectedId = itemId;
+        }
+
+        // Fallback: if themes/ doesn't exist yet, show built-in options
+        if (themeCombo_.getNumItems() == 0)
+        {
+            themeCombo_.addItem ("Dark",  1);  themeIds_.add ("dark");
+            themeCombo_.addItem ("Light", 2);  themeIds_.add ("light");
+        }
+
+        themeCombo_.setSelectedId (selectedId, dontSendNotification);
+    }
     addAndMakeVisible (themeCombo_);
 
     themeCombo_.onChange = [this, prefs] {
-        const int v = themeCombo_.getSelectedId() - 1;  // 0=Dark, 1=Light
+        int idx = themeCombo_.getSelectedId() - 1;  // 0-based index into themeIds_
+        if (idx < 0 || idx >= themeIds_.size()) return;
+
+        juce::String name = themeIds_[idx];
+        // Determine LookAndFeel theme (0=Dark, 1=Light) for Mission 051 compatibility
+        int lafTheme = name.equalsIgnoreCase ("light") ? 1 : 0;
+
         if (prefs)
         {
-            prefs->setValue ("colorTheme", v);
-            prefs->setValue ("themeName", v == 0 ? "dark" : "light");
+            prefs->setValue ("themeName",   name);
+            prefs->setValue ("colorTheme",  lafTheme);
         }
-        if (onThemeChanged) onThemeChanged (v);
+        if (onThemeChanged) onThemeChanged (lafTheme);
 
         // Notify user that restart is required for the theme to take effect
         juce::AlertWindow::showMessageBoxAsync (
