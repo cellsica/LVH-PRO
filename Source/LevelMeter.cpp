@@ -1,4 +1,5 @@
 #include "LevelMeter.h"
+#include "Core/ThemePalette.h"
 
 LevelMeter::LevelMeter()
 {
@@ -14,14 +15,14 @@ void LevelMeter::paint (Graphics& g)
     g.setFont (Font (9.0f, Font::bold));
 
     auto lRow = area.removeFromTop (h);
-    g.setColour (displayL > 0.001f ? Colour (0xffffffff) : Colour (0xff444455));
+    g.setColour (displayL > 0.001f ? ThemePalette::get (ColourId::TextPrimary) : ThemePalette::get (ColourId::TextInactive));
     g.drawText ("L", lRow.removeFromLeft (labelW), Justification::centred);
     paintBar (g, lRow, displayL);
 
     area.removeFromTop (2);
 
     auto rRow = area.removeFromTop (h);
-    g.setColour (displayR > 0.001f ? Colour (0xffffffff) : Colour (0xff444455));
+    g.setColour (displayR > 0.001f ? ThemePalette::get (ColourId::TextPrimary) : ThemePalette::get (ColourId::TextInactive));
     g.drawText ("R", rRow.removeFromLeft (labelW), Justification::centred);
     paintBar (g, rRow, displayR);
 }
@@ -38,22 +39,22 @@ void LevelMeter::timerCallback()
 
 void LevelMeter::paintBar (Graphics& g, Rectangle<int> area, float level)
 {
-    g.setColour (Colour (0xff1a1a2a));
+    g.setColour (ThemePalette::get (ColourId::BgPanel));
     g.fillRect (area);
     int w = area.getWidth(), fillW = (int)(w * jmin (1.f, level));
     if (fillW <= 0) return;
     int greenEnd = (int)(w * 0.70f), yellowEnd = (int)(w * 0.90f);
-    g.setColour (Colour (0xff22cc55));
+    g.setColour (ThemePalette::get (ColourId::MeterGreen));
     g.fillRect (area.getX(), area.getY(), jmin (fillW, greenEnd), area.getHeight());
     if (fillW > greenEnd)
     {
-        g.setColour (Colour (0xffeecc00));
+        g.setColour (ThemePalette::get (ColourId::MeterYellow));
         g.fillRect (area.getX() + greenEnd, area.getY(),
                     jmin (fillW - greenEnd, yellowEnd - greenEnd), area.getHeight());
     }
     if (fillW > yellowEnd)
     {
-        g.setColour (Colour (0xffee2222));
+        g.setColour (ThemePalette::get (ColourId::MeterRed));
         g.fillRect (area.getX() + yellowEnd, area.getY(), fillW - yellowEnd, area.getHeight());
     }
 }

@@ -81,6 +81,7 @@ target_sources(LVH
         Source/Core/StageManager.cpp
         Source/Core/VisualizerManager.cpp
         Source/Core/ProcessorManager.cpp
+        Source/Core/ThemePalette.cpp
         Source/MetronomeManager.cpp
         Source/VUMeterWindow.cpp
         Source/VisualizerWindow.cpp
@@ -297,7 +298,22 @@ add_custom_command(TARGET LVH POST_BUILD
         "if ('$<CONFIG>' -eq 'Release') { $src = '$<TARGET_FILE_DIR:LVH>\\Visualizers'; if (Test-Path $src) { $r = robocopy $src '\\\\Storm-pc\\lvhpro\\Visualizers' '*.dll' /R:2 /W:3 /NP; if ($LASTEXITCODE -le 7) { exit 0 } else { exit 1 } } }"
     COMMAND powershell -NonInteractive -Command
         "if ('$<CONFIG>' -eq 'Release') { $src = '$<TARGET_FILE_DIR:LVH>\\Processors'; if (Test-Path $src) { $r = robocopy $src '\\\\Storm-pc\\lvhpro\\Processors' '*.dll' /R:2 /W:3 /NP; if ($LASTEXITCODE -le 7) { exit 0 } else { exit 1 } } }"
+    COMMAND powershell -NonInteractive -Command
+        "if ('$<CONFIG>' -eq 'Release') { $src = '$<TARGET_FILE_DIR:LVH>\\themes'; if (Test-Path $src) { $r = robocopy $src '\\\\Storm-pc\\lvhpro\\themes' '*.json' /R:2 /W:3 /NP; if ($LASTEXITCODE -le 7) { exit 0 } else { exit 1 } } }"
     COMMENT "Deploying Release build to \\\\Storm-pc\\lvhpro"
+)
+
+# Copy themes/ to output directory after LVH build
+add_custom_command(TARGET LVH POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_FILE_DIR:LVH>/themes"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/themes/dark.json"
+        "$<TARGET_FILE_DIR:LVH>/themes/dark.json"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/themes/light.json"
+        "$<TARGET_FILE_DIR:LVH>/themes/light.json"
+    COMMENT "Copying themes/ to LVH output directory"
 )
 
 # =====================================================================

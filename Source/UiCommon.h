@@ -11,6 +11,7 @@
 #include <set>
 #include <atomic>
 #include "LanguageManager.h"
+#include "Core/ThemePalette.h"
 
 using namespace juce;
 
@@ -55,7 +56,7 @@ namespace Icons
     {
         g.setColour (Colours::white);
         g.fillRoundedRectangle (a, 1.5f);
-        g.setColour (Colour (0xff252535));
+        g.setColour (ThemePalette::get (ColourId::BgPanelAlt));
         g.fillRect (a.withTrimmedTop (a.getHeight() * 0.57f).reduced (1.5f, 0.f));
         g.fillRect (a.getRight() - 5.f, a.getY(), 4.f, 4.5f);
     }
@@ -98,7 +99,7 @@ namespace Icons
         for (int i = 0; i < 3; ++i)
             g.fillRoundedRectangle (a.getX() + i * (kw + gap), a.getY(), kw - 0.5f, a.getHeight(), 1.f);
         float bw = kw * 0.55f, bh = a.getHeight() * 0.60f;
-        g.setColour (Colour (0xff252535));
+        g.setColour (ThemePalette::get (ColourId::BgPanelAlt));
         g.fillRect (a.getX() +       (kw + gap) - bw * 0.5f, a.getY(), bw, bh);
         g.fillRect (a.getX() + 2.f * (kw + gap) - bw * 0.5f, a.getY(), bw, bh);
     }
@@ -193,13 +194,13 @@ namespace Icons
             float x = (bar == 0) ? cx - barW - gap * 0.5f : cx + gap * 0.5f;
 
             // Red top (clipping zone)
-            g.setColour (Colour (0xffff3333));
+            g.setColour (ThemePalette::get (ColourId::MeterRed));
             g.fillRect (x, a.getY(),              barW, h * 0.20f - 1.f);
             // Yellow mid
-            g.setColour (Colour (0xffffcc00));
+            g.setColour (ThemePalette::get (ColourId::MeterYellow));
             g.fillRect (x, a.getY() + h * 0.22f, barW, h * 0.25f - 1.f);
             // Green bottom
-            g.setColour (Colour (0xff00dd44));
+            g.setColour (ThemePalette::get (ColourId::MeterGreen));
             g.fillRect (x, a.getY() + h * 0.50f, barW, h * 0.50f);
         }
     }
@@ -263,7 +264,7 @@ namespace Icons
 
         if (filled)
         {
-            g.setColour (Colour (0xffffcc00));
+            g.setColour (ThemePalette::get (ColourId::MeterYellow));
             g.fillPath (star);
         }
         else

@@ -1,6 +1,7 @@
 #pragma once
 #include "UiCommon.h"
 #include "Core/StageManager.h"
+#include "Core/ThemePalette.h"
 
 // Returns a font that supports Japanese text on Windows 10/11 ("Yu Gothic UI").
 // Falls back gracefully to the JUCE default on other platforms.
@@ -40,8 +41,8 @@ public:
     SongStrip()
     {
         loadBtn_.setButtonText (LvhStr ("STR_LOAD"));
-        loadBtn_.setColour (juce::TextButton::buttonColourId,   juce::Colour (0xff1a3a1a));
-        loadBtn_.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff22cc44));
+        loadBtn_.setColour (juce::TextButton::buttonColourId,   ThemePalette::get (ColourId::StageCtrlNormal));
+        loadBtn_.setColour (juce::TextButton::buttonOnColourId, ThemePalette::get (ColourId::StateActive));
         loadBtn_.setColour (juce::TextButton::textColourOffId,  juce::Colours::white);
         loadBtn_.onClick = [this] { if (onLoadClicked) onLoadClicked(); };
         addAndMakeVisible (loadBtn_);
@@ -70,48 +71,48 @@ public:
 
         // Background
         if (active_)
-            g.fillAll (juce::Colour (0xff0d3d1a));
+            g.fillAll (ThemePalette::get (ColourId::StageItemActive));
         else if (selected_)
-            g.fillAll (juce::Colour (0xff1e1e30));
+            g.fillAll (ThemePalette::get (ColourId::StageItemSelected));
         else
-            g.fillAll (juce::Colour (0xff1a1a24));
+            g.fillAll (ThemePalette::get (ColourId::StageItemNormal));
 
         // Active: green left bar
         if (active_)
         {
-            g.setColour (juce::Colour (0xff22cc44));
+            g.setColour (ThemePalette::get (ColourId::StateActive));
             g.fillRect (0, 0, 4, b.getHeight());
         }
 
         // Selected (not active): blue border
         if (selected_ && ! active_)
         {
-            g.setColour (juce::Colour (0xff4488cc));
+            g.setColour (ThemePalette::get (ColourId::BorderActive));
             g.drawRect (getLocalBounds().toFloat().reduced (0.75f), 1.5f);
         }
 
         // Index badge
         auto badge = b.removeFromLeft (36);
-        g.setColour (active_    ? juce::Colour (0xff22cc44)
-                    : selected_ ? juce::Colour (0xff4488cc)
-                    :             juce::Colour (0xff444455));
+        g.setColour (active_    ? ThemePalette::get (ColourId::StateActive)
+                    : selected_ ? ThemePalette::get (ColourId::BorderActive)
+                    :             ThemePalette::get (ColourId::TextInactive));
         g.setFont (stageFont (16.f, true));
         g.drawText (juce::String (index_ + 1), badge, juce::Justification::centred);
 
         // Alias + path text
         auto textArea = b.reduced (4, 0).withTrimmedRight (82);
-        g.setColour (active_    ? juce::Colour (0xff88ffaa)
-                    : selected_ ? juce::Colour (0xffaaccff)
-                    :             juce::Colours::white);
+        g.setColour (active_    ? ThemePalette::get (ColourId::TextSustainOn)
+                    : selected_ ? ThemePalette::get (ColourId::StateSelectedText)
+                    :             ThemePalette::get (ColourId::TextPrimary));
         g.setFont (stageFont (16.f, true));
         g.drawText (alias_, textArea.removeFromTop (textArea.getHeight() / 2),
                     juce::Justification::centredLeft, true);
-        g.setColour (juce::Colour (0xff666677));
+        g.setColour (ThemePalette::get (ColourId::TextStagePath));
         g.setFont (stageFont (11.f));
         g.drawText (path_, textArea, juce::Justification::centredLeft, true);
 
         // Row separator
-        g.setColour (juce::Colour (0xff2a2a38));
+        g.setColour (ThemePalette::get (ColourId::BorderDefault));
         g.drawHorizontalLine (getHeight() - 1, 0.f, (float) getWidth());
     }
 
@@ -236,7 +237,7 @@ public:
         if (dragFromIndex_ < 0 || dropAtIndex_ < 0) return;
 
         int lineY = dropAtIndex_ * SongStrip::kHeight;
-        g.setColour (juce::Colour (0xff22cc44));
+        g.setColour (ThemePalette::get (ColourId::StateActive));
         g.fillRect (8, lineY - 2, getWidth() - 16, 4);
     }
 
@@ -297,10 +298,10 @@ public:
         : manager_ (manager)
     {
         // ── Toolbar buttons ──────────────────────────────────────────
-        configureButton (newBtn_,     LvhStr ("STR_NEW"),      juce::Colour (0xff2a2a38));
-        configureButton (loadSetBtn_, LvhStr ("STR_OPEN_SET"), juce::Colour (0xff2a2a38));
-        configureButton (saveSetBtn_, LvhStr ("STR_SAVE_SET"), juce::Colour (0xff2a2a38));
-        configureButton (addBtn_,     LvhStr ("STR_ADD"),      juce::Colour (0xff1a3a1a));
+        configureButton (newBtn_,     LvhStr ("STR_NEW"),      ThemePalette::get (ColourId::CtrlNormal));
+        configureButton (loadSetBtn_, LvhStr ("STR_OPEN_SET"), ThemePalette::get (ColourId::CtrlNormal));
+        configureButton (saveSetBtn_, LvhStr ("STR_SAVE_SET"), ThemePalette::get (ColourId::CtrlNormal));
+        configureButton (addBtn_,     LvhStr ("STR_ADD"),      ThemePalette::get (ColourId::StageCtrlNormal));
 
         newBtn_.onClick     = [this] { if (onNewSetClicked)  onNewSetClicked(); };
         loadSetBtn_.onClick = [this] { if (onLoadSetClicked) onLoadSetClicked(); };
@@ -315,8 +316,8 @@ public:
         // ── Pin (Always on Top) button ────────────────────────────────
         pinBtn_ = std::make_unique<IconButton> ("Always on Top", Icons::pin);
         pinBtn_->setClickingTogglesState (true);
-        pinBtn_->setColour (juce::TextButton::buttonColourId,   juce::Colour (0xff252535));
-        pinBtn_->setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xffaa6600));
+        pinBtn_->setColour (juce::TextButton::buttonColourId,   ThemePalette::get (ColourId::BgPanelAlt));
+        pinBtn_->setColour (juce::TextButton::buttonOnColourId, ThemePalette::get (ColourId::StatePin));
         pinBtn_->setTooltip (LvhStr ("STR_PIN_TOOLTIP"));
         pinBtn_->onClick = [this] {
             if (onPinToggled) onPinToggled (pinBtn_->getToggleState());
@@ -328,9 +329,9 @@ public:
         setNameLabel_.setColour (juce::Label::textColourId,
                                  juce::Colours::white);
         setNameLabel_.setColour (juce::Label::backgroundColourId,
-                                 juce::Colour (0xff2a2a3c));
+                                 ThemePalette::get (ColourId::BgInput));
         setNameLabel_.setColour (juce::Label::backgroundWhenEditingColourId,
-                                 juce::Colour (0xff3a3a50));
+                                 ThemePalette::get (ColourId::CtrlActive));
         setNameLabel_.setEditable (false, true);   // double-click to edit
         setNameLabel_.setJustificationType (juce::Justification::centredLeft);
         setNameLabel_.addListener (this);
@@ -338,7 +339,7 @@ public:
 
         // ── Status label (file path + dirty marker) ──────────────────
         statusLabel_.setJustificationType (juce::Justification::centredLeft);
-        statusLabel_.setColour (juce::Label::textColourId, juce::Colour (0xff888899));
+        statusLabel_.setColour (juce::Label::textColourId, ThemePalette::get (ColourId::TextPan));
         statusLabel_.setFont (stageFont (11.f));
         addAndMakeVisible (statusLabel_);
 
@@ -420,14 +421,14 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (juce::Colour (0xff12121c));
+        g.fillAll (ThemePalette::get (ColourId::StageBg));
 
         // Header background (toolbar + name row = 66 px)
-        g.setColour (juce::Colour (0xff1a1a28));
+        g.setColour (ThemePalette::get (ColourId::BgPanel));
         g.fillRect (0, 0, getWidth(), 66);
 
         // Separator line
-        g.setColour (juce::Colour (0xff22cc44).withAlpha (0.4f));
+        g.setColour (ThemePalette::get (ColourId::StateActive).withAlpha (0.4f));
         g.drawHorizontalLine (66, 0.f, (float) getWidth());
     }
 
@@ -566,7 +567,7 @@ public:
 
     StageWindow (const juce::String& /*name*/, StageManager& manager)
         : juce::DocumentWindow ("Stage - " + manager.getSetName(),
-                                juce::Colour (0xff12121c),
+                                ThemePalette::get (ColourId::StageBg),
                                 juce::DocumentWindow::allButtons),
           manager_ (manager)
     {

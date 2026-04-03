@@ -1,4 +1,5 @@
 #include "SettingsWindow.h"
+#include "Core/ThemePalette.h"
 
 // =====================================================================
 // GeneralSettingsPage
@@ -8,7 +9,7 @@ GeneralSettingsPage::GeneralSettingsPage (PropertiesFile* prefs)
     // ── Language selector ────────────────────────────────────────────
     languageLabel_.setText (LvhStr ("STR_LANGUAGE"), dontSendNotification);
     languageLabel_.setFont (Font (12.f));
-    languageLabel_.setColour (Label::textColourId, Colour (0xffcccccc));
+    languageLabel_.setColour (Label::textColourId, ThemePalette::get (ColourId::TextTertiary));
     addAndMakeVisible (languageLabel_);
 
     languageCombo_.addItem ("English", 1);
@@ -63,7 +64,7 @@ GeneralSettingsPage::GeneralSettingsPage (PropertiesFile* prefs)
 
     recentCountLabel.setText (LvhStr ("STR_RECENT_COUNT"), dontSendNotification);
     recentCountLabel.setFont (Font (12.f));
-    recentCountLabel.setColour (Label::textColourId, Colour (0xffcccccc));
+    recentCountLabel.setColour (Label::textColourId, ThemePalette::get (ColourId::TextTertiary));
     addAndMakeVisible (recentCountLabel);
 
     recentCountSlider.setRange (1, 20, 1);
@@ -78,7 +79,7 @@ GeneralSettingsPage::GeneralSettingsPage (PropertiesFile* prefs)
     // ── Color theme ──────────────────────────────────────────────────
     themeLabel_.setText ("Color Theme", dontSendNotification);
     themeLabel_.setFont (Font (12.f));
-    themeLabel_.setColour (Label::textColourId, Colour (0xffcccccc));
+    themeLabel_.setColour (Label::textColourId, ThemePalette::get (ColourId::TextTertiary));
     addAndMakeVisible (themeLabel_);
 
     themeCombo_.addItem ("Dark",  1);
@@ -89,14 +90,25 @@ GeneralSettingsPage::GeneralSettingsPage (PropertiesFile* prefs)
 
     themeCombo_.onChange = [this, prefs] {
         const int v = themeCombo_.getSelectedId() - 1;  // 0=Dark, 1=Light
-        if (prefs) prefs->setValue ("colorTheme", v);
+        if (prefs)
+        {
+            prefs->setValue ("colorTheme", v);
+            prefs->setValue ("themeName", v == 0 ? "dark" : "light");
+        }
         if (onThemeChanged) onThemeChanged (v);
+
+        // Notify user that restart is required for the theme to take effect
+        juce::AlertWindow::showMessageBoxAsync (
+            juce::MessageBoxIconType::InfoIcon,
+            "Theme Changed",
+            "The new colour theme will take effect after restarting LVH.",
+            "OK");
     };
 
     // ── Metronome click type ──────────────────────────────────────────
     metroClickLabel_.setText ("Metronome Click", dontSendNotification);
     metroClickLabel_.setFont (Font (12.f));
-    metroClickLabel_.setColour (Label::textColourId, Colour (0xffcccccc));
+    metroClickLabel_.setColour (Label::textColourId, ThemePalette::get (ColourId::TextTertiary));
     addAndMakeVisible (metroClickLabel_);
 
     const int savedClickType = prefs ? prefs->getIntValue ("metronomeClickType", 0) : 0;
@@ -198,14 +210,14 @@ PluginPathsPage::PluginPathsPage (PropertiesFile* p) : prefs (p)
 {
     loadPaths();
 
-    pathList.setColour (ListBox::backgroundColourId, Colour (0xff1a1a2a));
-    pathList.setColour (ListBox::outlineColourId,    Colour (0xff303048));
+    pathList.setColour (ListBox::backgroundColourId, ThemePalette::get (ColourId::ListBg));
+    pathList.setColour (ListBox::outlineColourId,    ThemePalette::get (ColourId::SettingsSepLine));
     pathList.setOutlineThickness (1);
     pathList.setRowHeight (24);
     addAndMakeVisible (pathList);
 
     addBtn.setButtonText (LvhStr ("STR_ADD_PATH"));
-    addBtn.setColour (TextButton::buttonColourId, Colour (0xff333344));
+    addBtn.setColour (TextButton::buttonColourId, ThemePalette::get (ColourId::CtrlNormal));
     addAndMakeVisible (addBtn);
     addBtn.onClick = [this] {
         auto chooser = std::make_shared<FileChooser> (LvhStr ("STR_SELECT_SCAN_FOLDER"),
@@ -225,7 +237,7 @@ PluginPathsPage::PluginPathsPage (PropertiesFile* p) : prefs (p)
     };
 
     rmBtn.setButtonText (LvhStr ("STR_REMOVE"));
-    rmBtn.setColour (TextButton::buttonColourId, Colour (0xff333344));
+    rmBtn.setColour (TextButton::buttonColourId, ThemePalette::get (ColourId::CtrlNormal));
     addAndMakeVisible (rmBtn);
     rmBtn.onClick = [this] {
         int sel = pathList.getSelectedRow();
@@ -239,7 +251,7 @@ PluginPathsPage::PluginPathsPage (PropertiesFile* p) : prefs (p)
     };
 
     rescanBtn.setButtonText (LvhStr ("STR_RESCAN_PLUGINS"));
-    rescanBtn.setColour (TextButton::buttonColourId, Colour (0xff2a3a5a));
+    rescanBtn.setColour (TextButton::buttonColourId, ThemePalette::get (ColourId::SettingsRescan));
     addAndMakeVisible (rescanBtn);
     rescanBtn.onClick = [this] {
         if (onPathsChanged) onPathsChanged();
@@ -271,10 +283,10 @@ void PluginPathsPage::paintListBoxItem (int row, Graphics& g, int width, int hei
 {
     if (selected)
     {
-        g.setColour (Colour (0xff253555));
+        g.setColour (ThemePalette::get (ColourId::SettingsSelected));
         g.fillAll();
     }
-    g.setColour (selected ? Colours::white : Colour (0xffcccccc));
+    g.setColour (selected ? ThemePalette::get (ColourId::SettingsPathText) : ThemePalette::get (ColourId::TextTertiary));
     g.setFont (Font (12.f));
     g.drawText (paths[row], 8, 0, width - 8, height, Justification::centredLeft, true);
 }
@@ -298,7 +310,7 @@ MidiSettingsPage::MidiSettingsPage (PropertiesFile* prefs)
     // ── Transpose ────────────────────────────────────────────────────────
     tpHeader.setText (LvhStr ("STR_TRANSPOSE"), dontSendNotification);
     tpHeader.setFont (Font (12.f));
-    tpHeader.setColour (Label::textColourId, Colour (0xffcccccc));
+    tpHeader.setColour (Label::textColourId, ThemePalette::get (ColourId::TextTertiary));
     addAndMakeVisible (tpHeader);
 
     tpSlider.setRange (-24, 24, 1);
@@ -315,7 +327,7 @@ MidiSettingsPage::MidiSettingsPage (PropertiesFile* prefs)
     // ── Channel filter ───────────────────────────────────────────────────
     chHeader.setText (LvhStr ("STR_CHANNEL_FILTER"), dontSendNotification);
     chHeader.setFont (Font (12.f));
-    chHeader.setColour (Label::textColourId, Colour (0xffcccccc));
+    chHeader.setColour (Label::textColourId, ThemePalette::get (ColourId::TextTertiary));
     addAndMakeVisible (chHeader);
 
     chCombo.addItem (LvhStr ("STR_ALL_CHANNELS"), 1);
@@ -336,12 +348,12 @@ MidiSettingsPage::MidiSettingsPage (PropertiesFile* prefs)
     {
         lbl.setText (LvhStr (strId), dontSendNotification);
         lbl.setFont (Font (12.f));
-        lbl.setColour (Label::textColourId, Colour (0xffcccccc));
+        lbl.setColour (Label::textColourId, ThemePalette::get (ColourId::TextTertiary));
         addAndMakeVisible (lbl);
     };
 
     remoteHeader_.setFont (Font (12.f, Font::bold));
-    remoteHeader_.setColour (Label::textColourId, Colour (0xffffaa44));
+    remoteHeader_.setColour (Label::textColourId, ThemePalette::get (ColourId::TextSettingsHeader));
     remoteHeader_.setText (LvhStr ("STR_STAGE_REMOTE"), dontSendNotification);
     addAndMakeVisible (remoteHeader_);
 
@@ -490,13 +502,13 @@ VisualizerSettingsPage::VisualizerSettingsPage (PropertiesFile* prefs)
     // ── VU Meter section header ───────────────────────────────────────
     vuHeader_.setText (LvhStr ("STR_VIS_VU_HEADER"), dontSendNotification);
     vuHeader_.setFont (Font (12.f, Font::bold));
-    vuHeader_.setColour (Label::textColourId, Colour (0xffffaa44));
+    vuHeader_.setColour (Label::textColourId, ThemePalette::get (ColourId::TextSettingsHeader));
     addAndMakeVisible (vuHeader_);
 
     // ── Theme label ───────────────────────────────────────────────────
     themeLabel_.setText (LvhStr ("STR_VIS_VU_THEME"), dontSendNotification);
     themeLabel_.setFont (Font (12.f));
-    themeLabel_.setColour (Label::textColourId, Colour (0xffcccccc));
+    themeLabel_.setColour (Label::textColourId, ThemePalette::get (ColourId::TextTertiary));
     addAndMakeVisible (themeLabel_);
 
     // ── Theme radio buttons ───────────────────────────────────────────
@@ -525,7 +537,7 @@ VisualizerSettingsPage::VisualizerSettingsPage (PropertiesFile* prefs)
     // ── Opacity slider ────────────────────────────────────────────────
     opacityLabel_.setText (LvhStr ("STR_VIS_OPACITY"), dontSendNotification);
     opacityLabel_.setFont (Font (12.f));
-    opacityLabel_.setColour (Label::textColourId, Colour (0xffcccccc));
+    opacityLabel_.setColour (Label::textColourId, ThemePalette::get (ColourId::TextTertiary));
     addAndMakeVisible (opacityLabel_);
 
     opacitySlider_.setRange (20, 100, 1);
@@ -582,7 +594,7 @@ public:
     RestoreRowComponent()
     {
         restoreBtn_.setButtonText (LvhStr ("STR_PLUGIN_RESTORE"));
-        restoreBtn_.setColour (TextButton::buttonColourId,  Colour (0xff2a4a7a));
+        restoreBtn_.setColour (TextButton::buttonColourId,  ThemePalette::get (ColourId::StateSelected));
         restoreBtn_.setColour (TextButton::textColourOffId, Colours::white);
         restoreBtn_.onClick = [this] { if (onRestore) onRestore(); };
         addAndMakeVisible (restoreBtn_);
@@ -620,12 +632,12 @@ private:
 DisabledPluginsPage::DisabledPluginsPage()
 {
     headerLabel_.setText (LvhStr ("STR_DISABLED_PLUGINS"), dontSendNotification);
-    headerLabel_.setColour (Label::textColourId, Colour (0xffaaaacc));
+    headerLabel_.setColour (Label::textColourId, ThemePalette::get (ColourId::TextSecondary));
     headerLabel_.setFont (Font (13.f, Font::bold));
     addAndMakeVisible (headerLabel_);
 
-    listBox_.setColour (ListBox::backgroundColourId, Colour (0xff161626));
-    listBox_.setColour (ListBox::outlineColourId,    Colour (0xff3a3a4a));
+    listBox_.setColour (ListBox::backgroundColourId, ThemePalette::get (ColourId::ListBg));
+    listBox_.setColour (ListBox::outlineColourId,    ThemePalette::get (ColourId::ListOutline));
     listBox_.setRowHeight (34);
     listBox_.setOutlineThickness (1);
     addAndMakeVisible (listBox_);
@@ -658,7 +670,7 @@ void DisabledPluginsPage::paintListBoxItem (int row, Graphics& g,
 {
     if (items_.isEmpty() && row == 0)
     {
-        g.setColour (Colour (0xff666677));
+        g.setColour (ThemePalette::get (ColourId::TextInactive));
         g.setFont (Font (12.f, Font::italic));
         g.drawText (LvhStr ("STR_NO_DISABLED_PLUGINS"), 0, 0, w, h,
                     Justification::centred);
@@ -697,7 +709,7 @@ Component* DisabledPluginsPage::refreshComponentForRow (int row, bool /*selected
 // =====================================================================
 SettingsWindow::SettingsWindow (AudioDeviceManager& dm, PropertiesFile* prefs, Callbacks cbs)
     : DocumentWindow (LvhStr ("STR_SETTINGS_TITLE") + " \xe2\x80\x94 LVH",
-                      Colour (0xff14141f), DocumentWindow::closeButton)
+                      ThemePalette::get (ColourId::BgPrimary), DocumentWindow::closeButton)
 {
     setUsingNativeTitleBar (true);
     content = std::make_unique<Content> (dm, prefs, cbs);
@@ -782,11 +794,11 @@ void SettingsWindow::Content::refresh()
 void SettingsWindow::Content::paint (Graphics& g)
 {
     // Nav background
-    g.setColour (Colour (0xff1a1a2a));
+    g.setColour (ThemePalette::get (ColourId::ListBg));
     g.fillRect (0, 0, navW, getHeight());
 
     // Divider
-    g.setColour (Colour (0xff303048));
+    g.setColour (ThemePalette::get (ColourId::SettingsSepLine));
     g.drawVerticalLine (navW, 0.f, (float) getHeight());
 
     // Nav items
@@ -797,13 +809,13 @@ void SettingsWindow::Content::paint (Graphics& g)
 
         if (sel)
         {
-            g.setColour (Colour (0xff253555));
+            g.setColour (ThemePalette::get (ColourId::SettingsSelected));
             g.fillRect (row);
-            g.setColour (Colour (0xff4488dd));
+            g.setColour (ThemePalette::get (ColourId::BorderActive));
             g.fillRect (0, row.getY(), 3, rowH);
         }
 
-        g.setColour (sel ? Colours::white : Colour (0xff999aaa));
+        g.setColour (sel ? ThemePalette::get (ColourId::TextPrimary) : ThemePalette::get (ColourId::TextSecondary));
         g.setFont (Font (12.5f, sel ? Font::bold : Font::plain));
         g.drawText (names[i], row.withTrimmedLeft (12), Justification::centredLeft);
     }

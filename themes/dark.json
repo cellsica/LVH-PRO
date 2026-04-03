@@ -1,0 +1,84 @@
+{
+  "_comment": "LVH Dark Theme — built-in default",
+
+  "BgPrimary":          "14141f",
+  "BgPanel":            "1a1a2a",
+  "BgPanelAlt":         "1e1e30",
+  "BgInput":            "2a2a3a",
+  "BgLog":              "0e0e18",
+  "BgVisualizer":       "000000",
+
+  "CtrlNormal":         "2a2a3a",
+  "CtrlActive":         "3a3a5a",
+  "CtrlHover":          "303050",
+
+  "MixerInputBg":       "1a4a3a",
+  "MixerMasterBg":      "444455",
+  "MixerBypassBg":      "1e1414",
+  "MixerFxSlotBg":      "2a2a38",
+  "MixerFxArea":        "1e1e30",
+
+  "AccentGreen":        "2a5a2a",
+  "AccentBlue":         "1a3a5a",
+  "AccentOrange":       "5a3a1a",
+  "AccentPurple":       "3a2a5a",
+  "AccentViolet":       "4a2a5a",
+  "AccentDarkGreen":    "1a3a1a",
+  "AccentDarkBlue":     "1a1a3a",
+
+  "StateSelected":      "1a3a5a",
+  "StateSelectedText":  "aaccff",
+  "StateActive":        "22cc44",
+  "StateBypass":        "cc3333",
+  "StateMuted":         "881111",
+  "StatePin":           "aa6600",
+  "StateQueue":         "b8860b",
+  "StateMono":          "226699",
+
+  "TextPrimary":        "ffffff",
+  "TextSecondary":      "aaaacc",
+  "TextTertiary":       "bbbbbb",
+  "TextMidi":           "88aaff",
+  "TextSysLog":         "88cc88",
+  "TextInactive":       "444455",
+  "TextSustainOn":      "00ff88",
+  "TextFxOverlay":      "aaccff",
+  "TextPan":            "888899",
+  "TextStagePath":      "888899",
+  "TextSettingsHeader": "ffaa44",
+
+  "MeterGreen":         "00dd44",
+  "MeterYellow":        "ffcc00",
+  "MeterRed":           "ff2222",
+
+  "BorderDefault":      "333344",
+  "BorderOutline":      "333344",
+  "BorderActive":       "4488cc",
+
+  "PaletteBlue":        "2a4a6a",
+  "PaletteRed":         "6a2a2a",
+  "PaletteGreen":       "2a6a2a",
+  "PaletteOrange":      "6a4a2a",
+  "PaletteViolet":      "4a2a6a",
+  "PaletteTeal":        "2a6a6a",
+
+  "StageBg":            "12121c",
+  "StageItemNormal":    "1a1a24",
+  "StageItemSelected":  "1e1e30",
+  "StageItemActive":    "0d3d1a",
+  "StageCtrlNormal":    "1a3a1a",
+  "StageCtrlActive":    "22cc44",
+
+  "ListBg":             "1a1a2a",
+  "ListOutline":        "3a3a4a",
+
+  "SettingsSelected":   "1a3a5a",
+  "SettingsRescan":     "1a3a1a",
+  "SettingsPathText":   "aaccff",
+  "SettingsSepLine":    "333355",
+
+  "MetroBeatOff":       "1c1c2c",
+  "MetroBeatBg":        "2a2a40",
+  "MetroTap":           "2a3a55",
+  "MetroBpm":           "2a2a3e"
+}

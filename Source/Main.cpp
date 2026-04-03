@@ -13,6 +13,7 @@
 #include "BridgeManager.h"
 #include "UIManager.h"
 #include "Core/StageManager.h"
+#include "Core/ThemePalette.h"
 
 /**
  * @class LvhProApplication
@@ -173,9 +174,17 @@ public:
         wireBridgeManagerCallbacks();
         wireSerializerCallbacks();
 
-        // Restore color theme from saved preferences
+        // Load colour palette from external JSON theme file, then restore LookAndFeel theme
         if (auto* prefs = appProperties.getUserSettings())
         {
+            // ThemePalette: load JSON skin file ("dark" or "light")
+            auto exeDir = juce::File::getSpecialLocation (juce::File::currentExecutableFile)
+                              .getParentDirectory();
+            juce::String themeName = prefs->getValue ("themeName", "dark");
+            auto themeFile = exeDir.getChildFile ("themes").getChildFile (themeName + ".json");
+            ThemePalette::getInstance().load (themeFile);
+
+            // LookAndFeel ColourScheme (Mission 051 legacy — still drives JUCE standard controls)
             const int savedTheme = prefs->getIntValue ("colorTheme", 0);
             if (savedTheme != 0)
                 lvhLookAndFeel_.setTheme (static_cast<LvhLookAndFeel::Theme> (savedTheme));

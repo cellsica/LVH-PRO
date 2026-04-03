@@ -1,5 +1,6 @@
 #include "UiComponents.h"
 #include <BinaryData.h>
+#include "Core/ThemePalette.h"
 
 // =====================================================================
 // SpeakerButton
@@ -14,7 +15,7 @@ void SpeakerButton::paintButton (Graphics& g, bool highlighted, bool down)
 {
     bool muted = getToggleState();
     auto bounds = getLocalBounds().toFloat();
-    Colour bg = muted ? Colour (0xff881111)
+    Colour bg = muted ? ThemePalette::get (ColourId::StateMuted)
                       : findColour (TextButton::buttonColourId);
     if (down)        bg = bg.brighter (0.4f);
     else if (highlighted) bg = bg.brighter (0.15f);
@@ -176,7 +177,7 @@ void ScanOverlay::setProgress (const String& filename)
 
 void ScanOverlay::paint (Graphics& g)
 {
-    g.fillAll (Colour (0xd8101018));
+    g.fillAll (ThemePalette::get (ColourId::BgVisualizer).withAlpha (0.85f));
     auto bounds = getLocalBounds().toFloat();
     float cy = bounds.getCentreY();
 
@@ -193,7 +194,7 @@ void ScanOverlay::paint (Graphics& g)
     g.setColour (Colours::white);
     g.setFont (Font (20.0f, Font::bold));
     g.drawText ("Scanning Plugins...", bounds.withY (cy - 4).withHeight (32), Justification::centred);
-    g.setColour (Colour (0xffaaaaaa));
+    g.setColour (ThemePalette::get (ColourId::TextSecondary));
     g.setFont (Font (12.0f));
     g.drawText (currentFile, bounds.withY (cy + 30).withHeight (20), Justification::centred, true);
 }

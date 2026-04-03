@@ -1,6 +1,7 @@
 #pragma once
 #include "UiCommon.h"
 #include "UiComponents.h"
+#include "Core/ThemePalette.h"
 
 // =====================================================================
 // MetronomeContentComponent
@@ -30,8 +31,8 @@ public:
         // Pin button
         pinBtn_ = std::make_unique<IconButton> ("Always on Top", Icons::pin);
         pinBtn_->setClickingTogglesState (true);
-        pinBtn_->setColour (TextButton::buttonColourId,   juce::Colour (0xff252535));
-        pinBtn_->setColour (TextButton::buttonOnColourId, juce::Colour (0xffaa6600));
+        pinBtn_->setColour (TextButton::buttonColourId,   ThemePalette::get (ColourId::BgPanelAlt));
+        pinBtn_->setColour (TextButton::buttonOnColourId, ThemePalette::get (ColourId::StatePin));
         pinBtn_->setTooltip ("Pin window on top");
         pinBtn_->onClick = [this] {
             if (onPinToggled) onPinToggled (pinBtn_->getToggleState());
@@ -41,8 +42,8 @@ public:
         // Play / Stop toggle
         playBtn_.setButtonText (kLabelPlay);
         playBtn_.setClickingTogglesState (true);
-        playBtn_.setColour (TextButton::buttonColourId,   juce::Colour (0xff2a5a2a));
-        playBtn_.setColour (TextButton::buttonOnColourId, juce::Colour (0xff44aa44));
+        playBtn_.setColour (TextButton::buttonColourId,   ThemePalette::get (ColourId::AccentGreen));
+        playBtn_.setColour (TextButton::buttonOnColourId, ThemePalette::get (ColourId::AccentDarkGreen).brighter (0.5f));
         playBtn_.onClick = [this] {
             bool playing = playBtn_.getToggleState();
             playBtn_.setButtonText (playing ? kLabelStop : kLabelPlay);
@@ -52,7 +53,7 @@ public:
 
         // Tap Tempo
         tapBtn_.setButtonText ("TAP");
-        tapBtn_.setColour (TextButton::buttonColourId, juce::Colour (0xff2a3a55));
+        tapBtn_.setColour (TextButton::buttonColourId, ThemePalette::get (ColourId::MetroTap));
         tapBtn_.onClick = [this] { if (onTapTempo) onTapTempo(); };
         addAndMakeVisible (tapBtn_);
 
@@ -68,7 +69,7 @@ public:
         bpmValue_.setJustificationType (juce::Justification::centred);
         bpmValue_.setEditable (false, true, false);
         bpmValue_.setColour (juce::Label::textColourId,       juce::Colours::white);
-        bpmValue_.setColour (juce::Label::backgroundColourId, juce::Colour (0xff1a1a2a));
+        bpmValue_.setColour (juce::Label::backgroundColourId, ThemePalette::get (ColourId::MetroBeatBg));
         bpmValue_.onEditorHide = [this] {
             double v = juce::jlimit (40.0, 240.0, bpmValue_.getText().getDoubleValue());
             bpmValue_.setText (juce::String (juce::roundToInt (v)), juce::dontSendNotification);
@@ -93,7 +94,7 @@ public:
         auto setupAdjBtn = [this] (juce::TextButton& btn, const juce::String& text, double delta)
         {
             btn.setButtonText (text);
-            btn.setColour (TextButton::buttonColourId, juce::Colour (0xff2a2a3e));
+            btn.setColour (TextButton::buttonColourId, ThemePalette::get (ColourId::MetroBpm));
             btn.setLookAndFeel (&bpmAdjLF_);
             btn.onClick = [this, delta] { adjustBpm (delta); };
             addAndMakeVisible (btn);
@@ -121,13 +122,13 @@ public:
 
         // Beats-per-bar: "-" value "+"
         bpbDown_.setButtonText ("-");
-        bpbDown_.setColour (TextButton::buttonColourId, juce::Colour (0xff333344));
+        bpbDown_.setColour (TextButton::buttonColourId, ThemePalette::get (ColourId::CtrlNormal));
         bpbDown_.onClick = [this] { setBeatsPerBarUI (beatsPerBar_ - 1); };
         bpbDown_.setLookAndFeel (&bpbLF_);
         addAndMakeVisible (bpbDown_);
 
         bpbUp_.setButtonText ("+");
-        bpbUp_.setColour (TextButton::buttonColourId, juce::Colour (0xff333344));
+        bpbUp_.setColour (TextButton::buttonColourId, ThemePalette::get (ColourId::CtrlNormal));
         bpbUp_.onClick = [this] { setBeatsPerBarUI (beatsPerBar_ + 1); };
         bpbUp_.setLookAndFeel (&bpbLF_);
         addAndMakeVisible (bpbUp_);
@@ -184,11 +185,11 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (juce::Colour (0xff14141f));
+        g.fillAll (ThemePalette::get (ColourId::BgPrimary));
 
         // Header
         auto header = getLocalBounds().removeFromTop (kHeaderH);
-        g.setColour (juce::Colour (0xff1a1a25));
+        g.setColour (ThemePalette::get (ColourId::BgPanel));
         g.fillRect (header);
         g.setColour (juce::Colours::white.withAlpha (0.75f));
         g.setFont (juce::Font (13.f, juce::Font::bold));
@@ -289,12 +290,12 @@ private:
             bool isHi   = (i == 0);
 
             juce::Colour col = active
-                ? (isHi ? juce::Colour (0xffff7722) : juce::Colour (0xff33bbff))
-                : juce::Colour (0xff1c1c2c);
+                ? (isHi ? ThemePalette::get (ColourId::AccentOrange) : ThemePalette::get (ColourId::AccentBlue).brighter (0.4f))
+                : ThemePalette::get (ColourId::MetroBeatOff);
 
             g.setColour (col);
             g.fillRoundedRectangle (led, 3.f);
-            g.setColour (juce::Colour (0xff2a2a40));
+            g.setColour (ThemePalette::get (ColourId::MetroBeatBg));
             g.drawRoundedRectangle (led, 3.f, 1.f);
 
             x += ledW + 4;
@@ -341,7 +342,7 @@ class MetronomeWindow : public juce::DocumentWindow
 public:
     MetronomeWindow()
         : juce::DocumentWindow ("Metronome",
-                                juce::Colour (0xff14141f),
+                                ThemePalette::get (ColourId::BgPrimary),
                                 juce::DocumentWindow::allButtons)
     {
         setUsingNativeTitleBar (true);
