@@ -172,6 +172,15 @@ public:
         wireUICallbacks();
         wireBridgeManagerCallbacks();
         wireSerializerCallbacks();
+
+        // Restore color theme from saved preferences
+        if (auto* prefs = appProperties.getUserSettings())
+        {
+            const int savedTheme = prefs->getIntValue ("colorTheme", 0);
+            if (savedTheme != 0)
+                lvhLookAndFeel_.setTheme (static_cast<LvhLookAndFeel::Theme> (savedTheme));
+        }
+
         uiManager_.restoreStageWindow();
 
         // Startup info → System Log
@@ -331,6 +340,9 @@ private:
     void wireUIManagerCallbacks()
     {
         uiManager_.onStartPluginScan = [this] { startPluginScan(); };
+        uiManager_.onThemeChanged    = [this] (int v) {
+            lvhLookAndFeel_.setTheme (static_cast<LvhLookAndFeel::Theme> (v));
+        };
     }
 
     void wireStageManagerCallbacks()

@@ -75,6 +75,24 @@ GeneralSettingsPage::GeneralSettingsPage (PropertiesFile* prefs)
         if (prefs) prefs->setValue ("recentBridgeCount", (int) recentCountSlider.getValue());
     };
 
+    // ── Color theme ──────────────────────────────────────────────────
+    themeLabel_.setText ("Color Theme", dontSendNotification);
+    themeLabel_.setFont (Font (12.f));
+    themeLabel_.setColour (Label::textColourId, Colour (0xffcccccc));
+    addAndMakeVisible (themeLabel_);
+
+    themeCombo_.addItem ("Dark",  1);
+    themeCombo_.addItem ("Light", 2);
+    const int savedTheme = (prefs ? prefs->getIntValue ("colorTheme", 0) : 0);
+    themeCombo_.setSelectedId (savedTheme + 1, dontSendNotification);
+    addAndMakeVisible (themeCombo_);
+
+    themeCombo_.onChange = [this, prefs] {
+        const int v = themeCombo_.getSelectedId() - 1;  // 0=Dark, 1=Light
+        if (prefs) prefs->setValue ("colorTheme", v);
+        if (onThemeChanged) onThemeChanged (v);
+    };
+
     // ── Metronome click type ──────────────────────────────────────────
     metroClickLabel_.setText ("Metronome Click", dontSendNotification);
     metroClickLabel_.setFont (Font (12.f));
@@ -140,6 +158,12 @@ void GeneralSettingsPage::resized()
     recentCountLabel .setBounds (row.removeFromLeft (200));
     recentCountSlider.setBounds (row);
     area.removeFromTop (16);
+
+    // Color theme row
+    auto themeRow = area.removeFromTop (26);
+    themeLabel_.setBounds (themeRow.removeFromLeft (90));
+    themeCombo_.setBounds (themeRow.removeFromLeft (120));
+    area.removeFromTop (14);
 
     // Metronome click type row: label | [Normal] [Techno]
     auto metroRow = area.removeFromTop (26);
@@ -705,6 +729,7 @@ SettingsWindow::Content::Content (AudioDeviceManager& dm, PropertiesFile* prefs,
     genPage_->onShowInfoMonitor            = cbs.onShowInfoMonitor;
     genPage_->onLanguageChanged            = cbs.onLanguageChanged;
     genPage_->onMetronomeClickTypeChanged  = cbs.onMetronomeClickTypeChanged;
+    genPage_->onThemeChanged               = cbs.onThemeChanged;
     addPage (LvhStr ("STR_NAV_GENERAL"), genPage_);
 
     addPage (LvhStr ("STR_NAV_AUDIO_MIDI"), new AudioMidiSettingsPage (dm));

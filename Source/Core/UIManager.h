@@ -75,6 +75,9 @@ public:
     /** @brief Fired when the user requests a plugin scan via the main menu. */
     std::function<void()> onStartPluginScan;
 
+    /** @brief Fired when the user changes the color theme (0=Dark, 1=Light). */
+    std::function<void(int)> onThemeChanged;
+
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     /**

@@ -813,6 +813,9 @@ void UIManager::openSettings()
         cbs.onRestorePlugin = [this] (const juce::String& id) {
             toggleDisabled (id);  // removes from disabled list
         };
+        cbs.onThemeChanged = [this] (int v) {
+            if (onThemeChanged) onThemeChanged (v);
+        };
         settingsWindow_ = std::make_unique<SettingsWindow> (
             deviceManager_, appProperties_.getUserSettings(), cbs);
     }

@@ -346,6 +346,25 @@ namespace Icons
 class LvhLookAndFeel : public LookAndFeel_V4
 {
 public:
+    enum class Theme { Dark = 0, Light = 1 };
+
+    LvhLookAndFeel() { applyDark(); }
+
+    /** Switch between Dark and Light themes and refresh all components. */
+    void setTheme (Theme t)
+    {
+        currentTheme_ = t;
+        if (t == Theme::Light) applyLight();
+        else                   applyDark();
+        // Notify all top-level windows to repaint with the new colour scheme.
+        auto& desktop = Desktop::getInstance();
+        for (int i = 0; i < desktop.getNumComponents(); ++i)
+            if (auto* c = desktop.getComponent (i))
+                c->sendLookAndFeelChange();
+    }
+
+    Theme getTheme() const noexcept { return currentTheme_; }
+
     Typeface::Ptr getTypefaceForFont (const Font& f) override
     {
         const auto& name = f.getTypefaceName();
@@ -360,4 +379,24 @@ public:
 
         return LookAndFeel_V4::getTypefaceForFont (f);
     }
+
+private:
+    Theme currentTheme_ = Theme::Dark;
+
+    void applyDark()
+    {
+        setColourScheme (getDarkColourScheme());
+    }
+
+    void applyLight()
+    {
+        // ColourScheme: windowBackground, widgetBackground, menuBackground,
+        //               outline, defaultText, defaultFill,
+        //               highlightedText, highlightedFill, menuText
+        setColourScheme ({ 0xffe8e8e8, 0xfffafafa, 0xfff0f0f0,
+                           0xff999999, 0xff1a1a1a, 0xff3366aa,
+                           0xffffffff, 0xff2255aa, 0xff1a1a1a });
+    }
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LvhLookAndFeel)
 };

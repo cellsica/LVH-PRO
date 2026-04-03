@@ -10,6 +10,7 @@ public:
     std::function<void(bool)>          onShowLevelMeter, onShowMidiMonitor, onShowInfoMonitor;
     std::function<void(juce::String)>  onLanguageChanged;
     std::function<void(int)>           onMetronomeClickTypeChanged;  // 0=Normal, 1=Techno
+    std::function<void(int)>           onThemeChanged;               // 0=Dark,   1=Light
 
     explicit GeneralSettingsPage (PropertiesFile* prefs);
     void resized() override;
@@ -22,6 +23,8 @@ private:
     Slider       recentCountSlider;
     Label        languageLabel_;
     ComboBox     languageCombo_;
+    Label        themeLabel_;
+    ComboBox     themeCombo_;
     Label        metroClickLabel_;
     ToggleButton metroNormalBtn_, metroTechnoBtn_;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GeneralSettingsPage)
@@ -160,6 +163,7 @@ public:
         std::function<void(int)>               onVuOpacityChanged;
         std::function<juce::StringArray()>     onGetDisabledPlugins;
         std::function<void(const juce::String&)> onRestorePlugin;
+        std::function<void(int)>               onThemeChanged;  // 0=Dark, 1=Light
     };
 
     SettingsWindow (AudioDeviceManager& dm, PropertiesFile* prefs, Callbacks cbs);
