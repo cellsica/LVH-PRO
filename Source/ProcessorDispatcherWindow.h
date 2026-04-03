@@ -194,7 +194,10 @@ public:
         setUsingNativeTitleBar (false);
         setResizable (false, false);
         setContentNonOwned (content_.get(), true);
-        centreWithSize (content_->getWidth(), content_->getHeight());
+        // setContentNonOwned(true) already resizes the window to fit the content
+        // including the title bar.  Use the resulting window size to centre —
+        // NOT content_->getWidth/Height() which would exclude the title bar height.
+        centreWithSize (getWidth(), getHeight());
         setVisible (true);
     }
 
