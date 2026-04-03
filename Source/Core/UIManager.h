@@ -330,6 +330,20 @@ private:
      *  Safe to call when mixerWindow_ is nullptr (no-op).
      */
     void updateMixerProcessorStrips();
+
+    // ── Processor persistence helpers ─────────────────────────────────────────
+    /** @brief Persist the current set of running processor names to ApplicationProperties. */
+    void saveActiveProcessors();
+    /** @brief Restore previously running processors after startup scanOnly(). */
+    void restoreActiveProcessors();
+    /**
+     * @brief Returns the index into AudioEngine's active-instance list for
+     *        discovered processor @p discoveredIndex.
+     *
+     * Counts how many processors before @p discoveredIndex are currently running.
+     * Returns -1 if the processor at @p discoveredIndex is not running.
+     */
+    int getActiveIndexOf (int discoveredIndex) const;
     juce::File getBridgeStartDir() const;
     void executeSafeSetOperation (std::function<void()> action);
 

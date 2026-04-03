@@ -92,8 +92,8 @@ void UIManager::setMainComponent (MainComponent* mc)
                                  .getParentDirectory()
                                  .getChildFile ("Processors");
         processorManager_->scanOnly (procDir);
-        // No plugins running yet — AudioEngine and Mixer will be updated
-        // individually as the user starts processors via the dispatcher UI.
+        // Restore processors that were active in the previous session.
+        restoreActiveProcessors();
     }
 
     // Speaker mute button + volume slider (share savedGain)
@@ -1439,8 +1439,24 @@ void UIManager::startProcessor (int index)
     if (! processorManager_->startProcessor (index))
         return;
 
+    // Wire into audio graph.  processorMixerStates_ is resized here (new entry = gain 1.0).
     audioEngine_.setProcessorPlugins (processorManager_->getActiveInstances());
+
+    // Fade-in: set the new strip's gain to 0 before the graph rebuilds,
+    // then ramp to 1.0 after ~80 ms so the first audio block is silent.
+    int activeIdx = getActiveIndexOf (index);
+    if (activeIdx >= 0)
+    {
+        audioEngine_.setProcessorGain (activeIdx, 0.0f);
+        juce::Timer::callAfterDelay (80, [this, activeIdx]
+        {
+            if (processorManager_ != nullptr)
+                audioEngine_.setProcessorGain (activeIdx, 1.0f);
+        });
+    }
+
     updateMixerProcessorStrips();
+    saveActiveProcessors();
 }
 
 void UIManager::stopProcessor (int index)
@@ -1448,7 +1464,79 @@ void UIManager::stopProcessor (int index)
     if (processorManager_ == nullptr)
         return;
 
-    processorManager_->stopProcessor (index);
-    audioEngine_.setProcessorPlugins (processorManager_->getActiveInstances());
+    // Fade-out: silence the strip immediately, then remove after ~80 ms.
+    int activeIdx = getActiveIndexOf (index);
+    if (activeIdx >= 0)
+        audioEngine_.setProcessorGain (activeIdx, 0.0f);
+
+    juce::Timer::callAfterDelay (80, [this, index]
+    {
+        if (processorManager_ == nullptr)
+            return;
+        processorManager_->stopProcessor (index);
+        audioEngine_.setProcessorPlugins (processorManager_->getActiveInstances());
+        updateMixerProcessorStrips();
+        saveActiveProcessors();
+    });
+}
+
+int UIManager::getActiveIndexOf (int discoveredIndex) const
+{
+    if (processorManager_ == nullptr || ! processorManager_->isRunning (discoveredIndex))
+        return -1;
+
+    int activeIdx = 0;
+    for (int i = 0; i < discoveredIndex; ++i)
+        if (processorManager_->isRunning (i))
+            ++activeIdx;
+    return activeIdx;
+}
+
+void UIManager::saveActiveProcessors()
+{
+    if (processorManager_ == nullptr)
+        return;
+
+    juce::StringArray names;
+    for (int i = 0; i < processorManager_->getNumDiscovered(); ++i)
+        if (processorManager_->isRunning (i))
+            names.add (processorManager_->getName (i));
+
+    if (auto* prefs = appProperties_.getUserSettings())
+    {
+        prefs->setValue ("activeProcessors", names.joinIntoString ("|"));
+        prefs->saveIfNeeded();
+    }
+}
+
+void UIManager::restoreActiveProcessors()
+{
+    if (processorManager_ == nullptr)
+        return;
+
+    auto* prefs = appProperties_.getUserSettings();
+    if (prefs == nullptr)
+        return;
+
+    juce::String saved = prefs->getValue ("activeProcessors", "");
+    if (saved.isEmpty())
+        return;
+
+    juce::StringArray names;
+    names.addTokens (saved, "|", "");
+
+    for (int i = 0; i < processorManager_->getNumDiscovered(); ++i)
+    {
+        if (names.contains (processorManager_->getName (i)))
+        {
+            if (processorManager_->startProcessor (i))
+            {
+                audioEngine_.setProcessorPlugins (processorManager_->getActiveInstances());
+                DBG ("[UIManager] Restored processor: " + processorManager_->getName (i));
+            }
+        }
+    }
+
+    // Wire Mixer strips for all restored processors in one call.
     updateMixerProcessorStrips();
 }
