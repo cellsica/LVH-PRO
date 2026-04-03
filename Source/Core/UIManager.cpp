@@ -549,8 +549,14 @@ void UIManager::toggleProcessorDispatcher (bool show)
             processorDispatcherWindow_ = std::make_unique<ProcessorDispatcherWindow> (*this);
             processorDispatcherWindow_->onCloseRequest = [this]
             {
-                processorDispatcherWindow_.reset();
+                // Update toolbar immediately, then defer deletion so we are not
+                // deleting the window object while closeButtonPressed() is still
+                // on the call stack (use-after-free / UB).
                 if (mc_ != nullptr) mc_->setProcessorWindowVisible (false);
+                juce::MessageManager::callAsync ([this]
+                {
+                    processorDispatcherWindow_.reset();
+                });
             };
         }
         processorDispatcherWindow_->toFront (true);
