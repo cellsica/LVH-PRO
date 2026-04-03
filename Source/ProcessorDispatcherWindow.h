@@ -193,11 +193,12 @@ public:
     {
         setUsingNativeTitleBar (false);
         setResizable (false, false);
-        setContentNonOwned (content_.get(), true);
-        // setContentNonOwned(true) already resizes the window to fit the content
-        // including the title bar.  Use the resulting window size to centre —
-        // NOT content_->getWidth/Height() which would exclude the title bar height.
-        centreWithSize (getWidth(), getHeight());
+        // Use false for resizeToFit to avoid a feedback loop where moving the
+        // window triggers resized() → content setBounds → window grows by one
+        // item height each time.  Instead, size the window explicitly.
+        setContentNonOwned (content_.get(), false);
+        centreWithSize (content_->getWidth(),
+                        content_->getHeight() + getTitleBarHeight());
         setVisible (true);
     }
 
@@ -211,7 +212,9 @@ public:
     void refresh()
     {
         content_->rebuild();
-        setContentNonOwned (content_.get(), true);
+        setContentNonOwned (content_.get(), false);
+        setSize (content_->getWidth(),
+                 content_->getHeight() + getTitleBarHeight());
     }
 
     std::function<void()> onCloseRequest;
