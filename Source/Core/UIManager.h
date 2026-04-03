@@ -254,6 +254,46 @@ public:
      */
     const juce::StringArray& getDisabledIds() const noexcept { return disabledIds_; }
 
+    // ── Processor plugin dispatch (Mission 053) ───────────────────────────────
+
+    /** @brief Number of processor DLLs found in the Processors/ directory. */
+    int getNumDiscoveredProcessors() const;
+
+    /**
+     * @brief Display name of the discovered processor at @p index.
+     *
+     * Returns the name from IProcessorPlugin::getName() when running,
+     * otherwise the DLL filename stem.
+     */
+    juce::String getProcessorName (int index) const;
+
+    /** @brief Returns whether the processor at @p index is currently running. */
+    bool isProcessorRunning (int index) const;
+
+    /**
+     * @brief Accent colour of the processor at @p index.
+     *
+     * Returns the plugin's reported colour when running, or the default
+     * (0xff556688) when stopped.
+     */
+    unsigned int getProcessorAccentColour (int index) const;
+
+    /**
+     * @brief Start the processor at @p index.
+     *
+     * Loads the DLL, creates the instance, wires it into the audio graph,
+     * and adds a mixer strip.  No-op if already running.
+     */
+    void startProcessor (int index);
+
+    /**
+     * @brief Stop the processor at @p index.
+     *
+     * Shuts down the instance, removes it from the audio graph, and removes
+     * the mixer strip.  No-op if not running.
+     */
+    void stopProcessor (int index);
+
     /**
      * @brief Process an incoming MIDI message for remote control.
      *
