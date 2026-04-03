@@ -81,6 +81,10 @@
     - [x] Phase E: UI 統合 ＆ 全体最適化 ✅ (しずく045-E)
 - [x] **Mission 047: Doxygen 拡張 ＆ コード品質向上 (Docs Expansion)** ✅ (しずく047)
 - [x] Mission 046: Doxygen 対応 (Documentation) ✅ (しずく046)
+- [x] **Mission 049: Processor Plugin 基盤 (SDK)** ✅ (しずく049 Phase 1-3)
+    - [x] **IProcessorPlugin**: 楽器 / Line 入力を受け取り、加工結果を Mixer に返す基盤インターフェース実装。
+    - [x] **ProcessorManager**: DLL スキャン・ロード・ライフサイクル管理実装。
+    - [x] **Mixer 統合**: ミキサーコンソールに Processor 専用ストリップを自動生成する仕組み。
 - [x] Mission 040: プラグイン・お気に入り機能 ✅ (Mission 039 から昇格)
 - [x] **Mission 048: プラグイン非表示 (Disable) 機能** ✅ (しずく048)
     - [x] **Disable Menu**: 右クリックでプラグインを「非表示」にする機能実装
@@ -89,9 +93,7 @@
     - [x] **Exclusion**: 再スキャン時の除外処理実装
 
 ## 確認済みの未完了タスク 🔜
-- [ ] **Mission 049: Processor Plugin 基盤 (SDK)**
-- [ ] **Mission 050: カラーテーマ ＆ ステージ視認性向上 (Dark/Light)**
-- [ ] **Mission 051: 独立ビジュアライザーアプリ (VisualizerApp)**
+- [ ] **Mission 053: 独立ビジュアライザーアプリ (VisualizerApp)**
 
 ## 直近の作業ログ 📝
 - [2026-03-17] かえで：Bridge プロトタイプの最小構成ソースコードを実装。
@@ -158,3 +160,7 @@
 - [2026-04-01] しずく：Mission 047 完了！AudioEngine / BridgeInstance / StageManager の深部までドキュメント化。
 - [2026-04-01] かえで：Mission 048 のタスクを策定。
 - [2026-04-02] しずく：Mission 048 完了！右クリックでのプラグイン非表示と設定画面からの復元機能を実装。Ver 0.10.0-alpha。
+- [2026-04-02] しずく：Mission 049 (Phase 1-3) 完了！Processor SDK 基盤とミキサー統合を実装。Ver 0.11.0-alpha。
+- [2026-04-03] しずく：Mission 050 完了！サンプル・ルーパー・プロセッサー (Simple Looper) を実装。Ver 0.11.1-alpha。
+- [2026-04-03] しずく：Mission 051 完了！基本の Dark / Light 切り替え機能を実装。Ver 0.12.0-alpha。
+- [2026-04-03] しずく：Mission 052 完了！ThemePalette システム、動的テーマリスト、キャンパスノートテーマ、Light テーマ本格配色、ミキサーフェーダー右側目盛りを実装。
