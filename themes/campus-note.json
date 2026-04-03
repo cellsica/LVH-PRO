@@ -1,0 +1,85 @@
+{
+  "_comment": "LVH Campus Note Theme — inspired by KOKUYO Campus notebooks",
+  "_name": "キャンパスノート",
+
+  "BgPrimary":          "f7f3e8",
+  "BgPanel":            "fdfaf2",
+  "BgPanelAlt":         "ede8da",
+  "BgInput":            "fefefe",
+  "BgLog":              "f5f1e6",
+  "BgVisualizer":       "000000",
+
+  "CtrlNormal":         "ddd8cc",
+  "CtrlActive":         "a8c8e8",
+  "CtrlHover":          "ccd4e0",
+
+  "MixerInputBg":       "e8f4ec",
+  "MixerMasterBg":      "e8f0f8",
+  "MixerBypassBg":      "f8e8e8",
+  "MixerFxSlotBg":      "ddd8cc",
+  "MixerFxArea":        "ede8da",
+
+  "AccentGreen":        "4a9b6f",
+  "AccentBlue":         "5588bb",
+  "AccentOrange":       "cc7733",
+  "AccentPurple":       "8866aa",
+  "AccentViolet":       "9966bb",
+  "AccentDarkGreen":    "3a7a55",
+  "AccentDarkBlue":     "3355aa",
+
+  "StateSelected":      "a8c8e8",
+  "StateSelectedText":  "1a2a4a",
+  "StateActive":        "4a9b6f",
+  "StateBypass":        "cc4444",
+  "StateMuted":         "cc4444",
+  "StatePin":           "cc8833",
+  "StateQueue":         "aa7700",
+  "StateMono":          "4488bb",
+
+  "TextPrimary":        "1e1e2a",
+  "TextSecondary":      "445566",
+  "TextTertiary":       "555566",
+  "TextMidi":           "3366aa",
+  "TextSysLog":         "336633",
+  "TextInactive":       "aaaaaa",
+  "TextSustainOn":      "228844",
+  "TextFxOverlay":      "3366aa",
+  "TextPan":            "667788",
+  "TextStagePath":      "667788",
+  "TextSettingsHeader": "aa5500",
+
+  "MeterGreen":         "22aa44",
+  "MeterYellow":        "aaaa00",
+  "MeterRed":           "cc2222",
+
+  "BorderDefault":      "b8cce0",
+  "BorderOutline":      "b8cce0",
+  "BorderActive":       "5588bb",
+
+  "PaletteBlue":        "5588bb",
+  "PaletteRed":         "bb4444",
+  "PaletteGreen":       "4a9b6f",
+  "PaletteOrange":      "cc6633",
+  "PaletteViolet":      "8855aa",
+  "PaletteTeal":        "448899",
+
+  "StageBg":            "f2ede0",
+  "StageItemNormal":    "faf7f0",
+  "StageItemSelected":  "a8c8e8",
+  "StageItemActive":    "a8d4b8",
+  "StageCtrlNormal":    "4a9b6f",
+  "StageCtrlActive":    "5bad7a",
+
+  "ListBg":             "faf7f0",
+  "ListOutline":        "b8cce0",
+
+  "SettingsSelected":   "a8c8e8",
+  "SettingsRescan":     "4a9b6f",
+  "SettingsPathText":   "1a2a4a",
+  "SettingsSepLine":    "b8cce0",
+
+  "MetroBeatOff":       "ddd8cc",
+  "MetroBeatBg":        "ccd4e0",
+  "MetroTap":           "5588bb",
+  "MetroBpm":           "ddd8cc"
+}

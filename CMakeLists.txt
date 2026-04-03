@@ -303,16 +303,12 @@ add_custom_command(TARGET LVH POST_BUILD
     COMMENT "Deploying Release build to \\\\Storm-pc\\lvhpro"
 )
 
-# Copy themes/ to output directory after LVH build
+# Copy ALL themes/*.json to output directory after LVH build.
+# Using copy_directory so any new .json added to themes/ is picked up automatically.
 add_custom_command(TARGET LVH POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/themes"
         "$<TARGET_FILE_DIR:LVH>/themes"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_SOURCE_DIR}/themes/dark.json"
-        "$<TARGET_FILE_DIR:LVH>/themes/dark.json"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_SOURCE_DIR}/themes/light.json"
-        "$<TARGET_FILE_DIR:LVH>/themes/light.json"
     COMMENT "Copying themes/ to LVH output directory"
 )
 
