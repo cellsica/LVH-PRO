@@ -17,6 +17,7 @@ class SettingsWindow;
 class StageWindow;
 class PluginPickerComponent;
 class ProcessorManager;
+class ProcessorDispatcherWindow;
 
 /**
  * @class UIManager
@@ -134,6 +135,9 @@ public:
      * @param show  true to show, false to hide.
      */
     void toggleVisualizerWindow (bool show);
+
+    /** @brief Show or hide the Processor Manager dispatcher window. */
+    void toggleProcessorDispatcher (bool show);
 
     /** @brief Open the Settings window (audio device, language, theme). */
     void openSettings();
@@ -374,9 +378,10 @@ private:
     std::unique_ptr<VUPhysicsEngine>      vuPhysicsEngine_;
     std::unique_ptr<VUMeterWindow>        vuMeterWindow_;
     std::unique_ptr<VisualizerManager>    visualizerManager_;
-    std::unique_ptr<VisualizerWindow>     visualizerWindow_;
-    std::unique_ptr<juce::DocumentWindow> pluginPickerWindow_;
-    std::unique_ptr<ProcessorManager>     processorManager_;
+    std::unique_ptr<VisualizerWindow>           visualizerWindow_;
+    std::unique_ptr<ProcessorDispatcherWindow>  processorDispatcherWindow_;
+    std::unique_ptr<juce::DocumentWindow>       pluginPickerWindow_;
+    std::unique_ptr<ProcessorManager>           processorManager_;
 
     LearnState                               learnState_;
     std::map<juce::String, MixerMidiMapping> mixerMappings_;
