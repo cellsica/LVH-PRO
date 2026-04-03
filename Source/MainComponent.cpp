@@ -68,6 +68,18 @@ MainComponent::MainComponent (MidiKeyboardState& state)
     visualizerToggleButton->setColour (TextButton::buttonOnColourId, ThemePalette::get (ColourId::AccentDarkBlue));
     visualizerToggleButton->onClick = [this] { toggleVisualizer(); };
 
+    processorToggleButton = std::make_unique<IconButton> ("Processor Manager", Icons::processor);
+    addAndMakeVisible (*processorToggleButton);
+    processorToggleButton->setClickingTogglesState (true);
+    processorToggleButton->setToggleState (false, dontSendNotification);
+    processorToggleButton->setColour (TextButton::buttonColourId,   ThemePalette::get (ColourId::CtrlNormal));
+    processorToggleButton->setColour (TextButton::buttonOnColourId, ThemePalette::get (ColourId::AccentOrange));
+    processorToggleButton->onClick = [this]
+    {
+        if (onProcessorToggle)
+            onProcessorToggle (processorToggleButton->getToggleState());
+    };
+
     octaveDownButton = std::make_unique<TextButton> ("-");
     addAndMakeVisible (*octaveDownButton);
     octaveDownButton->setTooltip ("Octave Down (shortcut: [)");
@@ -284,6 +296,11 @@ void MainComponent::setVisualizerWindowVisible (bool v)
     visualizerToggleButton->setToggleState (v, dontSendNotification);
 }
 
+void MainComponent::setProcessorWindowVisible (bool v)
+{
+    processorToggleButton->setToggleState (v, dontSendNotification);
+}
+
 
 // ── Paint ──────────────────────────────────────────────────────────────────
 
@@ -317,6 +334,7 @@ void MainComponent::resized()
     metronomeToggleButton ->setBounds (toolbar.removeFromLeft (36).reduced (2));
     vuMeterToggleButton   ->setBounds (toolbar.removeFromLeft (36).reduced (2));
     visualizerToggleButton->setBounds (toolbar.removeFromLeft (36).reduced (2));
+    processorToggleButton ->setBounds (toolbar.removeFromLeft (36).reduced (2));
 
     toolbar.removeFromLeft (6); // small gap
     octaveDownButton   ->setBounds (toolbar.removeFromLeft (26).reduced (2));

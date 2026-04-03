@@ -6,6 +6,7 @@
 #include "StageWindow.h"
 #include "PluginPickerComponent.h"
 #include "ProcessorManager.h"
+#include "../ProcessorDispatcherWindow.h"
 #include "../LanguageManager.h"
 
 UIManager::UIManager (AudioEngine&                  audioEngine,
@@ -129,7 +130,8 @@ void UIManager::setMainComponent (MainComponent* mc)
     mc_->onStageToggle         = [this] (bool show) { toggleStageWindow     (show); };
     mc_->onMetronomeToggle     = [this] (bool show) { toggleMetronomeWindow (show); };
     mc_->onVuMeterToggle       = [this] (bool show) { toggleVuMeterWindow   (show); };
-    mc_->onVisualizerToggle    = [this] (bool show) { toggleVisualizerWindow (show); };
+    mc_->onVisualizerToggle    = [this] (bool show) { toggleVisualizerWindow   (show); };
+    mc_->onProcessorToggle     = [this] (bool show) { toggleProcessorDispatcher (show); };
     mc_->onLaunchBridgeClicked = [this] { launchBridgeFileChooser(); };
 
     // Beat callback: fires on message thread (via AsyncUpdater in MetronomeProcessor)
@@ -212,6 +214,7 @@ void UIManager::shutdown()
     vuMeterWindow_.reset();
     visualizerWindow_.reset();
     visualizerManager_.reset();
+    processorDispatcherWindow_.reset();
     pluginPickerWindow_.reset();
     mc_ = nullptr;
 }
@@ -534,6 +537,28 @@ void UIManager::toggleVisualizerWindow (bool show)
         if (visualizerWindow_ != nullptr)
             visualizerWindow_->setVisible (false);
         if (mc_ != nullptr) mc_->setVisualizerWindowVisible (false);
+    }
+}
+
+void UIManager::toggleProcessorDispatcher (bool show)
+{
+    if (show)
+    {
+        if (processorDispatcherWindow_ == nullptr)
+        {
+            processorDispatcherWindow_ = std::make_unique<ProcessorDispatcherWindow> (*this);
+            processorDispatcherWindow_->onCloseRequest = [this]
+            {
+                processorDispatcherWindow_.reset();
+                if (mc_ != nullptr) mc_->setProcessorWindowVisible (false);
+            };
+        }
+        processorDispatcherWindow_->toFront (true);
+    }
+    else
+    {
+        processorDispatcherWindow_.reset();
+        if (mc_ != nullptr) mc_->setProcessorWindowVisible (false);
     }
 }
 

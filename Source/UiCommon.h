@@ -328,6 +328,34 @@ namespace Icons
         // Pivot dot
         g.fillEllipse (cx - 2.f, py - 2.f, 4.f, 4.f);
     }
+
+    // Processor icon — three horizontal signal-flow bars with a small plug symbol
+    inline void processor (Graphics& g, Rectangle<float> a)
+    {
+        g.setColour (Colours::white);
+
+        const float cx  = a.getCentreX();
+        const float cy  = a.getCentreY();
+        const float w   = a.getWidth();
+        const float h   = a.getHeight();
+
+        // Three horizontal bars (signal strips)
+        const float barW  = w * 0.60f;
+        const float barH  = h * 0.09f;
+        const float gap   = h * 0.16f;
+        const float startY = cy - gap - barH * 1.5f;
+
+        for (int i = 0; i < 3; ++i)
+        {
+            float y = startY + i * (barH + gap);
+            g.fillRoundedRectangle (cx - barW * 0.5f, y, barW, barH, barH * 0.5f);
+        }
+
+        // Small plug connector dot on the right end of the middle bar
+        const float dotR = w * 0.09f;
+        const float midY = cy - barH * 0.5f;
+        g.fillEllipse (cx + barW * 0.5f - dotR, midY - dotR + barH * 0.5f, dotR * 2.f, dotR * 2.f);
+    }
 }
 
 // =====================================================================
