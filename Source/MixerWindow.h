@@ -434,7 +434,7 @@ public:
             return std::abs (rem) < 0.001;
         };
 
-        // Minor ticks every 0.05 (left-edge short lines only)
+        // Minor ticks every 0.05 (left-edge and right-edge short lines)
         int numSteps = (int) std::round (maxVal / 0.05);
         for (int i = 0; i <= numSteps; ++i)
         {
@@ -444,6 +444,7 @@ public:
             g.setColour (juce::Colour (0x88aaaaaa));
             float y = valueToY (v);
             g.drawHorizontalLine ((int) y, (float) fb.getX(), (float) (fb.getX() + 7));
+            g.drawHorizontalLine ((int) y, (float) (fb.getRight() - 7), (float) fb.getRight());
         }
 
         // Major ticks — full width lines
