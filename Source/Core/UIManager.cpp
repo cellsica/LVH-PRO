@@ -81,16 +81,18 @@ void UIManager::setMainComponent (MainComponent* mc)
             disabledIds_.addTokens (saved, "|", "");
     }
 
-    // Scan and load processor plugins from <exe dir>/Processors/
+    // Discover processor plugins from <exe dir>/Processors/ (scan only — no auto-start).
+    // Individual plugins are started via UIManager::startProcessor() from the
+    // Processor Manager UI (Phase B) or on project restore.
     processorManager_ = std::make_unique<ProcessorManager>();
     {
         juce::File procDir = juce::File::getSpecialLocation (
                                  juce::File::currentExecutableFile)
                                  .getParentDirectory()
                                  .getChildFile ("Processors");
-        processorManager_->scanAndLoad (procDir);
-        audioEngine_.setProcessorPlugins (processorManager_->getPluginInstances());
-        updateMixerProcessorStrips();
+        processorManager_->scanOnly (procDir);
+        // No plugins running yet — AudioEngine and Mixer will be updated
+        // individually as the user starts processors via the dispatcher UI.
     }
 
     // Speaker mute button + volume slider (share savedGain)
@@ -1380,4 +1382,48 @@ void UIManager::showMainMenu()
                 }
             }
         });
+}
+
+// ── Processor plugin dispatch (Mission 053) ───────────────────────────────────
+
+int UIManager::getNumDiscoveredProcessors() const
+{
+    return processorManager_ != nullptr ? processorManager_->getNumDiscovered() : 0;
+}
+
+juce::String UIManager::getProcessorName (int index) const
+{
+    return processorManager_ != nullptr ? processorManager_->getName (index) : juce::String{};
+}
+
+bool UIManager::isProcessorRunning (int index) const
+{
+    return processorManager_ != nullptr && processorManager_->isRunning (index);
+}
+
+unsigned int UIManager::getProcessorAccentColour (int index) const
+{
+    return processorManager_ != nullptr ? processorManager_->getAccentColour (index) : 0xff556688u;
+}
+
+void UIManager::startProcessor (int index)
+{
+    if (processorManager_ == nullptr)
+        return;
+
+    if (! processorManager_->startProcessor (index))
+        return;
+
+    audioEngine_.setProcessorPlugins (processorManager_->getActiveInstances());
+    updateMixerProcessorStrips();
+}
+
+void UIManager::stopProcessor (int index)
+{
+    if (processorManager_ == nullptr)
+        return;
+
+    processorManager_->stopProcessor (index);
+    audioEngine_.setProcessorPlugins (processorManager_->getActiveInstances());
+    updateMixerProcessorStrips();
 }

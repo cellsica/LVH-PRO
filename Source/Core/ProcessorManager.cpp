@@ -11,12 +11,12 @@ ProcessorManager::~ProcessorManager()
     unloadAll();
 }
 
-// ── Plugin management ─────────────────────────────────────────────────────────
+// ── Discovery ─────────────────────────────────────────────────────────────────
 
-void ProcessorManager::scanAndLoad (const juce::File& processorsDir)
+void ProcessorManager::scanOnly (const juce::File& processorsDir)
 {
     unloadAll();
-    processorsDir_ = processorsDir;
+    discovered_.clear();
 
     if (! processorsDir.isDirectory())
     {
@@ -24,84 +24,148 @@ void ProcessorManager::scanAndLoad (const juce::File& processorsDir)
         return;
     }
 
-    DBG ("[ProcessorManager] Scanning: " + processorsDir.getFullPathName());
+    DBG ("[ProcessorManager] Scanning (scan-only): " + processorsDir.getFullPathName());
 
     for (const auto& dllFile : processorsDir.findChildFiles (
              juce::File::findFiles, false, "*.dll"))
     {
-        auto proc     = std::make_unique<LoadedProcessor>();
-        proc->name    = dllFile.getFileNameWithoutExtension();
-        proc->library = std::make_unique<juce::DynamicLibrary>();
-
-        if (! proc->library->open (dllFile.getFullPathName()))
-        {
-            DBG ("[ProcessorManager] Failed to load DLL: " + dllFile.getFileName());
-            continue;
-        }
-
-        auto* createFn = reinterpret_cast<CreateProcessorFunc> (
-            proc->library->getFunction ("createProcessor"));
-
-        if (createFn == nullptr)
-        {
-            DBG ("[ProcessorManager] No createProcessor() export in: "
-                 + dllFile.getFileName());
-            continue;
-        }
-
-        proc->instance = createFn();
-        if (proc->instance == nullptr)
-        {
-            DBG ("[ProcessorManager] createProcessor() returned null: "
-                 + dllFile.getFileName());
-            continue;
-        }
-
-        proc->instance->initialise (lastSampleRate_, lastBufferSize_);
-
-        DBG ("[ProcessorManager] Loaded: " + proc->name);
-        processors_.push_back (std::move (proc));
+        auto entry = std::make_unique<DiscoveredProcessor>();
+        entry->dllFile  = dllFile;
+        entry->stemName = dllFile.getFileNameWithoutExtension();
+        discovered_.push_back (std::move (entry));
+        DBG ("[ProcessorManager] Discovered: " + discovered_.back()->stemName);
     }
 
-    DBG ("[ProcessorManager] " + juce::String ((int)processors_.size())
-         + " processor(s) loaded.");
+    DBG ("[ProcessorManager] " + juce::String ((int) discovered_.size())
+         + " processor(s) discovered.");
+}
+
+// ── Start / Stop ──────────────────────────────────────────────────────────────
+
+bool ProcessorManager::startProcessor (int index)
+{
+    if (index < 0 || index >= (int) discovered_.size())
+        return false;
+
+    auto& entry = discovered_[(size_t) index];
+
+    if (entry->isRunning())
+        return true;  // Already running — no-op.
+
+    entry->library = std::make_unique<juce::DynamicLibrary>();
+    if (! entry->library->open (entry->dllFile.getFullPathName()))
+    {
+        DBG ("[ProcessorManager] Failed to load DLL: " + entry->dllFile.getFileName());
+        entry->library.reset();
+        return false;
+    }
+
+    auto* createFn = reinterpret_cast<CreateProcessorFunc> (
+        entry->library->getFunction ("createProcessor"));
+
+    if (createFn == nullptr)
+    {
+        DBG ("[ProcessorManager] No createProcessor() export: " + entry->dllFile.getFileName());
+        entry->library.reset();
+        return false;
+    }
+
+    entry->instance = createFn();
+    if (entry->instance == nullptr)
+    {
+        DBG ("[ProcessorManager] createProcessor() returned null: " + entry->dllFile.getFileName());
+        entry->library.reset();
+        return false;
+    }
+
+    entry->instance->initialise (lastSampleRate_, lastBufferSize_);
+    DBG ("[ProcessorManager] Started: " + entry->stemName);
+    return true;
+}
+
+void ProcessorManager::stopProcessor (int index)
+{
+    if (index < 0 || index >= (int) discovered_.size())
+        return;
+
+    auto& entry = discovered_[(size_t) index];
+
+    if (! entry->isRunning())
+        return;  // Not running — no-op.
+
+    entry->instance->shutdown();
+    delete entry->instance;
+    entry->instance = nullptr;
+    entry->library.reset();
+    DBG ("[ProcessorManager] Stopped: " + entry->stemName);
 }
 
 void ProcessorManager::unloadAll()
 {
-    processors_.clear();  // ~LoadedProcessor calls shutdown() + delete on each instance
+    for (int i = 0; i < (int) discovered_.size(); ++i)
+        stopProcessor (i);
 }
+
+// ── Device configuration ──────────────────────────────────────────────────────
 
 void ProcessorManager::prepareAll (double sampleRate, int maxBufferSize)
 {
     lastSampleRate_ = sampleRate;
     lastBufferSize_ = maxBufferSize;
 
-    // Re-initialise loaded plugins so they can reallocate internal buffers.
-    // ProcessorPluginNode::prepareToPlay() will also call initialise() when
-    // the audio graph is rebuilt, but calling it here ensures plugins are
-    // ready even before the next graph rebuild.
-    for (auto& proc : processors_)
-        if (proc->instance != nullptr)
-            proc->instance->initialise (sampleRate, maxBufferSize);
+    for (auto& entry : discovered_)
+        if (entry->isRunning())
+            entry->instance->initialise (sampleRate, maxBufferSize);
 }
 
-// ── Query ─────────────────────────────────────────────────────────────────────
+// ── Query — discovered list ───────────────────────────────────────────────────
+
+juce::String ProcessorManager::getName (int index) const
+{
+    if (index < 0 || index >= (int) discovered_.size())
+        return {};
+
+    const auto& entry = discovered_[(size_t) index];
+    if (entry->isRunning())
+        return juce::String (entry->instance->getName());
+    return entry->stemName;
+}
+
+bool ProcessorManager::isRunning (int index) const
+{
+    if (index < 0 || index >= (int) discovered_.size())
+        return false;
+    return discovered_[(size_t) index]->isRunning();
+}
+
+unsigned int ProcessorManager::getAccentColour (int index) const
+{
+    if (index < 0 || index >= (int) discovered_.size())
+        return 0xff556688u;
+
+    const auto& entry = discovered_[(size_t) index];
+    if (entry->isRunning())
+        return entry->instance->getAccentColour();
+    return 0xff556688u;  // Default until started.
+}
+
+// ── Query — active instances ──────────────────────────────────────────────────
+
+std::vector<IProcessorPlugin*> ProcessorManager::getActiveInstances() const
+{
+    std::vector<IProcessorPlugin*> result;
+    for (const auto& entry : discovered_)
+        if (entry->isRunning())
+            result.push_back (entry->instance);
+    return result;
+}
+
+// ── Legacy compat ─────────────────────────────────────────────────────────────
 
 juce::StringArray ProcessorManager::getProcessorNames() const
 {
     juce::StringArray names;
-    for (auto& p : processors_)
-        names.add (p->name);
+    for (int i = 0; i < (int) discovered_.size(); ++i)
+        names.add (getName (i));
     return names;
-}
-
-std::vector<IProcessorPlugin*> ProcessorManager::getPluginInstances() const
-{
-    std::vector<IProcessorPlugin*> instances;
-    instances.reserve (processors_.size());
-    for (auto& p : processors_)
-        if (p->instance != nullptr)
-            instances.push_back (p->instance);
-    return instances;
 }

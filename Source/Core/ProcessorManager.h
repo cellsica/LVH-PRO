@@ -4,6 +4,10 @@
  * @file ProcessorManager.h
  * @brief Lifecycle manager for IProcessorPlugin DLL plugins loaded from the
  *        `<exe dir>/Processors/` directory.
+ *
+ * @note Phase A (Mission 053): Scan and Start/Stop are now separated.
+ *       scanOnly() discovers DLLs without creating instances.
+ *       startProcessor() / stopProcessor() manage individual plugin lifecycle.
  */
 
 #include <JuceHeader.h>
@@ -13,17 +17,15 @@
 
 /**
  * @class ProcessorManager
- * @brief Manages the lifecycle of IProcessorPlugin DLL plugins.
+ * @brief Manages the discovery and lifecycle of IProcessorPlugin DLL plugins.
  *
- * Responsibilities:
- *  1. Scan `<LVH.exe dir>/Processors/` for *.dll files.
- *  2. Load each DLL via juce::DynamicLibrary, resolve `createProcessor()`.
- *  3. Call IProcessorPlugin::initialise() on load and on device changes.
- *  4. Call IProcessorPlugin::shutdown() + delete on unload.
- *  5. Expose raw plugin pointers for AudioEngine to wrap in ProcessorPluginNode.
+ * **Scan vs. Start separation (Mission 053):**
+ *  - scanOnly() scans `Processors/` and records DLL paths — no instances are created.
+ *  - startProcessor(index) loads the DLL, creates an instance, and calls initialise().
+ *  - stopProcessor(index) calls shutdown(), deletes the instance, and unloads the DLL.
  *
  * **Ownership:**
- * - ProcessorManager owns the DynamicLibrary and IProcessorPlugin instances.
+ * - ProcessorManager owns DynamicLibrary handles and IProcessorPlugin instances.
  * - AudioEngine wraps raw IProcessorPlugin* in ProcessorPluginNode (non-owning).
  *
  * **Thread safety:**
@@ -32,73 +34,126 @@
 class ProcessorManager
 {
 public:
-    /** @brief Default constructor.  No plugins are loaded until scanAndLoad() is called. */
     ProcessorManager();
-
-    /** @brief Calls unloadAll() to ensure every plugin receives shutdown() before destruction. */
     ~ProcessorManager();
 
-    // ── Plugin management ─────────────────────────────────────────────────────
+    // ── Discovery ─────────────────────────────────────────────────────────────
 
     /**
-     * @brief Scan @p processorsDir for *.dll files and load each one.
+     * @brief Scan @p processorsDir for *.dll files and record them.
      *
-     * Any previously loaded plugins are unloaded first.
-     * Each successfully loaded plugin receives an initialise() call with the
-     * last-known sample rate and buffer size.
+     * Previously running plugins are stopped first.
+     * No DLL is loaded or instantiated — only file paths are recorded.
      *
      * @param processorsDir  Directory to scan (e.g. `<exe dir>/Processors/`).
      */
-    void scanAndLoad (const juce::File& processorsDir);
+    void scanOnly (const juce::File& processorsDir);
 
-    /** @brief Shutdown and unload all currently loaded plugins. */
-    void unloadAll();
+    // ── Start / Stop ──────────────────────────────────────────────────────────
 
     /**
-     * @brief Notify all loaded plugins of a device configuration change.
+     * @brief Load the DLL at @p index and create a running plugin instance.
      *
-     * Stores the new values and calls initialise() on every loaded plugin.
-     * Called by UIManager when AudioDeviceManager reports a change.
+     * If the plugin at @p index is already running, this is a no-op and returns true.
+     *
+     * @param index  Zero-based index into the discovered list.
+     * @return true on success, false if loading or instantiation failed.
+     */
+    bool startProcessor (int index);
+
+    /**
+     * @brief Stop and unload the plugin instance at @p index.
+     *
+     * Calls shutdown() and delete on the instance, then closes the DLL handle.
+     * If the plugin is not running, this is a no-op.
+     *
+     * @param index  Zero-based index into the discovered list.
+     */
+    void stopProcessor (int index);
+
+    /** @brief Stop and unload all currently running plugins. */
+    void unloadAll();
+
+    // ── Device configuration ──────────────────────────────────────────────────
+
+    /**
+     * @brief Notify all running plugins of an audio device configuration change.
+     *
+     * Caches the values and calls initialise() on every running plugin instance.
      *
      * @param sampleRate    New sample rate in Hz.
      * @param maxBufferSize New maximum buffer size in samples.
      */
     void prepareAll (double sampleRate, int maxBufferSize);
 
-    // ── Query ─────────────────────────────────────────────────────────────────
+    // ── Query — discovered list ───────────────────────────────────────────────
 
-    /** @brief Number of successfully loaded plugins. */
-    int getNumProcessors() const noexcept { return (int)processors_.size(); }
-
-    /** @brief Returns the display name of each loaded plugin. */
-    juce::StringArray getProcessorNames() const;
+    /** @brief Number of DLL files found by the last scanOnly() call. */
+    int getNumDiscovered() const noexcept { return (int) discovered_.size(); }
 
     /**
-     * @brief Returns raw pointers to all loaded IProcessorPlugin instances.
+     * @brief Returns the display name of the discovered plugin at @p index.
      *
-     * Pointers are valid until the next call to unloadAll() or scanAndLoad().
-     * AudioEngine stores a copy of this vector via setProcessorPlugins().
+     * When the plugin is running, this is the value returned by getName().
+     * Otherwise it is the DLL filename without extension.
+     *
+     * @param index  Zero-based index into the discovered list.
      */
-    std::vector<IProcessorPlugin*> getPluginInstances() const;
+    juce::String getName (int index) const;
+
+    /**
+     * @brief Returns whether the plugin at @p index is currently running.
+     * @param index  Zero-based index into the discovered list.
+     */
+    bool isRunning (int index) const;
+
+    /**
+     * @brief Returns the accent colour of the plugin at @p index.
+     *
+     * Returns the value from IProcessorPlugin::getAccentColour() when running,
+     * or the default colour (0xff556688) when not yet started.
+     *
+     * @param index  Zero-based index into the discovered list.
+     */
+    unsigned int getAccentColour (int index) const;
+
+    // ── Query — active instances ──────────────────────────────────────────────
+
+    /**
+     * @brief Returns raw pointers to all currently running plugin instances.
+     *
+     * The order matches the discovered list (skipping non-running entries).
+     * AudioEngine stores a copy of this vector via setProcessorPlugins().
+     * Pointers are valid until the next stop/unload call.
+     */
+    std::vector<IProcessorPlugin*> getActiveInstances() const;
+
+    // ── Legacy compat (kept for callers that haven't migrated yet) ────────────
+
+    /** @deprecated Use getActiveInstances(). Alias kept for minimal diff. */
+    std::vector<IProcessorPlugin*> getPluginInstances() const { return getActiveInstances(); }
+
+    /** @deprecated Use getNumDiscovered(). */
+    int getNumProcessors() const noexcept { return getNumDiscovered(); }
+
+    /** @deprecated Use getName(). */
+    juce::StringArray getProcessorNames() const;
 
 private:
     /**
-     * @struct LoadedProcessor
-     * @brief Owns one successfully loaded DLL and its IProcessorPlugin instance.
-     *
-     * Destruction order is critical: the instance must be shut down and deleted
-     * **before** the DynamicLibrary handle is released, so that the DLL's code
-     * remains mapped while the destructor runs.  The member declaration order
-     * (library first, instance second, but deleted in reverse) combined with the
-     * explicit destructor guarantees this.
+     * @struct DiscoveredProcessor
+     * @brief Represents one found DLL.  May or may not have a running instance.
      */
-    struct LoadedProcessor
+    struct DiscoveredProcessor
     {
-        std::unique_ptr<juce::DynamicLibrary> library;   ///< Keeps the DLL mapped.
-        IProcessorPlugin* instance = nullptr;             ///< Plugin object allocated inside the DLL.
-        juce::String      name;                           ///< DLL filename without extension.
+        juce::File   dllFile;             ///< Full path to the DLL.
+        juce::String stemName;            ///< DLL filename without extension.
 
-        ~LoadedProcessor()
+        // ── Running state (null when not started) ──────────────────────────
+        std::unique_ptr<juce::DynamicLibrary> library;   ///< Keeps the DLL mapped.
+        IProcessorPlugin* instance = nullptr;             ///< Plugin object; null when stopped.
+
+        ~DiscoveredProcessor()
         {
             if (instance != nullptr)
             {
@@ -106,14 +161,15 @@ private:
                 delete instance;
                 instance = nullptr;
             }
-            // DynamicLibrary is closed by unique_ptr after instance is deleted.
+            // DynamicLibrary closed by unique_ptr after instance is deleted.
         }
+
+        bool isRunning() const noexcept { return instance != nullptr; }
     };
 
-    std::vector<std::unique_ptr<LoadedProcessor>> processors_; ///< All successfully loaded plugins.
-    juce::File processorsDir_;       ///< Directory last passed to scanAndLoad(); used by rescan.
-    double lastSampleRate_ = 44100.0; ///< Cached sample rate applied on load and prepareAll().
-    int    lastBufferSize_ = 512;     ///< Cached buffer size applied on load and prepareAll().
+    std::vector<std::unique_ptr<DiscoveredProcessor>> discovered_; ///< All found DLLs.
+    double lastSampleRate_ = 44100.0;
+    int    lastBufferSize_ = 512;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ProcessorManager)
 };
