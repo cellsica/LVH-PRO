@@ -1,4 +1,5 @@
 #include "SystemLogPanel.h"
+#include "Core/ThemePalette.h"
 
 SystemLogPanel::SystemLogPanel()
 {
@@ -6,8 +7,8 @@ SystemLogPanel::SystemLogPanel()
     log.setReadOnly (true);
     log.setScrollbarsShown (true);
     log.setFont (Font (Font::getDefaultMonospacedFontName(), 10.5f, Font::plain));
-    log.setColour (TextEditor::backgroundColourId, Colour (0xff0e0e18));
-    log.setColour (TextEditor::textColourId,       Colour (0xff99dd99));
+    log.setColour (TextEditor::backgroundColourId, ThemePalette::get (ColourId::BgLog));
+    log.setColour (TextEditor::textColourId,       ThemePalette::get (ColourId::TextSysLog));
     log.setColour (TextEditor::outlineColourId,    Colours::transparentBlack);
     addAndMakeVisible (log);
 }
@@ -31,10 +32,10 @@ void SystemLogPanel::appendLine (const String& text)
 
 void SystemLogPanel::paint (Graphics& g)
 {
-    g.fillAll (Colour (0xff0e0e18));
-    g.setColour (Colour (0xff252535));
+    g.fillAll (ThemePalette::get (ColourId::BgLog));
+    g.setColour (ThemePalette::get (ColourId::BgPanelAlt));
     g.fillRect (getLocalBounds().removeFromTop (20));
-    g.setColour (Colour (0xff99dd99));
+    g.setColour (ThemePalette::get (ColourId::TextSysLog));
     g.setFont (Font (11.0f));
     g.drawText ("Messages", getLocalBounds().removeFromTop (20).reduced (6, 0),
                 Justification::centredLeft);

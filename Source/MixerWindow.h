@@ -2,19 +2,20 @@
 #include "UiCommon.h"
 #include "UiComponents.h"
 #include "BridgeInstance.h"
+#include "Core/ThemePalette.h"
 
 // Accent colour palette — cycles by channel index
 static juce::Colour getMixerStripColor (int index)
 {
-    static const juce::Colour palette[] = {
-        juce::Colour (0xff2a4a6a),   // steel blue
-        juce::Colour (0xff6a2a2a),   // dark red
-        juce::Colour (0xff2a6a2a),   // forest green
-        juce::Colour (0xff6a4a2a),   // burnt orange
-        juce::Colour (0xff4a2a6a),   // violet
-        juce::Colour (0xff2a6a6a),   // teal
+    static const ColourId palette[] = {
+        ColourId::PaletteBlue,
+        ColourId::PaletteRed,
+        ColourId::PaletteGreen,
+        ColourId::PaletteOrange,
+        ColourId::PaletteViolet,
+        ColourId::PaletteTeal,
     };
-    return palette[index % 6];
+    return ThemePalette::get (palette[index % 6]);
 }
 
 // ── MIDI parameter — used by MixerStrip and UIManager ───────────────────
@@ -41,8 +42,8 @@ public:
     {
         bypassBtn.setButtonText ("B");
         bypassBtn.setClickingTogglesState (true);
-        bypassBtn.setColour (TextButton::buttonColourId,   juce::Colour (0xff2a2a38));
-        bypassBtn.setColour (TextButton::buttonOnColourId, juce::Colour (0xffcc3333));
+        bypassBtn.setColour (TextButton::buttonColourId,   ThemePalette::get (ColourId::MixerFxSlotBg));
+        bypassBtn.setColour (TextButton::buttonOnColourId, ThemePalette::get (ColourId::StateBypass));
         bypassBtn.setTooltip ("Bypass FX");
         bypassBtn.onClick = [this] {
             if (bridge != nullptr)
@@ -113,18 +114,18 @@ public:
 
         float alpha = isDragging ? 0.35f : 1.0f;
 
-        g.setColour ((isPlaceholder ? juce::Colour (0xff1a1a25)
-                    : bypassed      ? juce::Colour (0xff1e1414)
-                                    : juce::Colour (0xff1e1e30)).withAlpha (alpha));
+        g.setColour ((isPlaceholder ? ThemePalette::get (ColourId::BgPanel)
+                    : bypassed      ? ThemePalette::get (ColourId::MixerBypassBg)
+                                    : ThemePalette::get (ColourId::MixerFxArea)).withAlpha (alpha));
         g.fillRoundedRectangle (bounds.toFloat(), 2.0f);
-        g.setColour (juce::Colour (0xff333344).withAlpha (alpha));
+        g.setColour (ThemePalette::get (ColourId::BorderDefault).withAlpha (alpha));
         g.drawRoundedRectangle (bounds.toFloat(), 2.0f, 1.0f);
 
         auto textArea = bounds.withTrimmedRight (isPlaceholder ? 4 : 22).reduced (3, 0);
-        g.setColour ((isPlaceholder ? juce::Colour (0xff444455)
-                    : bypassed      ? juce::Colour (0xff555566)
+        g.setColour ((isPlaceholder ? ThemePalette::get (ColourId::TextInactive)
+                    : bypassed      ? ThemePalette::get (ColourId::TextInactive).brighter (0.25f)
                     : windowShown_  ? juce::Colours::white.withAlpha (0.85f)
-                                    : juce::Colour (0xffaaaacc)).withAlpha (alpha));
+                                    : ThemePalette::get (ColourId::TextSecondary)).withAlpha (alpha));
         g.setFont (Font (9.5f));
         g.drawText (nameStr, textArea,
                     isPlaceholder ? Justification::centred : Justification::centredLeft, true);
@@ -213,7 +214,7 @@ public:
         panValueLabel.setText ("C", dontSendNotification);
         panValueLabel.setJustificationType (Justification::centred);
         panValueLabel.setFont (Font (9.0f));
-        panValueLabel.setColour (Label::textColourId, juce::Colour (0xff888899));
+        panValueLabel.setColour (Label::textColourId, ThemePalette::get (ColourId::TextPan));
         addAndMakeVisible (panValueLabel);
 
         fader.setSliderStyle (Slider::LinearVertical);
@@ -232,12 +233,12 @@ public:
         faderValueLabel.setText ("1.00", dontSendNotification);
         faderValueLabel.setJustificationType (Justification::centred);
         faderValueLabel.setFont (Font (9.0f));
-        faderValueLabel.setColour (Label::textColourId, juce::Colour (0xff888899));
+        faderValueLabel.setColour (Label::textColourId, ThemePalette::get (ColourId::TextPan));
         addAndMakeVisible (faderValueLabel);
 
         muteBtn.setButtonText ("M");
         muteBtn.setClickingTogglesState (true);
-        muteBtn.setColour (TextButton::buttonColourId,   juce::Colour (0xff333344));
+        muteBtn.setColour (TextButton::buttonColourId,   ThemePalette::get (ColourId::CtrlNormal));
         muteBtn.setColour (TextButton::buttonOnColourId, juce::Colours::red.withAlpha (0.7f));
         muteBtn.setTooltip ("Mute");
         muteBtn.onClick = [this] {
@@ -247,7 +248,7 @@ public:
 
         soloBtn.setButtonText ("S");
         soloBtn.setClickingTogglesState (true);
-        soloBtn.setColour (TextButton::buttonColourId,   juce::Colour (0xff333344));
+        soloBtn.setColour (TextButton::buttonColourId,   ThemePalette::get (ColourId::CtrlNormal));
         soloBtn.setColour (TextButton::buttonOnColourId, juce::Colours::yellow.withAlpha (0.7f));
         soloBtn.setTooltip ("Solo");
         soloBtn.onClick = [this] {
@@ -257,8 +258,8 @@ public:
 
         monoBtn.setButtonText ("MONO");
         monoBtn.setClickingTogglesState (true);
-        monoBtn.setColour (TextButton::buttonColourId,   juce::Colour (0xff333344));
-        monoBtn.setColour (TextButton::buttonOnColourId, juce::Colour (0xff226699));
+        monoBtn.setColour (TextButton::buttonColourId,   ThemePalette::get (ColourId::CtrlNormal));
+        monoBtn.setColour (TextButton::buttonOnColourId, ThemePalette::get (ColourId::StateMono));
         monoBtn.setTooltip ("Mono: duplicate L channel to R");
         monoBtn.onClick = [this] {
             if (onMonoChange) onMonoChange (monoBtn.getToggleState());
@@ -386,11 +387,12 @@ public:
     void paint (Graphics& g) override
     {
         auto bounds = getLocalBounds().reduced (2);
-        g.setColour (juce::Colour (0xff20202a));
+        g.setColour (ThemePalette::get (ColourId::CtrlNormal));
         g.fillRoundedRectangle (bounds.toFloat(), 4.0f);
 
         // Global strips get a gold border instead of the default dark outline.
-        g.setColour (isGlobal_ ? juce::Colour (0xffb8860b) : juce::Colour (0xff333344));
+        g.setColour (isGlobal_ ? ThemePalette::get (ColourId::StateQueue)
+                               : ThemePalette::get (ColourId::BorderDefault));
         g.drawRoundedRectangle (bounds.toFloat(), 4.0f, isGlobal_ ? 1.5f : 1.0f);
 
         g.setColour (accentColor.withAlpha (0.7f));
@@ -399,7 +401,7 @@ public:
         // Global Layer indicator: thin gold bar at the top of the strip.
         if (isGlobal_)
         {
-            g.setColour (juce::Colour (0xffb8860b));
+            g.setColour (ThemePalette::get (ColourId::StateQueue));
             g.fillRect (getLocalBounds().reduced (2).removeFromTop (3));
         }
 
@@ -598,9 +600,9 @@ private:
                 Rectangle<int> seg (area.getX(), y, area.getWidth(), segH);
 
                 juce::Colour c;
-                if      (i >= N - 2) c = juce::Colour (0xffff2222);   // top 2:  red
-                else if (i >= N - 5) c = juce::Colour (0xffffcc00);   // next 3: yellow
-                else                 c = juce::Colour (0xff00dd44);   // rest:   green
+                if      (i >= N - 2) c = ThemePalette::get (ColourId::MeterRed);
+                else if (i >= N - 5) c = ThemePalette::get (ColourId::MeterYellow);
+                else                 c = ThemePalette::get (ColourId::MeterGreen);
 
                 g.setColour (i < filled ? c : c.withAlpha (0.1f));
                 g.fillRect (seg);
@@ -612,28 +614,29 @@ private:
 
     void showColorMenu()
     {
-        static const struct { const char* name; juce::Colour color; } kPalette[] = {
-            { "Steel Blue",   juce::Colour (0xff2a4a6a) },
-            { "Dark Red",     juce::Colour (0xff6a2a2a) },
-            { "Forest Green", juce::Colour (0xff2a6a2a) },
-            { "Burnt Orange", juce::Colour (0xff6a4a2a) },
-            { "Violet",       juce::Colour (0xff4a2a6a) },
-            { "Teal",         juce::Colour (0xff2a6a6a) },
+        static const struct { const char* name; ColourId id; } kPalette[] = {
+            { "Steel Blue",   ColourId::PaletteBlue   },
+            { "Dark Red",     ColourId::PaletteRed    },
+            { "Forest Green", ColourId::PaletteGreen  },
+            { "Burnt Orange", ColourId::PaletteOrange },
+            { "Violet",       ColourId::PaletteViolet },
+            { "Teal",         ColourId::PaletteTeal   },
         };
         PopupMenu m;
         for (int i = 0; i < 6; ++i)
-            m.addItem (i + 1, kPalette[i].name, true, accentColor == kPalette[i].color);
+            m.addItem (i + 1, kPalette[i].name, true,
+                       accentColor == ThemePalette::get (kPalette[i].id));
         m.showMenuAsync (PopupMenu::Options().withTargetComponent (this),
             [this] (int r)
             {
-                static const juce::Colour kColors[] = {
-                    juce::Colour (0xff2a4a6a), juce::Colour (0xff6a2a2a),
-                    juce::Colour (0xff2a6a2a), juce::Colour (0xff6a4a2a),
-                    juce::Colour (0xff4a2a6a), juce::Colour (0xff2a6a6a),
+                static const ColourId kIds[] = {
+                    ColourId::PaletteBlue,   ColourId::PaletteRed,
+                    ColourId::PaletteGreen,  ColourId::PaletteOrange,
+                    ColourId::PaletteViolet, ColourId::PaletteTeal,
                 };
                 if (r >= 1 && r <= 6)
                 {
-                    accentColor = kColors[r - 1];
+                    accentColor = ThemePalette::get (kIds[r - 1]);
                     nameLabel.setColour (Label::backgroundColourId, accentColor.withAlpha (0.35f));
                     repaint();
                     if (onColorChange) onColorChange (accentColor);
@@ -716,7 +719,7 @@ private:
         void paintOverChildren (juce::Graphics& g) override
         {
             if (! showDropLine_) return;
-            g.setColour (juce::Colour (0xff88aaff));
+            g.setColour (ThemePalette::get (ColourId::BorderActive));
             g.fillRect (0, dropLineY_ - 1, getWidth(), 2);
         }
 
@@ -770,7 +773,7 @@ private:
 struct ProcessorStripInfo
 {
     juce::String name;                                      ///< Strip label (IProcessorPlugin::getName()).
-    juce::Colour accentColour { juce::Colour (0xff556688) }; ///< Header accent colour (IProcessorPlugin::getAccentColour()).
+    juce::Colour accentColour { ThemePalette::get (ColourId::AccentBlue) }; ///< Header accent colour (IProcessorPlugin::getAccentColour()).
 };
 
 // =====================================================================
@@ -787,22 +790,22 @@ public:
         meterBtn = std::make_unique<IconButton> ("Toggle LED Meters", Icons::led);
         meterBtn->setClickingTogglesState (true);
         meterBtn->setToggleState (true, dontSendNotification);
-        meterBtn->setColour (TextButton::buttonColourId,   juce::Colour (0xff333344));
-        meterBtn->setColour (TextButton::buttonOnColourId, juce::Colour (0xff2a4a3a));
+        meterBtn->setColour (TextButton::buttonColourId,   ThemePalette::get (ColourId::CtrlNormal));
+        meterBtn->setColour (TextButton::buttonOnColourId, ThemePalette::get (ColourId::AccentDarkGreen));
         meterBtn->onClick = [this] { applyMeterVisibility(); };
         addAndMakeVisible (*meterBtn);
 
         pinBtn_ = std::make_unique<IconButton> ("Always on Top", Icons::pin);
         pinBtn_->setClickingTogglesState (true);
-        pinBtn_->setColour (TextButton::buttonColourId,   juce::Colour (0xff252535));
-        pinBtn_->setColour (TextButton::buttonOnColourId, juce::Colour (0xffaa6600));
+        pinBtn_->setColour (TextButton::buttonColourId,   ThemePalette::get (ColourId::BgPanelAlt));
+        pinBtn_->setColour (TextButton::buttonOnColourId, ThemePalette::get (ColourId::StatePin));
         pinBtn_->setTooltip ("Pin window on top");
         pinBtn_->onClick = [this] {
             if (onPinToggled) onPinToggled (pinBtn_->getToggleState());
         };
         addAndMakeVisible (*pinBtn_);
 
-        inputStrip_ = std::make_unique<MixerStrip> ("INPUT", juce::Colour (0xff1a4a3a));
+        inputStrip_ = std::make_unique<MixerStrip> ("INPUT", ThemePalette::get (ColourId::MixerInputBg));
         inputStrip_->setMeterVisible (true);
         inputStrip_->setShowMonoButton (true);
         inputStrip_->onFaderChange = [this] (float v) {
@@ -816,7 +819,7 @@ public:
         };
         addAndMakeVisible (*inputStrip_);
 
-        masterStrip = std::make_unique<MixerStrip> ("MASTER", juce::Colour (0xff444455), true);
+        masterStrip = std::make_unique<MixerStrip> ("MASTER", ThemePalette::get (ColourId::MixerMasterBg), true);
         addAndMakeVisible (*masterStrip);
         masterStrip->onFaderChange = [this] (float v) {
             if (onMasterGainChange) onMasterGainChange (v);
@@ -1092,10 +1095,10 @@ public:
 
     void paint (Graphics& g) override
     {
-        g.fillAll (juce::Colour (0xff14141f));
+        g.fillAll (ThemePalette::get (ColourId::BgPrimary));
 
         auto header = getLocalBounds().removeFromTop (40);
-        g.setColour (juce::Colour (0xff1a1a25));
+        g.setColour (ThemePalette::get (ColourId::BgPanel));
         g.fillRect (header);
         g.setColour (juce::Colours::white.withAlpha (0.7f));
         g.setFont (Font (16.0f, Font::bold));
@@ -1228,7 +1231,7 @@ class MixerWindow : public DocumentWindow
 {
 public:
     explicit MixerWindow (const juce::String& title)
-        : DocumentWindow (title, juce::Colour (0xff14141f), DocumentWindow::allButtons)
+        : DocumentWindow (title, ThemePalette::get (ColourId::BgPrimary), DocumentWindow::allButtons)
     {
         setUsingNativeTitleBar (true);
         content = new MixerContentComponent();

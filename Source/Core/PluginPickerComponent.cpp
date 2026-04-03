@@ -1,5 +1,6 @@
 #include "PluginPickerComponent.h"
 #include "../LanguageManager.h"
+#include "ThemePalette.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PluginRowComponent
@@ -28,8 +29,8 @@ void PluginPickerComponent::PluginRowComponent::update (
 
     nameLabel_.setText (name, juce::dontSendNotification);
 
-    juce::Colour textCol = selected ? juce::Colour (0xff252535)
-                                    : juce::Colours::white;
+    juce::Colour textCol = selected ? ThemePalette::get (ColourId::BgPanelAlt)
+                                    : ThemePalette::get (ColourId::TextPrimary);
     nameLabel_.setColour (juce::Label::textColourId, textCol);
 
     repaint();
@@ -81,8 +82,8 @@ PluginPickerComponent::PluginPickerComponent (
 {
     // Search box
     searchBox_.setTextToShowWhenEmpty (LvhStr ("STR_SEARCH_PLUGIN"), juce::Colours::grey);
-    searchBox_.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff1a1a2a));
-    searchBox_.setColour (juce::TextEditor::outlineColourId,    juce::Colour (0xff3a3a4a));
+    searchBox_.setColour (juce::TextEditor::backgroundColourId, ThemePalette::get (ColourId::ListBg));
+    searchBox_.setColour (juce::TextEditor::outlineColourId,    ThemePalette::get (ColourId::ListOutline));
     searchBox_.setColour (juce::TextEditor::textColourId,       juce::Colours::white);
     searchBox_.addListener (this);
     addAndMakeVisible (searchBox_);
@@ -94,9 +95,9 @@ PluginPickerComponent::PluginPickerComponent (
     {
         btn.setButtonText (LvhStr (strId));
         btn.setColour (juce::TextButton::buttonColourId,
-                       isActive ? juce::Colour (0xff4455cc) : juce::Colour (0xff2a2a3a));
-        btn.setColour (juce::TextButton::textColourOffId, juce::Colours::white);
-        btn.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff4455cc));
+                       isActive ? ThemePalette::get (ColourId::CtrlActive) : ThemePalette::get (ColourId::CtrlNormal));
+        btn.setColour (juce::TextButton::textColourOffId, ThemePalette::get (ColourId::TextPrimary));
+        btn.setColour (juce::TextButton::buttonOnColourId, ThemePalette::get (ColourId::CtrlActive));
         addAndMakeVisible (btn);
     };
 
@@ -105,28 +106,28 @@ PluginPickerComponent::PluginPickerComponent (
 
     allBtn_.onClick = [this] {
         showFavOnly_ = false;
-        allBtn_.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff4455cc));
-        favBtn_.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff2a2a3a));
+        allBtn_.setColour (juce::TextButton::buttonColourId, ThemePalette::get (ColourId::CtrlActive));
+        favBtn_.setColour (juce::TextButton::buttonColourId, ThemePalette::get (ColourId::CtrlNormal));
         rebuildFilteredList();
     };
     favBtn_.onClick = [this] {
         showFavOnly_ = true;
-        allBtn_.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff2a2a3a));
-        favBtn_.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff4455cc));
+        allBtn_.setColour (juce::TextButton::buttonColourId, ThemePalette::get (ColourId::CtrlNormal));
+        favBtn_.setColour (juce::TextButton::buttonColourId, ThemePalette::get (ColourId::CtrlActive));
         rebuildFilteredList();
     };
 
     // ListBox
     listBox_.setModel (this);
-    listBox_.setColour (juce::ListBox::backgroundColourId, juce::Colour (0xff161626));
-    listBox_.setColour (juce::ListBox::outlineColourId,    juce::Colour (0xff3a3a4a));
+    listBox_.setColour (juce::ListBox::backgroundColourId, ThemePalette::get (ColourId::ListBg));
+    listBox_.setColour (juce::ListBox::outlineColourId,    ThemePalette::get (ColourId::ListOutline));
     listBox_.setRowHeight (32);
     listBox_.setOutlineThickness (1);
     addAndMakeVisible (listBox_);
 
     // Refresh button
     refreshBtn_.setButtonText (LvhStr ("STR_REFRESH_PLUGINS"));
-    refreshBtn_.setColour (juce::TextButton::buttonColourId,  juce::Colour (0xff2a2a3a));
+    refreshBtn_.setColour (juce::TextButton::buttonColourId,  ThemePalette::get (ColourId::CtrlNormal));
     refreshBtn_.setColour (juce::TextButton::textColourOffId, juce::Colours::lightgrey);
     refreshBtn_.onClick = [this] {
         if (onRefreshRequested) onRefreshRequested();
@@ -162,7 +163,7 @@ void PluginPickerComponent::resized()
 
 void PluginPickerComponent::paint (juce::Graphics& g)
 {
-    g.fillAll (juce::Colour (0xff1e1e2e));
+    g.fillAll (ThemePalette::get (ColourId::BgPanelAlt));
 }
 
 // ── ListBoxModel ─────────────────────────────────────────────────────────────

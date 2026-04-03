@@ -1,4 +1,5 @@
 #include "InfoMonitorPanel.h"
+#include "Core/ThemePalette.h"
 
 InfoMonitorPanel::InfoMonitorPanel()
 {
@@ -6,14 +7,14 @@ InfoMonitorPanel::InfoMonitorPanel()
     midiLog.setReadOnly (true);
     midiLog.setScrollbarsShown (true);
     midiLog.setFont (Font (Font::getDefaultMonospacedFontName(), 10.5f, Font::plain));
-    midiLog.setColour (TextEditor::backgroundColourId, Colour (0xff0e0e18));
-    midiLog.setColour (TextEditor::textColourId,       Colour (0xff88ccff));
+    midiLog.setColour (TextEditor::backgroundColourId, ThemePalette::get (ColourId::BgLog));
+    midiLog.setColour (TextEditor::textColourId,       ThemePalette::get (ColourId::TextMidi));
     midiLog.setColour (TextEditor::outlineColourId,    Colours::transparentBlack);
     addAndMakeVisible (midiLog);
 
     auto initLabel = [&] (Label& l, const String& text) {
         l.setFont (Font (10.5f));
-        l.setColour (Label::textColourId, Colour (0xffaaaaaa));
+        l.setColour (Label::textColourId, ThemePalette::get (ColourId::TextSecondary));
         l.setText (text, dontSendNotification);
         addAndMakeVisible (l);
     };
@@ -70,8 +71,8 @@ void InfoMonitorPanel::setTransposeDisplay (int semitones)
 
 void InfoMonitorPanel::paint (Graphics& g)
 {
-    g.fillAll (Colour (0xff0e0e18));
-    g.setColour (Colour (0xff252535));
+    g.fillAll (ThemePalette::get (ColourId::BgLog));
+    g.setColour (ThemePalette::get (ColourId::BgPanelAlt));
     g.fillRect (getLocalBounds().removeFromTop (22));
 }
 
@@ -93,7 +94,7 @@ void InfoMonitorPanel::timerCallback()
                           dontSendNotification);
 
     bool s = sustainPending.load();
-    sustainLabel.setColour (Label::textColourId, s ? Colour (0xff88ff88) : Colour (0xffaaaaaa));
+    sustainLabel.setColour (Label::textColourId, s ? ThemePalette::get (ColourId::TextSustainOn) : ThemePalette::get (ColourId::TextSecondary));
     sustainLabel.setText (s ? "SUS: ON" : "SUS: OFF", dontSendNotification);
 
     int ch = pendingChannel.load();

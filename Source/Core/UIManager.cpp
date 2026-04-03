@@ -1,4 +1,5 @@
 #include "UIManager.h"
+#include "ThemePalette.h"
 #include "MainComponent.h"
 #include "MixerWindow.h"
 #include "SettingsWindow.h"
@@ -1148,7 +1149,7 @@ class PluginPickerWindow : public juce::DocumentWindow
 public:
     PluginPickerWindow (PluginPickerComponent* content, const juce::String& title)
         : juce::DocumentWindow (title,
-                                juce::Colour (0xff252535),
+                                ThemePalette::get (ColourId::BgPanelAlt),
                                 juce::DocumentWindow::closeButton)
     {
         setUsingNativeTitleBar (false);

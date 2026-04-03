@@ -1,4 +1,5 @@
 #include "MainComponent.h"
+#include "Core/ThemePalette.h"
 
 MainComponent::MainComponent (MidiKeyboardState& state)
 {
@@ -15,67 +16,67 @@ MainComponent::MainComponent (MidiKeyboardState& state)
     addAndMakeVisible (*kbdToggleButton);
     kbdToggleButton->setClickingTogglesState (true);
     kbdToggleButton->setToggleState (true, dontSendNotification);
-    kbdToggleButton->setColour (TextButton::buttonColourId,   Colour (0xff333344));
-    kbdToggleButton->setColour (TextButton::buttonOnColourId, Colour (0xff2a6030));
+    kbdToggleButton->setColour (TextButton::buttonColourId,   ThemePalette::get (ColourId::CtrlNormal));
+    kbdToggleButton->setColour (TextButton::buttonOnColourId, ThemePalette::get (ColourId::AccentGreen));
     kbdToggleButton->onClick = [this] { toggleKeyboard(); };
 
     monitorToggleButton = std::make_unique<IconButton> ("Toggle MIDI Monitor", Icons::monitor);
     addAndMakeVisible (*monitorToggleButton);
     monitorToggleButton->setClickingTogglesState (true);
     monitorToggleButton->setToggleState (true, dontSendNotification);
-    monitorToggleButton->setColour (TextButton::buttonColourId,   Colour (0xff333344));
-    monitorToggleButton->setColour (TextButton::buttonOnColourId, Colour (0xff2a5060));
+    monitorToggleButton->setColour (TextButton::buttonColourId,   ThemePalette::get (ColourId::CtrlNormal));
+    monitorToggleButton->setColour (TextButton::buttonOnColourId, ThemePalette::get (ColourId::AccentBlue));
     monitorToggleButton->onClick = [this] { toggleMonitor(); };
 
     mixerToggleButton = std::make_unique<IconButton> ("Toggle Mixer Console", Icons::mixer);
     addAndMakeVisible (*mixerToggleButton);
     mixerToggleButton->setClickingTogglesState (true);
     mixerToggleButton->setToggleState (false, dontSendNotification);
-    mixerToggleButton->setColour (TextButton::buttonColourId,   Colour (0xff333344));
-    mixerToggleButton->setColour (TextButton::buttonOnColourId, Colour (0xff604020));
+    mixerToggleButton->setColour (TextButton::buttonColourId,   ThemePalette::get (ColourId::CtrlNormal));
+    mixerToggleButton->setColour (TextButton::buttonOnColourId, ThemePalette::get (ColourId::AccentOrange));
     mixerToggleButton->onClick = [this] { toggleMixer(); };
 
     stageToggleButton = std::make_unique<IconButton> ("Open Stage Set", Icons::stage);
     addAndMakeVisible (*stageToggleButton);
     stageToggleButton->setClickingTogglesState (true);
     stageToggleButton->setToggleState (false, dontSendNotification);
-    stageToggleButton->setColour (TextButton::buttonColourId,   Colour (0xff333344));
-    stageToggleButton->setColour (TextButton::buttonOnColourId, Colour (0xff3a2060));
+    stageToggleButton->setColour (TextButton::buttonColourId,   ThemePalette::get (ColourId::CtrlNormal));
+    stageToggleButton->setColour (TextButton::buttonOnColourId, ThemePalette::get (ColourId::AccentPurple));
     stageToggleButton->onClick = [this] { toggleStage(); };
 
     metronomeToggleButton = std::make_unique<IconButton> ("Open Metronome", Icons::metronome);
     addAndMakeVisible (*metronomeToggleButton);
     metronomeToggleButton->setClickingTogglesState (true);
     metronomeToggleButton->setToggleState (false, dontSendNotification);
-    metronomeToggleButton->setColour (TextButton::buttonColourId,   Colour (0xff333344));
-    metronomeToggleButton->setColour (TextButton::buttonOnColourId, Colour (0xff205040));
+    metronomeToggleButton->setColour (TextButton::buttonColourId,   ThemePalette::get (ColourId::CtrlNormal));
+    metronomeToggleButton->setColour (TextButton::buttonOnColourId, ThemePalette::get (ColourId::AccentDarkGreen));
     metronomeToggleButton->onClick = [this] { toggleMetronome(); };
 
     vuMeterToggleButton = std::make_unique<IconButton> ("Open VU Meter", Icons::vuMeter);
     addAndMakeVisible (*vuMeterToggleButton);
     vuMeterToggleButton->setClickingTogglesState (true);
     vuMeterToggleButton->setToggleState (false, dontSendNotification);
-    vuMeterToggleButton->setColour (TextButton::buttonColourId,   Colour (0xff333344));
-    vuMeterToggleButton->setColour (TextButton::buttonOnColourId, Colour (0xff3a2850));
+    vuMeterToggleButton->setColour (TextButton::buttonColourId,   ThemePalette::get (ColourId::CtrlNormal));
+    vuMeterToggleButton->setColour (TextButton::buttonOnColourId, ThemePalette::get (ColourId::AccentViolet));
     vuMeterToggleButton->onClick = [this] { toggleVuMeter(); };
 
     visualizerToggleButton = std::make_unique<IconButton> ("Open Visualizer", Icons::visualizer);
     addAndMakeVisible (*visualizerToggleButton);
     visualizerToggleButton->setClickingTogglesState (true);
     visualizerToggleButton->setToggleState (false, dontSendNotification);
-    visualizerToggleButton->setColour (TextButton::buttonColourId,   Colour (0xff333344));
-    visualizerToggleButton->setColour (TextButton::buttonOnColourId, Colour (0xff1a3a50));
+    visualizerToggleButton->setColour (TextButton::buttonColourId,   ThemePalette::get (ColourId::CtrlNormal));
+    visualizerToggleButton->setColour (TextButton::buttonOnColourId, ThemePalette::get (ColourId::AccentDarkBlue));
     visualizerToggleButton->onClick = [this] { toggleVisualizer(); };
 
     octaveDownButton = std::make_unique<TextButton> ("-");
     addAndMakeVisible (*octaveDownButton);
     octaveDownButton->setTooltip ("Octave Down (shortcut: [)");
-    octaveDownButton->setColour (TextButton::buttonColourId, Colour (0xff333344));
+    octaveDownButton->setColour (TextButton::buttonColourId, ThemePalette::get (ColourId::CtrlNormal));
     octaveDownButton->onClick = [this] { if (onOctaveShift) onOctaveShift (-1); };
 
     octaveLabel = std::make_unique<Label>();
     addAndMakeVisible (*octaveLabel);
-    octaveLabel->setColour (Label::textColourId, Colour (0xffaaaacc));
+    octaveLabel->setColour (Label::textColourId, ThemePalette::get (ColourId::TextSecondary));
     octaveLabel->setFont (Font (11.0f, Font::bold));
     octaveLabel->setJustificationType (Justification::centred);
     octaveLabel->setText ("Oct 4", dontSendNotification);
@@ -83,12 +84,12 @@ MainComponent::MainComponent (MidiKeyboardState& state)
     octaveUpButton = std::make_unique<TextButton> ("+");
     addAndMakeVisible (*octaveUpButton);
     octaveUpButton->setTooltip ("Octave Up (shortcut: ])");
-    octaveUpButton->setColour (TextButton::buttonColourId, Colour (0xff333344));
+    octaveUpButton->setColour (TextButton::buttonColourId, ThemePalette::get (ColourId::CtrlNormal));
     octaveUpButton->onClick = [this] { if (onOctaveShift) onOctaveShift (+1); };
 
     speakerButton = std::make_unique<SpeakerButton>();
     addAndMakeVisible (*speakerButton);
-    speakerButton->setColour (TextButton::buttonColourId, Colour (0xff333344));
+    speakerButton->setColour (TextButton::buttonColourId, ThemePalette::get (ColourId::CtrlNormal));
 
     volumeSlider = std::make_unique<Slider> (Slider::LinearHorizontal, Slider::NoTextBox);
     addAndMakeVisible (*volumeSlider);
@@ -106,15 +107,15 @@ MainComponent::MainComponent (MidiKeyboardState& state)
     volumeValueLabel->setText ("100%", dontSendNotification);
     volumeValueLabel->setFont (Font (10.0f, Font::bold));
     volumeValueLabel->setJustificationType (Justification::centred);
-    volumeValueLabel->setColour (Label::textColourId, Colour (0xffaaaacc));
-    volumeValueLabel->setColour (Label::backgroundColourId, Colour (0xff1e1e2e));
+    volumeValueLabel->setColour (Label::textColourId, ThemePalette::get (ColourId::TextSecondary));
+    volumeValueLabel->setColour (Label::backgroundColourId, ThemePalette::get (ColourId::BgPanelAlt));
 
     levelMeter = std::make_unique<LevelMeter>();
     addAndMakeVisible (*levelMeter);
 
     midiMonitorLabel = std::make_unique<Label>();
     addAndMakeVisible (*midiMonitorLabel);
-    midiMonitorLabel->setColour (Label::textColourId, Colour (0xff88ccff));
+    midiMonitorLabel->setColour (Label::textColourId, ThemePalette::get (ColourId::TextMidi));
     midiMonitorLabel->setFont (Font (11.0f));
     midiMonitorLabel->setJustificationType (Justification::centredLeft);
     midiMonitorLabel->setText ("No MIDI", dontSendNotification);
@@ -288,8 +289,8 @@ void MainComponent::setVisualizerWindowVisible (bool v)
 
 void MainComponent::paint (Graphics& g)
 {
-    g.fillAll (Colour (0xff14141f));
-    g.setColour (Colour (0xff252535));
+    g.fillAll (ThemePalette::get (ColourId::BgPrimary));
+    g.setColour (ThemePalette::get (ColourId::BgPanelAlt));
     g.fillRect (getLocalBounds().removeFromTop (44));
 }
 
