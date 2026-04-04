@@ -1,6 +1,9 @@
 #pragma once
 #include <JuceHeader.h>
 #include "BridgeInstance.h"
+#include "KeyboardBlock.h"
+#include <vector>
+#include <map>
 
 /**
  * @class MidiRoutingManager
@@ -125,10 +128,57 @@ public:
     /**
      * @brief Reset routing state for a new project load.
      *
-     * Sets mode to route-to-all and clears any pending target path.
-     * Call this at the start of ProjectSerializer::loadProject().
+     * Sets mode to route-to-all, clears any pending target path, and clears
+     * all keyboard blocks.  Call this at the start of ProjectSerializer::loadProject().
      */
     void resetForProjectLoad();
+
+    // ── Block-based routing (Instrument Layout Studio) ────────────────────────
+
+    /**
+     * @brief Replace the entire keyboard block list.
+     *
+     * Resolves @p targetBridge pointers for all blocks immediately.
+     * Must be called from the message thread.
+     *
+     * @param blocks  New block list (moved in).
+     */
+    void setBlocks (std::vector<KeyboardBlock> blocks);
+
+    /**
+     * @brief Returns a copy of the current block list.
+     *
+     * Thread-safe snapshot; safe to call from any thread.
+     */
+    std::vector<KeyboardBlock> getBlocks() const;
+
+    /**
+     * @brief Remove all keyboard blocks and revert to legacy routing.
+     *
+     * Must be called from the message thread.
+     */
+    void clearBlocks();
+
+    /** @brief Returns true when at least one block is defined. */
+    bool hasBlocks() const noexcept;
+
+    /**
+     * @brief Re-resolve all @p targetBridge pointers from the current bridge list.
+     *
+     * Call this after any bridge connects or disconnects.
+     * Must be called from the message thread.
+     */
+    void resolveBlockTargets() noexcept;
+
+    /**
+     * @brief Notify that a bridge has just connected.
+     *
+     * Resolves any unresolved block targets whose @p targetPluginPath matches
+     * @p b->getPluginPath().  Must be called from the message thread.
+     *
+     * @param b  The newly connected bridge.
+     */
+    void notifyBridgeConnected (BridgeInstance* b) noexcept;
 
 private:
     const juce::OwnedArray<BridgeInstance>& bridges_;
@@ -140,6 +190,20 @@ private:
 
     int          octaveOffset_     = 0;  ///< Message thread only.
     juce::String pendingMidiTarget_;     ///< Message thread only.
+
+    // ── Block routing state ───────────────────────────────────────────────────
+
+    /** Protects @p keyboardBlocks_ and @p activeNoteTargets_ for multi-thread access. */
+    mutable juce::CriticalSection blockRoutingLock_;
+
+    /** Block list.  Protected by @p blockRoutingLock_. */
+    std::vector<KeyboardBlock> keyboardBlocks_;
+
+    /** Per-note tracking for correct NoteOff delivery in split/layer mode.
+     *  Maps raw incoming note number → list of (bridge, shiftedNote) pairs that
+     *  received the corresponding NoteOn.  Protected by @p blockRoutingLock_. */
+    struct ActiveNoteEntry { BridgeInstance* bridge; int shiftedNote; };
+    std::map<int, std::vector<ActiveNoteEntry>> activeNoteTargets_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MidiRoutingManager)
 };
