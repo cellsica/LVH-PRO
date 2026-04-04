@@ -74,6 +74,10 @@ static const std::pair<const char*, ColourId> kKeyMap[] =
     { "MetroBeatBg",         ColourId::MetroBeatBg },
     { "MetroTap",            ColourId::MetroTap },
     { "MetroBpm",            ColourId::MetroBpm },
+    { "AccentCyan",          ColourId::AccentCyan },
+    { "KeyWhite",            ColourId::KeyWhite },
+    { "KeyBlack",            ColourId::KeyBlack },
+    { "KeyNoteActive",       ColourId::KeyNoteActive },
 };
 
 // =============================================================================
@@ -163,6 +167,11 @@ static void applyDarkDefaults (std::array<juce::Colour, static_cast<size_t>(Colo
     c[static_cast<size_t>(ColourId::MetroBeatBg)]         = C (0xff2a2a40);
     c[static_cast<size_t>(ColourId::MetroTap)]            = C (0xff2a3a55);
     c[static_cast<size_t>(ColourId::MetroBpm)]            = C (0xff2a2a3e);
+
+    c[static_cast<size_t>(ColourId::AccentCyan)]          = C (0xff006666);
+    c[static_cast<size_t>(ColourId::KeyWhite)]            = C (0xffe0e0ec);
+    c[static_cast<size_t>(ColourId::KeyBlack)]            = C (0xff1a1a2a);
+    c[static_cast<size_t>(ColourId::KeyNoteActive)]       = C (0xff3377ff);
 }
 
 // =============================================================================
@@ -252,6 +261,11 @@ static void applyLightDefaults (std::array<juce::Colour, static_cast<size_t>(Col
     c[static_cast<size_t>(ColourId::MetroBeatBg)]         = C (0xffe8e8f4);
     c[static_cast<size_t>(ColourId::MetroTap)]            = C (0xff6699cc);
     c[static_cast<size_t>(ColourId::MetroBpm)]            = C (0xffd8d8e8);
+
+    c[static_cast<size_t>(ColourId::AccentCyan)]          = C (0xff007777);
+    c[static_cast<size_t>(ColourId::KeyWhite)]            = C (0xfff5f5f5);
+    c[static_cast<size_t>(ColourId::KeyBlack)]            = C (0xff1a1a2a);
+    c[static_cast<size_t>(ColourId::KeyNoteActive)]       = C (0xff2255dd);
 }
 
 // =============================================================================

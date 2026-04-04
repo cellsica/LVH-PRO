@@ -81,5 +81,10 @@
   "MetroBeatOff":       "d0d0dc",
   "MetroBeatBg":        "b8b8cc",
   "MetroTap":           "1a4a99",
-  "MetroBpm":           "d0d0dc"
+  "MetroBpm":           "d0d0dc",
+
+  "AccentCyan":         "007777",
+  "KeyWhite":           "f5f5f5",
+  "KeyBlack":           "1a1a2a",
+  "KeyNoteActive":      "2255dd"
 }

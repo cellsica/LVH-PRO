@@ -80,6 +80,18 @@ MainComponent::MainComponent (MidiKeyboardState& state)
             onProcessorToggle (processorToggleButton->getToggleState());
     };
 
+    layoutStudioToggleButton = std::make_unique<IconButton> ("Layout Studio", Icons::keyboard);
+    addAndMakeVisible (*layoutStudioToggleButton);
+    layoutStudioToggleButton->setClickingTogglesState (true);
+    layoutStudioToggleButton->setToggleState (false, dontSendNotification);
+    layoutStudioToggleButton->setColour (TextButton::buttonColourId,   ThemePalette::get (ColourId::CtrlNormal));
+    layoutStudioToggleButton->setColour (TextButton::buttonOnColourId, ThemePalette::get (ColourId::AccentCyan));
+    layoutStudioToggleButton->onClick = [this]
+    {
+        if (onLayoutStudioToggle)
+            onLayoutStudioToggle (layoutStudioToggleButton->getToggleState());
+    };
+
     octaveDownButton = std::make_unique<TextButton> ("-");
     addAndMakeVisible (*octaveDownButton);
     octaveDownButton->setTooltip ("Octave Down (shortcut: [)");
@@ -301,6 +313,11 @@ void MainComponent::setProcessorWindowVisible (bool v)
     processorToggleButton->setToggleState (v, dontSendNotification);
 }
 
+void MainComponent::setLayoutStudioWindowVisible (bool v)
+{
+    layoutStudioToggleButton->setToggleState (v, dontSendNotification);
+}
+
 
 // ── Paint ──────────────────────────────────────────────────────────────────
 
@@ -335,6 +352,7 @@ void MainComponent::resized()
     vuMeterToggleButton   ->setBounds (toolbar.removeFromLeft (36).reduced (2));
     visualizerToggleButton->setBounds (toolbar.removeFromLeft (36).reduced (2));
     processorToggleButton ->setBounds (toolbar.removeFromLeft (36).reduced (2));
+    layoutStudioToggleButton->setBounds (toolbar.removeFromLeft (36).reduced (2));
 
     toolbar.removeFromLeft (6); // small gap
     octaveDownButton   ->setBounds (toolbar.removeFromLeft (26).reduced (2));

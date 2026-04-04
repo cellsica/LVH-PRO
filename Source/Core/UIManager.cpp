@@ -135,7 +135,8 @@ void UIManager::setMainComponent (MainComponent* mc)
     mc_->onMetronomeToggle     = [this] (bool show) { toggleMetronomeWindow (show); };
     mc_->onVuMeterToggle       = [this] (bool show) { toggleVuMeterWindow   (show); };
     mc_->onVisualizerToggle    = [this] (bool show) { toggleVisualizerWindow   (show); };
-    mc_->onProcessorToggle     = [this] (bool show) { toggleProcessorDispatcher (show); };
+    mc_->onProcessorToggle      = [this] (bool show) { toggleProcessorDispatcher (show); };
+    mc_->onLayoutStudioToggle  = [this] (bool show) { toggleLayoutStudio (show); };
     mc_->onLaunchBridgeClicked = [this] { launchBridgeFileChooser(); };
 
     // Beat callback: fires on message thread (via AsyncUpdater in MetronomeProcessor)
@@ -569,6 +570,39 @@ void UIManager::toggleProcessorDispatcher (bool show)
     {
         processorDispatcherWindow_.reset();
         if (mc_ != nullptr) mc_->setProcessorWindowVisible (false);
+    }
+}
+
+void UIManager::toggleLayoutStudio (bool show)
+{
+    if (show)
+    {
+        if (layoutStudioWindow_ == nullptr)
+        {
+            layoutStudioWindow_ = std::make_unique<LayoutStudioWindow>();
+            layoutStudioWindow_->onCloseRequest = [this]
+            {
+                if (mc_ != nullptr) mc_->setLayoutStudioWindowVisible (false);
+                juce::MessageManager::callAsync ([this]
+                {
+                    midiRouter_.onMidiActivity = nullptr;
+                    layoutStudioWindow_.reset();
+                });
+            };
+            // Wire MIDI feedback: forward all incoming MIDI to the virtual keyboard.
+            midiRouter_.onMidiActivity = [this] (const juce::MidiMessage& msg)
+            {
+                if (layoutStudioWindow_ != nullptr)
+                    layoutStudioWindow_->handleMidiMessage (msg);
+            };
+        }
+        layoutStudioWindow_->toFront (true);
+    }
+    else
+    {
+        midiRouter_.onMidiActivity = nullptr;
+        layoutStudioWindow_.reset();
+        if (mc_ != nullptr) mc_->setLayoutStudioWindowVisible (false);
     }
 }
 

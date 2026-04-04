@@ -8,6 +8,9 @@ MidiRoutingManager::MidiRoutingManager (const juce::OwnedArray<BridgeInstance>& 
 // ── MIDI dispatch ──────────────────────────────────────────────────────────────
 void MidiRoutingManager::sendMidi (const juce::MidiMessage& msg)
 {
+    // ── Visual feedback (Layout Studio) ───────────────────────────────────────
+    if (onMidiActivity) onMidiActivity (msg);
+
     // ── Block-based routing (Instrument Layout Studio) ────────────────────────
     // When blocks are defined they replace the legacy channel routing for notes.
     // Non-note messages are broadcast to all bridges so that CC, pitch-bend,
