@@ -18,6 +18,19 @@ public:
     /** Called when the user closes the window (async-safe). */
     std::function<void()> onCloseRequest;
 
+    /** Forwarded from VirtualLayoutComponent::onBlocksChanged. */
+    std::function<void(const std::vector<KeyboardBlock>&)> onBlocksChanged;
+
+    /** Forwarded from VirtualLayoutComponent::getBridgeList. */
+    std::function<std::vector<std::pair<juce::String, juce::String>>()> getBridgeList;
+
+    /** @brief Load an initial block list (e.g. after project restore). */
+    void setInitialBlocks (std::vector<KeyboardBlock> blocks)
+    {
+        if (content_ != nullptr)
+            content_->layout.setBlocks (std::move (blocks));
+    }
+
     // ── Construction ──────────────────────────────────────────────────────────
     LayoutStudioWindow()
         : juce::DocumentWindow ("Layout Studio",
@@ -107,6 +120,19 @@ private:
                     w->updateWindowSize();
             };
             addAndMakeVisible (padsCombo);
+
+            // Wire block editor callbacks — delegate up to LayoutStudioWindow.
+            layout.onBlocksChanged = [this] (const std::vector<KeyboardBlock>& b)
+            {
+                if (auto* w = dynamic_cast<LayoutStudioWindow*> (getTopLevelComponent()))
+                    if (w->onBlocksChanged) w->onBlocksChanged (b);
+            };
+            layout.getBridgeList = [this]() -> std::vector<std::pair<juce::String, juce::String>>
+            {
+                if (auto* w = dynamic_cast<LayoutStudioWindow*> (getTopLevelComponent()))
+                    if (w->getBridgeList) return w->getBridgeList();
+                return {};
+            };
 
             addAndMakeVisible (layout);
             setSize (layout.preferredWidth(), kSelectorH + layout.preferredHeight());
