@@ -212,17 +212,32 @@ Live-ready (ライブ演奏特化) な堅牢性を守りつつ、シンセとエ
 - [x] **Restore Interface**: リストからの Restore 操作で選択メニューへ復帰させる仕組み。
 - [x] **Exclusion Logic**: 再スキャン時にも非表示リスト内のものを除外するフィルタリング処理。
 
-#### Mission 049: Processor Plugin 基盤 (SDK) 🔜
-- [ ] **IProcessorPlugin**: Instrument / Line 入力をプラグインに渡し、加工結果を仮想チャンネルとして Mixer に返す基盤。
-- [ ] **非同期リターン設計**: Looper、MP3録音、エフェクト等を想定した非同期処理。
-- [ ] **Processor SDK**: Visualizer SDK と並行した外部開発用 SDK の整備。
+#### Mission 049: Processor Plugin 基盤 (SDK) ✅ (しずく049 Phase 1-3)
+- [x] **IProcessorPlugin**: 楽器 / Line 入力を受け取り、加工結果を Mixer に返す基盤インターフェース。
+- [x] **ProcessorManager**: `<exe dir>/Processors/*.dll` の自動スキャン・ロード・ライフサイクル管理。
+- [x] **AudioEngine 統合**: プロセッサーをオーディオグラフの Master 前段に並列挿入。
+- [x] **Mixer 統合**: ミキサーコンソールに Processor 専用の独立ストリップを自動生成。
 
-#### Mission 050: カラーテーマ ＆ ステージ視認性向上 (Dark/Light)
-- [ ] **ThemeManager の新設**: 背景、文字、アクセントの基調色を一括管理・動的変更する機構。
-- [ ] **マルチテーマ実装**: 暗いステージ用の「Dark Mode (Default)」と、視認性を重視した「High Contrast Light Mode」。
-- [ ] **アイコンのカラー同期**: SVG 化によるテーマカラーとの動的な着色連携。
+#### Mission 050: Simple Looper (Processor Phase 4) ✅ (しずく050)
+- [x] **非同期バッファリング**: リアルタイム処理を妨げない循環バッファ / 録音スレッドの設計。
+- [x] **Looper 実装**: 録音・再生・オーバーダビング・消去の基本ロジックを DLL にて実現。
+- [x] **ホットキー連携**: F1-F4 によるグローバル・ショートカット操作への対応。
 
-#### Mission 051: 独立ビジュアライザーアプリ (VisualizerApp)
+#### Mission 051: カラーテーマ ＆ ステージ視認性向上 (Dark/Light) ✅ (しずく051)
+- [x] **簡易的なテーマ切替**: `LvhLookAndFeel` の色差し替えによる基本的な Dark/Light 切替。
+- [x] **高コントラスト対応**: 明るい場所での視認性を高める配色（Light テーマ）のハードコード定義。
+
+#### Mission 052: テーマ・マネジメント ＆ スキンファイル対応 (Refactoring) ✅ (しずく052)
+- [x] **ThemePalette 実装**: JSON からの色ロード・補完と表示名スキャン機能を実装。
+- [x] **一掃リファクタリング**: UI 全域のハードコード色を 60 種類以上のセマンティックカラー参照に置換。
+- [x] **複数テーマ搭載**: Dark, Light (視認性改良版), Campus Note の標準搭載と追加。
+
+#### Mission 053: Processor Plugin 管理 ＆ ディスパッチャ UI 🔜
+- [ ] **Processor Manager UI**: 検出されたプロセッサープラグインの一覧を表示し、アクティブ状態（グラフ挿入）を個別に切り替える管理画面。
+- [ ] **オンデマンド起動**: 標準では非表示（または無効）とし、セレクターから選択した時のみミキサーにストリップを出現させる仕組み。
+- [ ] **永続化**: プロジェクトファイル (.lvh) またはアプリ設定へのプロセッサー使用状態の保存。
+
+#### Mission 054: 独立ビジュアライザーアプリ (VisualizerApp)
 - [ ] **サブプロジェクト構築**: `VisualizerApp/` を LVH リポジトリ内に作成。
 - [ ] **WASAPI Loopback 音声取得**: Windows の音声出力を丸ごとキャプチャ。
 - [ ] **再生タイトル取得**: ウィンドウタイトルから曲名を取得してオーバーレイ。

@@ -44,7 +44,7 @@ class ProcessorDispatcherWindow;
  *
  * **Thread safety:** All public methods must be called from the message thread.
  */
-class UIManager
+class UIManager : private juce::Timer
 {
 public:
     /**
@@ -330,6 +330,9 @@ private:
      *  Safe to call when mixerWindow_ is nullptr (no-op).
      */
     void updateMixerProcessorStrips();
+
+    // ── Timer (polls processors for user-requested close) ─────────────────────
+    void timerCallback() override;
 
     // ── Processor persistence helpers ─────────────────────────────────────────
     /** @brief Persist the current set of running processor names to ApplicationProperties. */

@@ -108,6 +108,16 @@ public:
     bool isRunning (int index) const;
 
     /**
+     * @brief Returns true if the running plugin at @p index has signalled that
+     *        its own UI has been closed (IProcessorPlugin::hasUserRequestedClose).
+     *
+     * Always returns false when the plugin is not running.
+     *
+     * @param index  Zero-based index into the discovered list.
+     */
+    bool hasUserRequestedClose (int index) const;
+
+    /**
      * @brief Returns the accent colour of the plugin at @p index.
      *
      * Returns the value from IProcessorPlugin::getAccentColour() when running,

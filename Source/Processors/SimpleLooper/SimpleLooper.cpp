@@ -196,6 +196,7 @@ public:
 
     const char*  getName()         const override { return "Simple Looper"; }
     unsigned int getAccentColour() const override { return 0xff884466; }
+    bool hasUserRequestedClose()   const noexcept override { return closeRequested_.load (std::memory_order_relaxed); }
 
     // =========================================================================
     // Actions  (message thread)
@@ -271,10 +272,11 @@ private:
     double             sampleRate_    = 44100.0;
     int                maxBufferSize_ = 512;
 
-    std::atomic<LooperState> state_    { LooperState::Idle };
-    std::atomic<size_t>      writePos_ { 0 };
-    std::atomic<size_t>      readPos_  { 0 };
-    std::atomic<size_t>      loopLen_  { 0 };
+    std::atomic<LooperState> state_          { LooperState::Idle };
+    std::atomic<size_t>      writePos_        { 0 };
+    std::atomic<size_t>      readPos_         { 0 };
+    std::atomic<size_t>      loopLen_         { 0 };
+    std::atomic<bool>        closeRequested_  { false };
 
     // =========================================================================
     // UI state
@@ -576,6 +578,7 @@ private:
 
         case WM_CLOSE:
             ShowWindow (hwnd, SW_HIDE);
+            self->closeRequested_.store (true, std::memory_order_relaxed);
             return 0;
 
         case WM_DESTROY:

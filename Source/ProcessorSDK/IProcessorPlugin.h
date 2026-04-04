@@ -125,6 +125,21 @@ public:
      * @return ARGB colour value.  Default: 0xff556688 (muted blue).
      */
     virtual unsigned int getAccentColour() const { return 0xff556688; }
+
+    /**
+     * @brief Returns true when the plugin's own UI has been closed by the user
+     *        and the host should treat this as a stop request.
+     *
+     * The host polls this on the message thread (approximately every 500 ms).
+     * When it returns true the host will call shutdown() and unload the plugin,
+     * exactly as if the user had pressed STOP in the Processor Manager.
+     *
+     * Override and return true after the plugin's window receives WM_CLOSE
+     * (or equivalent).  The default returns false (no auto-stop).
+     *
+     * **Thread safety:** called from the message thread only.
+     */
+    virtual bool hasUserRequestedClose() const noexcept { return false; }
 };
 
 // =============================================================================

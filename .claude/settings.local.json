@@ -80,7 +80,9 @@
       "Bash(grep -E \"\\\\.\\(h|cpp\\)$\")",
       "Bash(doxygen Doxyfile)",
       "Bash(\"/c/Program Files/doxygen/bin/doxygen\" C:/Projects/LVH-PRO/Doxyfile)",
-      "Bash(iconv -f cp932 -t utf-8)"
+      "Bash(iconv -f cp932 -t utf-8)",
+      "Bash(grep -E \"error|warning C|: error|\\\\.cpp$|\\\\.h$|succeeded|failed\")",
+      "Bash(grep -E \"error|warning C|error C|\\\\.cpp$|→\")"
     ]
   }
 }

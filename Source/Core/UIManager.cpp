@@ -96,6 +96,10 @@ void UIManager::setMainComponent (MainComponent* mc)
         restoreActiveProcessors();
     }
 
+    // Poll running processors every 500 ms so that plugins which close their
+    // own window (hasUserRequestedClose()) are automatically stopped.
+    startTimer (500);
+
     // Speaker mute button + volume slider (share savedGain)
     auto savedGain = std::make_shared<double> (1.0);
 
@@ -1478,6 +1482,23 @@ void UIManager::stopProcessor (int index)
         updateMixerProcessorStrips();
         saveActiveProcessors();
     });
+}
+
+void UIManager::timerCallback()
+{
+    if (processorManager_ == nullptr)
+        return;
+
+    // Check each running processor for a user-initiated close of its own window.
+    // Iterate backwards so that stopping one does not shift indices of later ones.
+    for (int i = processorManager_->getNumDiscovered() - 1; i >= 0; --i)
+    {
+        if (processorManager_->isRunning (i) &&
+            processorManager_->hasUserRequestedClose (i))
+        {
+            stopProcessor (i);  // fade-out + deferred removal + UI update
+        }
+    }
 }
 
 int UIManager::getActiveIndexOf (int discoveredIndex) const
