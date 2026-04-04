@@ -595,6 +595,27 @@ void UIManager::toggleLayoutStudio (bool show)
                 if (layoutStudioWindow_ != nullptr)
                     layoutStudioWindow_->handleMidiMessage (msg);
             };
+
+            // Wire block editor: changes in the UI are immediately applied to routing.
+            layoutStudioWindow_->onBlocksChanged = [this] (const std::vector<KeyboardBlock>& blocks)
+            {
+                midiRouter_.setBlocks (std::vector<KeyboardBlock> (blocks));
+            };
+
+            // Provide the bridge list for the context menu assign-to picker.
+            layoutStudioWindow_->getBridgeList = [this]()
+                -> std::vector<std::pair<juce::String, juce::String>>
+            {
+                std::vector<std::pair<juce::String, juce::String>> list;
+                for (auto* b : bridgeManager_.getBridges())
+                    if (b->getPluginPath().isNotEmpty())
+                        list.push_back ({ juce::File (b->getPluginPath()).getFileNameWithoutExtension(),
+                                          b->getPluginPath() });
+                return list;
+            };
+
+            // Populate from current routing state (non-empty after project load).
+            layoutStudioWindow_->setInitialBlocks (midiRouter_.getBlocks());
         }
         layoutStudioWindow_->toFront (true);
     }
