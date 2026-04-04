@@ -356,6 +356,36 @@ namespace Icons
         const float midY = cy - barH * 0.5f;
         g.fillEllipse (cx + barW * 0.5f - dotR, midY - dotR + barH * 0.5f, dotR * 2.f, dotR * 2.f);
     }
+
+    // Keyboard icon — simplified piano keyboard (white keys + black key notches)
+    inline void keyboard (Graphics& g, Rectangle<float> a)
+    {
+        g.setColour (Colours::white);
+
+        const float kbdW  = a.getWidth()  * 0.82f;
+        const float kbdH  = a.getHeight() * 0.58f;
+        const float kbdX  = a.getCentreX() - kbdW * 0.5f;
+        const float kbdY  = a.getCentreY() - kbdH * 0.5f + a.getHeight() * 0.06f;
+
+        // Outer body (white area)
+        g.fillRoundedRectangle (kbdX, kbdY, kbdW, kbdH, 2.0f);
+
+        // Seven white-key dividers (6 inner lines)
+        g.setColour (Colours::black.withAlpha (0.5f));
+        const float keyW = kbdW / 7.0f;
+        for (int i = 1; i < 7; ++i)
+            g.fillRect (kbdX + i * keyW - 0.5f, kbdY, 1.0f, kbdH);
+
+        // Five black keys: positions match standard octave layout (C#,D#,F#,G#,A#)
+        g.setColour (Colours::black);
+        const float bkW = keyW * 0.58f;
+        const float bkH = kbdH * 0.60f;
+        // Semitone offsets relative to white-key positions (left edges of white keys 0-6)
+        // C#=0.5, D#=1.5, skip, F#=3.5, G#=4.5, A#=5.5
+        const float bkOffsets[] = { 0.55f, 1.55f, 3.55f, 4.55f, 5.55f };
+        for (float off : bkOffsets)
+            g.fillRoundedRectangle (kbdX + off * keyW - bkW * 0.5f, kbdY, bkW, bkH, 1.0f);
+    }
 }
 
 // =====================================================================

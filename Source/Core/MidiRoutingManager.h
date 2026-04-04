@@ -32,6 +32,17 @@ public:
     explicit MidiRoutingManager (const juce::OwnedArray<BridgeInstance>& bridges);
 
     /**
+     * @brief Called from the MIDI input thread for every incoming MIDI message.
+     *
+     * Fired at the very start of sendMidi(), before any routing is applied.
+     * Set once from the message thread (e.g. when LayoutStudioWindow opens);
+     * treated as write-once so no lock is needed.
+     *
+     * Typical use: feed a juce::MidiKeyboardState for real-time visual feedback.
+     */
+    std::function<void(const juce::MidiMessage&)> onMidiActivity;
+
+    /**
      * @brief Fired on the message thread when the octave offset changes.
      *
      * The caller (LvhProApplication) is responsible for updating the PC-keyboard

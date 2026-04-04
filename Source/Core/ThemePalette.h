@@ -120,6 +120,12 @@ enum class ColourId : size_t
     MetroTap,           ///< Tap Tempo button background.
     MetroBpm,           ///< BPM adjust button background.
 
+    // ── Layout Studio (Instrument Layout Studio) ──────────────────────────────
+    AccentCyan,         ///< Layout Studio window toggle ON.
+    KeyWhite,           ///< Virtual keyboard white key background.
+    KeyBlack,           ///< Virtual keyboard black key background.
+    KeyNoteActive,      ///< Virtual keyboard note highlight (pressed).
+
     numColours          ///< Sentinel — do not use directly.
 };
 

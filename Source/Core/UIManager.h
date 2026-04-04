@@ -11,6 +11,8 @@
 #include "VisualizerManager.h"
 #include "../VisualizerWindow.h"
 
+#include "../LayoutStudio/LayoutStudioWindow.h"
+
 // Forward declarations — full definitions only needed in UIManager.cpp
 class MainComponent;
 class SettingsWindow;
@@ -138,6 +140,9 @@ public:
 
     /** @brief Show or hide the Processor Manager dispatcher window. */
     void toggleProcessorDispatcher (bool show);
+
+    /** @brief Show or hide the Instrument Layout Studio window. */
+    void toggleLayoutStudio (bool show);
 
     /** @brief Open the Settings window (audio device, language, theme). */
     void openSettings();
@@ -399,6 +404,7 @@ private:
     std::unique_ptr<ProcessorDispatcherWindow>  processorDispatcherWindow_;
     std::unique_ptr<juce::DocumentWindow>       pluginPickerWindow_;
     std::unique_ptr<ProcessorManager>           processorManager_;
+    std::unique_ptr<LayoutStudioWindow>         layoutStudioWindow_;
 
     LearnState                               learnState_;
     std::map<juce::String, MixerMidiMapping> mixerMappings_;

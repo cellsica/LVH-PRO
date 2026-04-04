@@ -32,6 +32,7 @@ private:
     std::unique_ptr<IconButton>       vuMeterToggleButton;
     std::unique_ptr<IconButton>       visualizerToggleButton;
     std::unique_ptr<IconButton>       processorToggleButton;
+    std::unique_ptr<IconButton>       layoutStudioToggleButton;
 
     std::unique_ptr<TextButton>       octaveDownButton;
     std::unique_ptr<Label>            octaveLabel;
@@ -133,6 +134,7 @@ public:
     void setVuMeterWindowVisible        (bool v);
     void setVisualizerWindowVisible     (bool v);
     void setProcessorWindowVisible      (bool v);
+    void setLayoutStudioWindowVisible   (bool v);
     void setOctaveDisplay       (int octaveNumber);
 
 
@@ -147,6 +149,7 @@ public:
     std::function<void(bool)> onVuMeterToggle;
     std::function<void(bool)> onVisualizerToggle;
     std::function<void(bool)> onProcessorToggle;
+    std::function<void(bool)> onLayoutStudioToggle;
     std::function<void(int)> onOctaveShift;  // called with +1 or -1
     std::function<void(double)> onVolumeChanged;
 
