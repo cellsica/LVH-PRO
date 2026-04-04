@@ -85,6 +85,15 @@ public:
             g.fillAll (ThemePalette::get (ColourId::BgPanel));
         }
 
+        // Refresh button labels/colours without rebuilding the whole list.
+        // Called by ProcessorDispatcherWindow::refreshStates() after deferred stop.
+        void refreshStates()
+        {
+            for (auto& row : rows_)
+                row->updateState();
+            repaint();
+        }
+
     private:
         // ------------------------------------------------------------------
         // Row — one processor entry
@@ -167,14 +176,6 @@ public:
             JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Row)
         };
 
-        // Refresh button labels/colours without rebuilding the whole list.
-        void refreshStates()
-        {
-            for (auto& row : rows_)
-                row->updateState();
-            repaint();
-        }
-
         UIManager& ui_;
         std::vector<std::unique_ptr<Row>> rows_;
         std::unique_ptr<juce::Label>      emptyLabel_;
@@ -215,6 +216,13 @@ public:
     {
         content_->rebuild();
         updateWindowSize();
+    }
+
+    // Refresh button labels/colours without rebuilding rows (call after start/stop).
+    void refreshStates()
+    {
+        if (content_ != nullptr)
+            content_->refreshStates();
     }
 
     void resized() override

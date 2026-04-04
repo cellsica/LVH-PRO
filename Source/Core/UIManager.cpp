@@ -1491,6 +1491,10 @@ void UIManager::stopProcessor (int index)
 
         updateMixerProcessorStrips();
         saveActiveProcessors();
+
+        // Refresh the dispatcher UI so the button reverts to "START".
+        if (processorDispatcherWindow_ != nullptr)
+            processorDispatcherWindow_->refreshStates();
     });
 }
 
