@@ -308,8 +308,8 @@ namespace Icons
         g.setColour (Colours::white);
 
         const float cx      = a.getCentreX();
-        const float py      = a.getBottom() - a.getHeight() * 0.15f;  // pivot y
         const float r       = a.getWidth()  * 0.38f;                  // arc radius
+        const float py      = a.getCentreY() + r * 0.5f;             // pivot y (centred)
         const float arcFrom = juce::MathConstants<float>::pi * 1.15f; // ~207°
         const float arcTo   = juce::MathConstants<float>::pi * 1.85f; // ~333°
 

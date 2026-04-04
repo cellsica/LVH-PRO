@@ -45,7 +45,7 @@ public:
     LvhProApplication() {}
 
     const String getApplicationName() override    { return "LVH"; }
-    const String getApplicationVersion() override { return ProjectInfo::versionString; }
+    const String getApplicationVersion() override { return juce::String (ProjectInfo::versionString) + "-alpha"; }
     bool moreThanOneInstanceAllowed() override    { return true; }
 
     // Hardware MIDI input

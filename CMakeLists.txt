@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(LVH VERSION 0.9.0 LANGUAGES CXX)
+project(LVH VERSION 0.14.0 LANGUAGES CXX)
 
 # =============================================================================
 # Optional Doxygen documentation target
