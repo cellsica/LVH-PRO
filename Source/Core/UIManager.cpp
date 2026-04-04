@@ -1479,8 +1479,16 @@ void UIManager::stopProcessor (int index)
     {
         if (processorManager_ == nullptr)
             return;
+
+        // IMPORTANT: remove from the audio graph BEFORE deleting the instance.
+        // Reversing the order (delete then setProcessorPlugins) leaves a window
+        // where the audio thread may call processBlock() on a freed / DLL-unloaded
+        // instance, causing a crash that terminates the application.
+        audioEngine_.setProcessorPlugins (processorManager_->getActiveInstancesExcluding (index));
+
+        // Now the graph no longer references this plugin — safe to delete and unload.
         processorManager_->stopProcessor (index);
-        audioEngine_.setProcessorPlugins (processorManager_->getActiveInstances());
+
         updateMixerProcessorStrips();
         saveActiveProcessors();
     });

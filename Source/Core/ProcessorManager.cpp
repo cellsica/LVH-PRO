@@ -160,6 +160,15 @@ std::vector<IProcessorPlugin*> ProcessorManager::getActiveInstances() const
     return result;
 }
 
+std::vector<IProcessorPlugin*> ProcessorManager::getActiveInstancesExcluding (int excludeIndex) const
+{
+    std::vector<IProcessorPlugin*> result;
+    for (int i = 0; i < (int) discovered_.size(); ++i)
+        if (i != excludeIndex && discovered_[(size_t) i]->isRunning())
+            result.push_back (discovered_[(size_t) i]->instance);
+    return result;
+}
+
 // ── Legacy compat ─────────────────────────────────────────────────────────────
 
 juce::StringArray ProcessorManager::getProcessorNames() const

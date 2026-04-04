@@ -128,6 +128,17 @@ public:
      */
     std::vector<IProcessorPlugin*> getActiveInstances() const;
 
+    /**
+     * @brief Like getActiveInstances() but excludes the entry at @p excludeIndex.
+     *
+     * Used to build the post-stop active list BEFORE actually deleting the
+     * plugin instance, so the audio graph can be rebuilt safely while the
+     * plugin's DLL is still mapped.
+     *
+     * @param excludeIndex  Discovered-list index of the plugin being stopped.
+     */
+    std::vector<IProcessorPlugin*> getActiveInstancesExcluding (int excludeIndex) const;
+
     // ── Legacy compat (kept for callers that haven't migrated yet) ────────────
 
     /** @deprecated Use getActiveInstances(). Alias kept for minimal diff. */
