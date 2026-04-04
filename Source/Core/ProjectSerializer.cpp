@@ -1,4 +1,5 @@
 #include "ProjectSerializer.h"
+#include "KeyboardBlock.h"
 
 ProjectSerializer::ProjectSerializer (const juce::OwnedArray<BridgeInstance>& bridges,
                                        AudioEngine&                             audioEngine,
@@ -195,6 +196,22 @@ void ProjectSerializer::writeProjectXml (const juce::File& file,
     settingsEl->setAttribute ("metronomeBeatsPerBar", audioEngine_.getMetronomeBeatsPerBar());
     settingsEl->setAttribute ("metronomeClickType",   (int) audioEngine_.getMetronomeClickType());
 
+    // ── Instrument Layout Studio blocks ───────────────────────────────────────
+    auto blocks = midiRouter_.getBlocks();
+    if (! blocks.empty())
+    {
+        auto* layoutEl = xml->createNewChildElement ("LayoutStudio");
+        for (const auto& block : blocks)
+        {
+            auto* blockEl = layoutEl->createNewChildElement ("Block");
+            blockEl->setAttribute ("startNote",        block.startNote);
+            blockEl->setAttribute ("endNote",          block.endNote);
+            blockEl->setAttribute ("octaveShift",      block.octaveShift);
+            blockEl->setAttribute ("targetPluginPath", block.targetPluginPath);
+            blockEl->setAttribute ("colour",           block.blockColour.toDisplayString (true));
+        }
+    }
+
     xml->writeTo (file);
 
     if (onMessage)
@@ -319,6 +336,33 @@ void ProjectSerializer::loadProject (const juce::File& file, bool isGlobal, bool
                                                          : MetronomeProcessor::ClickType::Normal);
         if (onMetronomeSettingsRestored)
             onMetronomeSettingsRestored (metBpm, metVol, metBpb, metCt);
+    }
+
+    // Restore Instrument Layout Studio blocks (skipped in Global Layer switch mode).
+    if (! globalLayerSwitch)
+    {
+        if (auto* layoutEl = xml->getChildByName ("LayoutStudio"))
+        {
+            std::vector<KeyboardBlock> blocks;
+            for (auto* el : layoutEl->getChildWithTagNameIterator ("Block"))
+            {
+                KeyboardBlock block;
+                block.startNote        = el->getIntAttribute    ("startNote",    48);
+                block.endNote          = el->getIntAttribute    ("endNote",      59);
+                block.octaveShift      = juce::jlimit (-3, 3,
+                                             el->getIntAttribute ("octaveShift", 0));
+                block.targetPluginPath = el->getStringAttribute ("targetPluginPath");
+                juce::String colStr    = el->getStringAttribute ("colour");
+                if (colStr.isNotEmpty())
+                    block.blockColour = juce::Colour::fromString (colStr);
+                blocks.push_back (std::move (block));
+            }
+            midiRouter_.setBlocks (std::move (blocks));
+        }
+        else
+        {
+            midiRouter_.clearBlocks();
+        }
     }
 
     // Restore MIDI routing state (skipped in Global Layer switch mode — Slot 0's routing is kept).

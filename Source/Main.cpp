@@ -394,6 +394,7 @@ private:
         bridgeManager_.onApplyPendingMidiTarget = [this] (const juce::String& path,
                                                            BridgeInstance* b) {
             midiRouter.tryApplyPendingTarget (path, b);
+            midiRouter.notifyBridgeConnected (b);
         };
     }
 
