@@ -160,6 +160,16 @@ std::vector<IProcessorPlugin*> ProcessorManager::getActiveInstances() const
     return result;
 }
 
+bool ProcessorManager::hasUserRequestedClose (int index) const
+{
+    if (index < 0 || index >= (int) discovered_.size())
+        return false;
+    const auto& entry = discovered_[(size_t) index];
+    if (! entry->isRunning())
+        return false;
+    return entry->instance->hasUserRequestedClose();
+}
+
 std::vector<IProcessorPlugin*> ProcessorManager::getActiveInstancesExcluding (int excludeIndex) const
 {
     std::vector<IProcessorPlugin*> result;
