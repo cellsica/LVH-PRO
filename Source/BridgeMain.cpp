@@ -343,8 +343,9 @@ public:
             ipcClient->onWindowPosReceived = [this] (int x, int y, int w, int h) {
                 if (mainWindow != nullptr && w > 0 && h > 0)
                 {
+                    if (mainWindow->isMinimised())
+                        mainWindow->setMinimised (false);  // restore from minimised
                     mainWindow->setBounds (x, y, w, h);
-                    mainWindow->setVisible (true);   // re-show if hidden via X button
                     mainWindow->toFront (false);
                 }
             };
@@ -444,9 +445,11 @@ public:
 
         void closeButtonPressed() override
         {
-            // Hide the window instead of quitting — plugin lifetime is managed
+            // Minimise instead of quitting — plugin lifetime is managed
             // by the Core via the Mixer Console Remove action.
-            setVisible (false);
+            // setVisible(false) can trigger WM_DESTROY on child plugin editor
+            // HWNDs on Windows; setMinimised is the safe alternative.
+            setMinimised (true);
         }
 
         void preparePlugin (float sampleRate, int32_t bufferSize)
