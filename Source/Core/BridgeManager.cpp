@@ -161,6 +161,32 @@ void BridgeManager::clearBridges (bool keepGlobal)
     }
 }
 
+void BridgeManager::removeBridge (BridgeInstance* b)
+{
+    // Clear onDisconnected first to prevent the async IPC callback from
+    // attempting a duplicate removeObject() after we've already deleted it.
+    b->onDisconnected = nullptr;
+
+    // Cascade: if this is an Instrument, also remove its per-channel FX bridges.
+    if (b->getRole() == BridgeInstance::Role::Instrument)
+    {
+        const juce::String& parentPath = b->getPluginPath();
+        for (int i = bridges_.size() - 1; i >= 0; --i)
+        {
+            auto* fx = bridges_[i];
+            if (fx->getRole() == BridgeInstance::Role::Effect
+                && fx->getFxParentPath() == parentPath)
+            {
+                fx->onDisconnected = nullptr;
+                bridges_.remove (i);
+            }
+        }
+    }
+
+    bridges_.removeObject (b);  // calls BridgeInstance::shutdown() via destructor
+    rebuildBridgeGraph();
+}
+
 void BridgeManager::moveBridge (BridgeInstance* b, int newIndex)
 {
     int oldIndex = -1;

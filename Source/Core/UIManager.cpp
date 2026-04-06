@@ -273,6 +273,13 @@ void UIManager::toggleMixerWindow (bool show)
                                       bounds.getWidth(), bounds.getHeight());
             };
 
+            mixerWindow_->onRemoveBridge = [this] (BridgeInstance* b) {
+                bridgeManager_.removeBridge (b);
+            };
+            mixerWindow_->onRemoveFxBridge = [this] (BridgeInstance* b) {
+                bridgeManager_.removeBridge (b);
+            };
+
             mixerWindow_->onAddFx = [this] (BridgeInstance* parent) {
                 showPluginPicker (BridgeInstance::Role::Effect, parent);
             };

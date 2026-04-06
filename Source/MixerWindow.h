@@ -33,7 +33,8 @@ public:
     BridgeInstance*       bridge       = nullptr;
     BridgeInstance*       parentBridge = nullptr;  // instrument context (nullptr = master chain)
     std::function<void()> onToggleWindow;
-    std::function<void(BridgeInstance*)> onAddFx;  // fired when placeholder (+) is clicked
+    std::function<void(BridgeInstance*)> onAddFx;      // fired when placeholder (+) is clicked
+    std::function<void(BridgeInstance*)> onRemoveFx;   // fired when Remove FX is selected
 
     // Set true while this slot is being dragged (dims the appearance)
     bool isDragging = false;
@@ -95,13 +96,24 @@ public:
         if (bridge == nullptr) return;
         if (! dragStarted_)
         {
-            // Short click — toggle window visibility
+            if (e.mods.isRightButtonDown())
+            {
+                // Right-click on FX slot — show Remove menu
+                PopupMenu m;
+                m.addItem (1, "Remove FX");
+                m.showMenuAsync (PopupMenu::Options().withTargetComponent (this),
+                    [this] (int r) {
+                        if (r == 1 && onRemoveFx) onRemoveFx (bridge);
+                    });
+                return;
+            }
+            // Left click — toggle window visibility
             if (bridge->getState() != BridgeInstance::State::Connected) return;
             windowShown_ = ! windowShown_;
             if (onToggleWindow) onToggleWindow();
             repaint();
         }
-        isDragging  = false;
+        isDragging   = false;
         dragStarted_ = false;
         repaint();
     }
@@ -171,6 +183,7 @@ public:
     std::function<void(MixerParam)>               onMidiLearnRequest; // right-click → MIDI Learn
     std::function<void(MixerParam)>               onMidiClearMapping; // right-click → Clear Mapping
     std::function<void(BridgeInstance*, int)>     onFxReorderRequest; // drag-drop reorder within strip
+    std::function<void()>                         onRemoveRequest;    // right-click → Remove Channel
 
     ~MixerStrip() override { fader.setLookAndFeel (nullptr); }
 
@@ -627,6 +640,13 @@ private:
         for (int i = 0; i < 6; ++i)
             m.addItem (i + 1, kPalette[i].name, true,
                        accentColor == ThemePalette::get (kPalette[i].id));
+
+        if (onRemoveRequest)
+        {
+            m.addSeparator();
+            m.addItem (100, "Remove Channel");
+        }
+
         m.showMenuAsync (PopupMenu::Options().withTargetComponent (this),
             [this] (int r)
             {
@@ -641,6 +661,10 @@ private:
                     nameLabel.setColour (Label::backgroundColourId, accentColor.withAlpha (0.35f));
                     repaint();
                     if (onColorChange) onColorChange (accentColor);
+                }
+                else if (r == 100 && onRemoveRequest)
+                {
+                    onRemoveRequest();
                 }
             });
     }
@@ -847,6 +871,8 @@ public:
     std::function<void(BridgeInstance*, MixerParam)>  onMidiLearnRequest;   // bubbled up from strip right-click
     std::function<void(BridgeInstance*, MixerParam)>  onMidiClearMapping;   // bubbled up from strip right-click
     std::function<void(BridgeInstance*, int)>         onFxReorderRequest;   // bubbled up from FX D&D reorder
+    std::function<void(BridgeInstance*)>              onRemoveBridge;       // right-click → Remove Channel
+    std::function<void(BridgeInstance*)>              onRemoveFxBridge;     // right-click → Remove FX
 
     // Physical input strip callbacks
     std::function<void(float)>                        onInputGainChange;
@@ -1000,6 +1026,9 @@ public:
             strip->onFxReorderRequest = [this] (BridgeInstance* fx, int newIdx) {
                 if (onFxReorderRequest) onFxReorderRequest (fx, newIdx);
             };
+            strip->onRemoveRequest = [this, b] {
+                if (onRemoveBridge) onRemoveBridge (b);
+            };
 
             // Per-channel FX slots for this instrument strip
             strip->clearFxSlots();
@@ -1017,6 +1046,9 @@ public:
                 slot->setBypassed (fx->mixerBypassed.load());
                 slot->onToggleWindow = [this, fx] {
                     if (onToggleFxWindow) onToggleFxWindow (fx);
+                };
+                slot->onRemoveFx = [this] (BridgeInstance* fx) {
+                    if (onRemoveFxBridge) onRemoveFxBridge (fx);
                 };
             }
             // One + placeholder for adding per-channel FX to this instrument
@@ -1048,6 +1080,9 @@ public:
             slot->onToggleWindow = [this, b] {
                 if (onToggleFxWindow) onToggleFxWindow (b);
             };
+            slot->onRemoveFx = [this] (BridgeInstance* fx) {
+                if (onRemoveFxBridge) onRemoveFxBridge (fx);
+            };
         }
 
         // One + placeholder for adding the next master FX
@@ -1076,6 +1111,9 @@ public:
             slot->setBypassed (b->mixerBypassed.load());
             slot->onToggleWindow = [this, b] {
                 if (onToggleFxWindow) onToggleFxWindow (b);
+            };
+            slot->onRemoveFx = [this] (BridgeInstance* fx) {
+                if (onRemoveFxBridge) onRemoveFxBridge (fx);
             };
         }
 
@@ -1257,6 +1295,12 @@ public:
         content->onFxReorderRequest = [this] (BridgeInstance* fx, int newIdx) {
             if (onFxReorderRequest) onFxReorderRequest (fx, newIdx);
         };
+        content->onRemoveBridge = [this] (BridgeInstance* b) {
+            if (onRemoveBridge) onRemoveBridge (b);
+        };
+        content->onRemoveFxBridge = [this] (BridgeInstance* b) {
+            if (onRemoveFxBridge) onRemoveFxBridge (b);
+        };
         content->onInputGainChange = [this] (float v) {
             if (onInputGainChange) onInputGainChange (v);
         };
@@ -1337,6 +1381,8 @@ public:
     std::function<void(BridgeInstance*, MixerParam)> onMidiLearnRequest;
     std::function<void(BridgeInstance*, MixerParam)> onMidiClearMapping;
     std::function<void(BridgeInstance*, int)>        onFxReorderRequest;
+    std::function<void(BridgeInstance*)>             onRemoveBridge;
+    std::function<void(BridgeInstance*)>             onRemoveFxBridge;
     std::function<void(float)>                       onInputGainChange;
     std::function<void(bool)>                        onInputMuteChange;
     std::function<std::pair<float,float>()>          getInputPeaks;
