@@ -262,9 +262,9 @@ public:
     float exchangePeakR() noexcept { return peakR.exchange (0.f, std::memory_order_relaxed); }
 
 private:
-    /// Queues MIDI messages and sends them to the Bridge pipe asynchronously,
+    /// Queues all IPC messages and sends them to the Bridge pipe asynchronously,
     /// preventing the message thread from blocking on named-pipe writes.
-    class MidiSenderThread;
+    class IpcSenderThread;
 
     /// Fires every 2 s on the message thread.  If no heartbeat has been received
     /// for more than 5 s while Connected, stops the pipe to break the JUCE
@@ -290,7 +290,7 @@ private:
     juce::Rectangle<int> lastWindowBounds { 0, 0, 0, 0 };
     bool               isGlobal_    = false;
 
-    std::unique_ptr<MidiSenderThread>  midiSender_;
+    std::unique_ptr<IpcSenderThread>   ipcSender_;
     std::unique_ptr<HeartbeatWatchdog> heartbeatWatchdog_;
     std::atomic<int64_t>               lastHeartbeatMs_ { 0 };
 
