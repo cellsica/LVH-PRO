@@ -603,10 +603,12 @@ void UIManager::toggleLayoutStudio (bool show)
                     layoutStudioWindow_->handleMidiMessage (msg);
             };
 
-            // Wire block editor: changes in the UI are immediately applied to routing.
-            layoutStudioWindow_->onBlocksChanged = [this] (const std::vector<KeyboardBlock>& blocks)
+            // Wire layout editor: changes in the UI are immediately applied to routing.
+            layoutStudioWindow_->onLayoutChanged = [this] (const std::vector<KeyboardBlock>& blocks,
+                                                            const std::vector<PadAssignment>& pads)
             {
                 midiRouter_.setBlocks (std::vector<KeyboardBlock> (blocks));
+                midiRouter_.setPadAssignments (std::vector<PadAssignment> (pads));
             };
 
             // Provide the bridge list for the context menu assign-to picker.
@@ -623,6 +625,7 @@ void UIManager::toggleLayoutStudio (bool show)
 
             // Populate from current routing state (non-empty after project load).
             layoutStudioWindow_->setInitialBlocks (midiRouter_.getBlocks());
+            layoutStudioWindow_->setInitialPadAssignments (midiRouter_.getPadAssignments());
         }
         layoutStudioWindow_->toFront (true);
     }

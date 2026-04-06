@@ -11,6 +11,43 @@ void MidiRoutingManager::sendMidi (const juce::MidiMessage& msg)
     // ── Visual feedback (Layout Studio) ───────────────────────────────────────
     if (onMidiActivity) onMidiActivity (msg);
 
+    // ── Pad-based routing (Ch10, Note 36–51) ─────────────────────────────────
+    // Ch10 pad messages are intercepted before block/legacy routing so that
+    // pads always route to their assigned bridge regardless of block state.
+    if (msg.getChannel() == kPadMidiChannel
+        && (msg.isNoteOn() || msg.isNoteOff()))
+    {
+        int note = msg.getNoteNumber();
+        if (note >= kPadNoteStart && note <= kPadNoteEnd)
+        {
+            juce::ScopedLock sl (blockRoutingLock_);
+            if (msg.isNoteOn())
+            {
+                for (const auto& pad : padAssignments_)
+                {
+                    if (pad.padIndex == note - kPadNoteStart
+                        && pad.targetBridge != nullptr)
+                    {
+                        pad.targetBridge->sendMidi (msg);
+                        padActiveNotes_[note] = pad.targetBridge;
+                        return;
+                    }
+                }
+                padActiveNotes_.erase (note);  // no assignment — swallow
+            }
+            else  // NoteOff
+            {
+                auto it = padActiveNotes_.find (note);
+                if (it != padActiveNotes_.end())
+                {
+                    it->second->sendMidi (msg);
+                    padActiveNotes_.erase (it);
+                }
+            }
+            return;  // always consume Ch10 pad-range messages
+        }
+    }
+
     // ── Block-based routing (Instrument Layout Studio) ────────────────────────
     // When blocks are defined they replace the legacy channel routing for notes.
     // Non-note messages are broadcast to all bridges so that CC, pitch-bend,
@@ -151,6 +188,9 @@ void MidiRoutingManager::resetForProjectLoad()
     routeToAll_.store       (true,    std::memory_order_relaxed);
     pendingMidiTarget_ = juce::String();
     clearBlocks();
+    juce::ScopedLock sl (blockRoutingLock_);
+    padAssignments_.clear();
+    padActiveNotes_.clear();
 }
 
 // ── Block-based routing ────────────────────────────────────────────────────────
@@ -207,4 +247,42 @@ void MidiRoutingManager::notifyBridgeConnected (BridgeInstance* b) noexcept
         if (block.targetBridge == nullptr
                 && block.targetPluginPath == b->getPluginPath())
             block.targetBridge = b;
+    for (auto& pad : padAssignments_)
+        if (pad.targetBridge == nullptr
+                && pad.targetPluginPath == b->getPluginPath())
+            pad.targetBridge = b;
+}
+
+// ── Pad-based routing ─────────────────────────────────────────────────────────
+
+void MidiRoutingManager::setPadAssignments (std::vector<PadAssignment> pads)
+{
+    {
+        juce::ScopedLock sl (blockRoutingLock_);
+        padAssignments_ = std::move (pads);
+        padActiveNotes_.clear();
+    }
+    resolvePadTargets();
+}
+
+std::vector<PadAssignment> MidiRoutingManager::getPadAssignments() const
+{
+    juce::ScopedLock sl (blockRoutingLock_);
+    return padAssignments_;
+}
+
+void MidiRoutingManager::resolvePadTargets() noexcept
+{
+    juce::ScopedLock sl (blockRoutingLock_);
+    for (auto& pad : padAssignments_)
+    {
+        pad.targetBridge = nullptr;
+        for (auto* b : bridges_)
+            if (b->getPluginPath() == pad.targetPluginPath
+                    && b->getState() == BridgeInstance::State::Connected)
+            {
+                pad.targetBridge = b;
+                break;
+            }
+    }
 }

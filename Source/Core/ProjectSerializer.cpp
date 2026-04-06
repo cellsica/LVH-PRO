@@ -210,6 +210,14 @@ void ProjectSerializer::writeProjectXml (const juce::File& file,
             blockEl->setAttribute ("targetPluginPath", block.targetPluginPath);
             blockEl->setAttribute ("colour",           block.blockColour.toDisplayString (true));
         }
+        for (const auto& pad : midiRouter_.getPadAssignments())
+        {
+            if (pad.targetPluginPath.isEmpty()) continue;
+            auto* padEl = layoutEl->createNewChildElement ("PadAssignment");
+            padEl->setAttribute ("padIndex",         pad.padIndex);
+            padEl->setAttribute ("targetPluginPath", pad.targetPluginPath);
+            padEl->setAttribute ("colour",           pad.padColour.toDisplayString (true));
+        }
     }
 
     xml->writeTo (file);
@@ -358,6 +366,20 @@ void ProjectSerializer::loadProject (const juce::File& file, bool isGlobal, bool
                 blocks.push_back (std::move (block));
             }
             midiRouter_.setBlocks (std::move (blocks));
+
+            std::vector<PadAssignment> pads;
+            for (auto* el : layoutEl->getChildWithTagNameIterator ("PadAssignment"))
+            {
+                PadAssignment pad;
+                pad.padIndex         = juce::jlimit (0, 15,
+                                           el->getIntAttribute ("padIndex", 0));
+                pad.targetPluginPath = el->getStringAttribute ("targetPluginPath");
+                juce::String colStr  = el->getStringAttribute ("colour");
+                if (colStr.isNotEmpty())
+                    pad.padColour = juce::Colour::fromString (colStr);
+                pads.push_back (std::move (pad));
+            }
+            midiRouter_.setPadAssignments (std::move (pads));
         }
         else
         {

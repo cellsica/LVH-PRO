@@ -191,6 +191,32 @@ public:
      */
     void notifyBridgeConnected (BridgeInstance* b) noexcept;
 
+    // ── Pad-based routing (Instrument Layout Studio — Pad Assign Matrix) ──────
+
+    /**
+     * @brief Replace the entire pad assignment list and resolve bridge pointers.
+     *
+     * Accepts a sparse list; missing pads are left unassigned.
+     * Must be called from the message thread.
+     *
+     * @param pads  New pad assignments (moved in).
+     */
+    void setPadAssignments (std::vector<PadAssignment> pads);
+
+    /**
+     * @brief Returns a copy of the current pad assignment list.
+     *
+     * Thread-safe snapshot; safe to call from any thread.
+     */
+    std::vector<PadAssignment> getPadAssignments() const;
+
+    /**
+     * @brief Re-resolve all pad @p targetBridge pointers from the current bridge list.
+     *
+     * Must be called from the message thread.
+     */
+    void resolvePadTargets() noexcept;
+
 private:
     const juce::OwnedArray<BridgeInstance>& bridges_;
 
@@ -204,7 +230,7 @@ private:
 
     // ── Block routing state ───────────────────────────────────────────────────
 
-    /** Protects @p keyboardBlocks_ and @p activeNoteTargets_ for multi-thread access. */
+    /** Protects block/pad routing state for multi-thread access. */
     mutable juce::CriticalSection blockRoutingLock_;
 
     /** Block list.  Protected by @p blockRoutingLock_. */
@@ -215,6 +241,14 @@ private:
      *  received the corresponding NoteOn.  Protected by @p blockRoutingLock_. */
     struct ActiveNoteEntry { BridgeInstance* bridge; int shiftedNote; };
     std::map<int, std::vector<ActiveNoteEntry>> activeNoteTargets_;
+
+    /** Pad assignment list (up to 16 entries).  Protected by @p blockRoutingLock_. */
+    std::vector<PadAssignment> padAssignments_;
+
+    /** Per-pad note tracking for correct NoteOff delivery.
+     *  Maps incoming note number (36–51) → bridge that received the NoteOn.
+     *  Protected by @p blockRoutingLock_. */
+    std::map<int, BridgeInstance*> padActiveNotes_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MidiRoutingManager)
 };

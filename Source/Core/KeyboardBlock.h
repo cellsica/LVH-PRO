@@ -11,6 +11,35 @@ class BridgeInstance;  // Forward declaration — full type not needed here.
  * @note Mission 054 Phase A
  */
 
+// ── Pad routing constants ─────────────────────────────────────────────────────
+static constexpr int kPadMidiChannel = 10;   ///< 1-based MIDI channel reserved for pads.
+static constexpr int kPadNoteStart   = 36;   ///< First MIDI note mapped to pad 0 (C1).
+static constexpr int kPadNoteEnd     = 51;   ///< Last  MIDI note mapped to pad 15 (D#2).
+
+/**
+ * @struct PadAssignment
+ * @brief Maps one physical pad (0–15) to a Bridge (Mixer CH).
+ *
+ * Pads are triggered by MIDI Channel 10, Notes 36–51.
+ * Each pad routes to at most one Bridge (1:1 mapping).
+ *
+ * **Serialisation:**
+ * @p targetPluginPath and @p padColour are persisted to the @c <LayoutStudio>
+ * section of the @c .lvh project file.  @p targetBridge is a runtime pointer
+ * resolved by MidiRoutingManager::resolvePadTargets().
+ */
+struct PadAssignment
+{
+    int          padIndex        = 0;             ///< Pad number [0, 15].
+    juce::String targetPluginPath;                ///< Key for persistence & target resolution.
+    juce::Colour padColour       { 0xff556688u }; ///< Display colour; synced with Bridge accent.
+
+    // ── Runtime only ──────────────────────────────────────────────────────────
+    /** Resolved from @p targetPluginPath by MidiRoutingManager::resolvePadTargets().
+     *  Null when the bridge is not connected.  Not serialised. */
+    BridgeInstance* targetBridge = nullptr;
+};
+
 /**
  * @struct KeyboardBlock
  * @brief Represents a contiguous MIDI note range assigned to a single Bridge (Mixer CH).
