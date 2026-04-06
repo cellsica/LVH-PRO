@@ -62,6 +62,7 @@ public:
     {
         applyThemeToKeyboard();
         keyboard_.setScrollButtonsVisible (false);
+        keyboard_.setOctaveForMiddleC (4);  // match DAW convention (C4 = MIDI note 60)
         keyboard_.setLowestVisibleKey (kRanges[kDefaultRangeIndex].lo);
         keyboard_.setAvailableRange (kRanges[kDefaultRangeIndex].lo,
                                      kRanges[kDefaultRangeIndex].hi);
