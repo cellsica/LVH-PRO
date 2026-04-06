@@ -40,13 +40,14 @@ public:
     };
     static constexpr int kDefaultRangeIndex = 2;  // 61 keys
 
-    // ── Block editor callbacks ────────────────────────────────────────────────
+    // ── Layout editor callbacks ───────────────────────────────────────────────
 
     /**
-     * @brief Fired on the message thread whenever the block list changes.
-     *        Wire to MidiRoutingManager::setBlocks() via UIManager.
+     * @brief Fired on the message thread whenever the block list or pad assignments change.
+     *        Wire to MidiRoutingManager::setBlocks() + setPadAssignments() via UIManager.
      */
-    std::function<void(const std::vector<KeyboardBlock>&)> onBlocksChanged;
+    std::function<void(const std::vector<KeyboardBlock>&,
+                       const std::vector<PadAssignment>&)> onLayoutChanged;
 
     /**
      * @brief Return the current bridge list as {displayName, pluginPath} pairs.
@@ -111,6 +112,15 @@ public:
 
     const std::vector<KeyboardBlock>& getBlocks() const noexcept { return blocks_; }
 
+    /** @brief Replace the pad assignment list (e.g. when restoring from a project file). */
+    void setPadAssignments (std::vector<PadAssignment> pads)
+    {
+        padAssignments_ = std::move (pads);
+        repaint();
+    }
+
+    const std::vector<PadAssignment>& getPadAssignments() const noexcept { return padAssignments_; }
+
     /**
      * @brief Forward a MIDI message for visual feedback.
      * Thread-safe — may be called from the MIDI input thread.
@@ -159,6 +169,25 @@ public:
 
     void mouseDown (const juce::MouseEvent& e) override
     {
+        // ── Pad area (top of component) ───────────────────────────────────────
+        if (numPads_ > 0 && e.mods.isRightButtonDown())
+        {
+            auto padBounds = getLocalBounds().removeFromTop (kPadAreaH).reduced (4, 2);
+            if (padBounds.toFloat().contains (e.position))
+            {
+                const int cols  = 4;
+                const int rows  = numPads_ / cols;
+                const float cellW = (float) padBounds.getWidth()  / cols;
+                const float cellH = (float) padBounds.getHeight() / rows;
+                int col = juce::jlimit (0, cols - 1,
+                              (int) ((e.position.x - padBounds.getX()) / cellW));
+                int row = juce::jlimit (0, rows - 1,
+                              (int) ((e.position.y - padBounds.getY()) / cellH));
+                showPadContextMenu (row * cols + col, e.getScreenPosition());
+                return;
+            }
+        }
+
         if (! keyboard_.getBounds().toFloat().contains (e.position))
             return;
 
@@ -270,7 +299,7 @@ public:
 
         editMode_     = EditMode::Idle;
         dragBlockIdx_ = -1;
-        fireOnBlocksChanged();
+        fireOnLayoutChanged();
         repaint();
     }
 
@@ -302,7 +331,10 @@ private:
     int                          numPads_    = 16;
 
     // ── Block data ────────────────────────────────────────────────────────────
-    std::vector<KeyboardBlock> blocks_;
+    std::vector<KeyboardBlock>  blocks_;
+
+    // ── Pad assignment data ───────────────────────────────────────────────────
+    std::vector<PadAssignment>  padAssignments_;
 
     // ── Palette cycling for auto-assigned block colors ────────────────────────
     static juce::Colour colourForIndex (int idx) noexcept
@@ -429,22 +461,43 @@ private:
         {
             for (int c = 0; c < cols; ++c)
             {
+                int padIdx = r * cols + c;
                 auto cell = juce::Rectangle<float> (
                     area.getX() + c * cellW + pad,
                     area.getY() + r * cellH + pad,
                     cellW - pad * 2.0f,
                     cellH - pad * 2.0f);
 
-                g.setColour (ThemePalette::get (ColourId::BgPanelAlt));
+                // Look up assignment for this pad
+                const PadAssignment* assignment = nullptr;
+                for (const auto& pa : padAssignments_)
+                    if (pa.padIndex == padIdx && pa.targetPluginPath.isNotEmpty())
+                        { assignment = &pa; break; }
+
+                g.setColour (assignment ? assignment->padColour.withAlpha (0.75f)
+                                        : ThemePalette::get (ColourId::BgPanelAlt));
                 g.fillRoundedRectangle (cell, 4.0f);
 
-                g.setColour (ThemePalette::get (ColourId::BorderDefault));
+                g.setColour (assignment ? assignment->padColour.brighter (0.3f)
+                                        : ThemePalette::get (ColourId::BorderDefault));
                 g.drawRoundedRectangle (cell, 4.0f, 1.0f);
 
+                // Pad number (top-left corner)
                 g.setColour (ThemePalette::get (ColourId::TextSecondary));
-                g.setFont (juce::Font (10.0f));
-                g.drawText (juce::String (r * cols + c + 1), cell,
-                            juce::Justification::centred, false);
+                g.setFont (juce::Font (9.0f));
+                g.drawText (juce::String (padIdx + 1),
+                            cell.reduced (2.0f), juce::Justification::topLeft, false);
+
+                // Bridge name (centre) if assigned
+                if (assignment != nullptr)
+                {
+                    g.setColour (juce::Colours::white.withAlpha (0.88f));
+                    g.setFont (juce::Font (9.5f, juce::Font::bold));
+                    juce::String name = juce::File (assignment->targetPluginPath)
+                                            .getFileNameWithoutExtension();
+                    g.drawText (name, cell.reduced (2.0f, 0.0f),
+                                juce::Justification::centred, true);
+                }
             }
         }
     }
@@ -536,15 +589,60 @@ private:
                 }
 
                 repaint();
-                fireOnBlocksChanged();
+                fireOnLayoutChanged();
             });
     }
 
     // ── Misc helpers ──────────────────────────────────────────────────────────
 
-    void fireOnBlocksChanged()
+    void showPadContextMenu (int padIdx, juce::Point<int> screenPos)
     {
-        if (onBlocksChanged) onBlocksChanged (blocks_);
+        std::vector<std::pair<juce::String, juce::String>> bridges;
+        if (getBridgeList) bridges = getBridgeList();
+
+        juce::String currentPath;
+        for (const auto& pa : padAssignments_)
+            if (pa.padIndex == padIdx) { currentPath = pa.targetPluginPath; break; }
+
+        juce::PopupMenu menu;
+        menu.addItem (1, "(None)", true, currentPath.isEmpty());
+        int id = 100;
+        for (auto& [name, path] : bridges)
+            menu.addItem (id++, name, true, path == currentPath);
+
+        menu.showMenuAsync (
+            juce::PopupMenu::Options().withTargetScreenArea ({ screenPos.x, screenPos.y, 1, 1 }),
+            [this, padIdx, bridges = std::move (bridges)] (int result) mutable
+            {
+                if (result == 0) return;
+
+                padAssignments_.erase (
+                    std::remove_if (padAssignments_.begin(), padAssignments_.end(),
+                        [padIdx] (const PadAssignment& pa) { return pa.padIndex == padIdx; }),
+                    padAssignments_.end());
+
+                if (result >= 100)
+                {
+                    int i = result - 100;
+                    if (i < (int) bridges.size())
+                    {
+                        PadAssignment pa;
+                        pa.padIndex         = padIdx;
+                        pa.targetPluginPath = bridges[i].second;
+                        pa.padColour        = colourForIndex (i);
+                        pa.targetBridge     = nullptr;
+                        padAssignments_.push_back (pa);
+                    }
+                }
+
+                repaint();
+                fireOnLayoutChanged();
+            });
+    }
+
+    void fireOnLayoutChanged()
+    {
+        if (onLayoutChanged) onLayoutChanged (blocks_, padAssignments_);
     }
 
     void applyThemeToKeyboard()

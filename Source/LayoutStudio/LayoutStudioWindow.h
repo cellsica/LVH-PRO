@@ -18,8 +18,9 @@ public:
     /** Called when the user closes the window (async-safe). */
     std::function<void()> onCloseRequest;
 
-    /** Forwarded from VirtualLayoutComponent::onBlocksChanged. */
-    std::function<void(const std::vector<KeyboardBlock>&)> onBlocksChanged;
+    /** Forwarded from VirtualLayoutComponent::onLayoutChanged. */
+    std::function<void(const std::vector<KeyboardBlock>&,
+                       const std::vector<PadAssignment>&)> onLayoutChanged;
 
     /** Forwarded from VirtualLayoutComponent::getBridgeList. */
     std::function<std::vector<std::pair<juce::String, juce::String>>()> getBridgeList;
@@ -29,6 +30,13 @@ public:
     {
         if (content_ != nullptr)
             content_->layout.setBlocks (std::move (blocks));
+    }
+
+    /** @brief Load an initial pad assignment list (e.g. after project restore). */
+    void setInitialPadAssignments (std::vector<PadAssignment> pads)
+    {
+        if (content_ != nullptr)
+            content_->layout.setPadAssignments (std::move (pads));
     }
 
     // ── Construction ──────────────────────────────────────────────────────────
@@ -121,11 +129,12 @@ private:
             };
             addAndMakeVisible (padsCombo);
 
-            // Wire block editor callbacks — delegate up to LayoutStudioWindow.
-            layout.onBlocksChanged = [this] (const std::vector<KeyboardBlock>& b)
+            // Wire layout editor callbacks — delegate up to LayoutStudioWindow.
+            layout.onLayoutChanged = [this] (const std::vector<KeyboardBlock>& b,
+                                             const std::vector<PadAssignment>& p)
             {
                 if (auto* w = dynamic_cast<LayoutStudioWindow*> (getTopLevelComponent()))
-                    if (w->onBlocksChanged) w->onBlocksChanged (b);
+                    if (w->onLayoutChanged) w->onLayoutChanged (b, p);
             };
             layout.getBridgeList = [this]() -> std::vector<std::pair<juce::String, juce::String>>
             {
