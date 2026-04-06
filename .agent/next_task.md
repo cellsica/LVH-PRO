@@ -93,8 +93,23 @@
     - [x] **Exclusion**: 再スキャン時の除外処理実装
 
 ## 確認済みの未完了タスク 🔜
-- [ ] **Mission 053: Processor Plugin 管理 ＆ ディスパッチャ UI**
-- [ ] **Mission 054: 独立ビジュアライザーアプリ (VisualizerApp)**
+- [x] **Mission 053: Processor Plugin 管理 ＆ ディスパッチャ UI** ✅ (しずく053)
+    - [x] **Dispatcher**: 管理ウィンドウからの個別 START/STOP 制御
+    - [x] **Fade**: 切り替え時の 80ms ゲインクロスフェード実装
+    - [x] **Persistence**: 起動状態の自動保存と復元
+- [x] **Mission 054: Instrument Layout Studio — Phase A (データモデル)** ✅ (しずく054)
+    - [x] **KeyboardBlock**: ノート範囲・送信先・オクターブシフトの定義
+    - [x] **Routing**: `activeNoteTargets_` によるノートトラッキングと動的分配送信
+    - [x] **Persistence**: `.lvh` への XML 保存・読み込み対応
+- [x] **Mission 055: Instrument Layout Studio — Phase B (仮想鍵盤 UI)** ✅ (しずく055)
+    - [x] **Component**: 25-88鍵の動的サイズ計算とパッドグリッド描画
+    - [x] **Window**: `LayoutStudioWindow` とツールバー統合（アイコン新設）
+    - [x] **Feedback**: `onMidiActivity` 経由のリアルタイム発光ミラー
+- [x] **Mission 056: Instrument Layout Studio — Phase C (ブロックエディタ)**
+- [X] **Mission 057: Core 安定性の強化 ＆ Mixer FX バイパス時のフリーズ修正**
+- [ ] **Mission 058: Instrument Layout Studio — Phase D (パッドアサイン)**
+- [ ] **Mission 059: プラグイン手動インポート機能**
+- [ ] **Mission 060: 独立ビジュアライザーアプリ (VisualizerApp)**
 
 ## 直近の作業ログ 📝
 - [2026-03-17] かえで：Bridge プロトタイプの最小構成ソースコードを実装。
@@ -165,4 +180,7 @@
 - [2026-04-03] しずく：Mission 050 完了！サンプル・ルーパー・プロセッサー (Simple Looper) を実装。Ver 0.11.1-alpha。
 - [2026-04-03] しずく：Mission 051 完了！基本の Dark / Light 切り替え機能を実装。Ver 0.12.0-alpha。
 - [2026-04-03] しずく：Mission 052 完了！ThemePalette と JSON スキンシステムの開発、配色一掃リファクタリングを完遂。Ver 0.13.0-alpha。
-- [2026-04-03] しずく：Mission 052 完了！ThemePalette システム、動的テーマリスト、キャンパスノートテーマ、Light テーマ本格配色、ミキサーフェーダー右側目盛りを実装。
+- [2026-04-04] しずく：Mission 053 完了！Processor Dispatcher（管理 UI ＆ 起動制御）を完遂。Ver 0.14.0-alpha。
+- [2026-04-04] なべ：v0.14.0-alpha を公開！茜案に基づき「Instrument Layout Studio」の開発を決定。
+- [2026-04-04] しずく：Mission 054 完了！KeyboardBlock データモデルと、MidiRoutingManager でのブロックベース・ルーティング（ノートトラッカー付き）を実装。Ver 0.15.0-alpha。
+- [2026-04-04] しずく：Mission 055 完了！Layout Studio の仮想鍵盤/パッド UI 基盤を実装。Ver 0.15.1-alpha。
