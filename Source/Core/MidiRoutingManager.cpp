@@ -28,7 +28,10 @@ void MidiRoutingManager::sendMidi (const juce::MidiMessage& msg)
                     if (pad.padIndex == note - kPadNoteStart
                         && pad.targetBridge != nullptr)
                     {
-                        pad.targetBridge->sendMidi (msg);
+                        // Remap to Ch1: Ch10 is the GM drum channel and many plugins
+                        // treat it as one-shot (ignoring NoteOff), causing stuck notes.
+                        pad.targetBridge->sendMidi (
+                            juce::MidiMessage::noteOn (1, note, msg.getFloatVelocity()));
                         padActiveNotes_[note] = pad.targetBridge;
                         return;
                     }
@@ -40,7 +43,8 @@ void MidiRoutingManager::sendMidi (const juce::MidiMessage& msg)
                 auto it = padActiveNotes_.find (note);
                 if (it != padActiveNotes_.end())
                 {
-                    it->second->sendMidi (msg);
+                    it->second->sendMidi (
+                        juce::MidiMessage::noteOff (1, note, msg.getFloatVelocity()));
                     padActiveNotes_.erase (it);
                 }
             }
