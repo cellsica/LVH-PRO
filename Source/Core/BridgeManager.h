@@ -107,6 +107,18 @@ public:
     void clearBridges (bool keepGlobal = false);
 
     /**
+     * @brief Remove a single bridge and rebuild the audio graph.
+     *
+     * If @p b is an Instrument bridge, all per-channel Effect bridges whose
+     * fxParentPath matches its plugin path are also removed first.
+     * The @p onDisconnected callback is cleared before removal to prevent the
+     * async disconnect handler from attempting a duplicate removeObject().
+     *
+     * @param b  The bridge to remove.  Must be owned by this manager.
+     */
+    void removeBridge (BridgeInstance* b);
+
+    /**
      * @brief Move a bridge to a new position and rebuild the audio graph.
      *
      * Used by UIManager to reorder FX slots in the Mixer Console.
